@@ -186,56 +186,117 @@ class LettaApiService {
     onError: (error: ApiError) => void
   ): Promise<void> {
     try {
-      const response = await this.client.post(
-        `/agents/${agentId}/messages`,
-        { ...messageData, stream: true },
-        {
-          responseType: 'stream',
-        }
-      );
+      const streamData = {
+        ...messageData,
+        stream_tokens: true,
+        include_pings: true
+      };
 
-      let buffer = '';
+      const authHeader = this.client.defaults.headers.common['Authorization'];
       
-      response.data.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+      const response = await fetch(`${this.baseUrl}/agents/${agentId}/messages/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          ...(authHeader && { 'Authorization': authHeader }),
+        },
+        body: JSON.stringify(streamData),
+      });
 
-        for (const line of lines) {
-          if (line.trim().startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.replace('data: ', ''));
-              if (data.type === 'done') {
-                onComplete(data);
-              } else {
-                onChunk(data);
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorData}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let completeResponse: any = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith('data: ')) {
+              try {
+                const jsonData = trimmedLine.replace('data: ', '');
+                if (jsonData === '[DONE]') {
+                  if (completeResponse) {
+                    onComplete(completeResponse);
+                  }
+                  return;
+                }
+                
+                const data = JSON.parse(jsonData);
+                
+                // Handle different message types based on Letta streaming format
+                if (data.message_type === 'usage_statistics') {
+                  // Final message with usage stats - create complete response
+                  completeResponse = { messages: [], usage: data };
+                } else if (data.message_type === 'ping') {
+                  // Keep connection alive, don't send to UI
+                  console.log('Received keepalive ping');
+                } else {
+                  // Send chunk to UI for real-time display
+                  onChunk(data);
+                }
+              } catch (parseError) {
+                console.warn('Failed to parse SSE data:', line, parseError);
               }
-            } catch (parseError) {
-              console.warn('Failed to parse SSE data:', line);
             }
           }
         }
-      });
-
-      response.data.on('end', () => {
+        
+        // Process any remaining buffer
         if (buffer.trim()) {
           try {
-            const data = JSON.parse(buffer.replace('data: ', ''));
-            onComplete(data);
+            const trimmedBuffer = buffer.trim();
+            if (trimmedBuffer.startsWith('data: ') && !trimmedBuffer.includes('[DONE]')) {
+              const data = JSON.parse(trimmedBuffer.replace('data: ', ''));
+              if (data.message_type === 'usage_statistics') {
+                completeResponse = { messages: [], usage: data };
+              }
+            }
           } catch (parseError) {
             console.warn('Failed to parse final SSE data:', buffer);
           }
         }
-      });
-
-      response.data.on('error', (error: any) => {
-        onError({
-          message: error.message || 'Stream error',
-          status: 0,
-        });
-      });
-    } catch (error) {
-      onError(error as ApiError);
+        
+        // Call onComplete if we have a complete response or if streaming ended
+        if (completeResponse) {
+          onComplete(completeResponse);
+        } else {
+          // Fallback - create a simple complete response
+          onComplete({ messages: [] } as SendMessageResponse);
+        }
+        
+      } finally {
+        reader.releaseLock();
+      }
+    } catch (error: any) {
+      console.error('Stream error:', error);
+      onError({
+        message: error.message || 'Stream error',
+        status: error.status || 0,
+        response: error.response,
+        responseData: error.response?.data,
+      } as ApiError);
     }
   }
 

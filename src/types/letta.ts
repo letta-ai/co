@@ -49,6 +49,8 @@ export interface SendMessageRequest {
   max_steps?: number;
   use_assistant_message?: boolean;
   enable_thinking?: boolean;
+  stream_tokens?: boolean;
+  include_pings?: boolean;
 }
 
 export interface SendMessageResponse {
@@ -145,4 +147,15 @@ export interface LettaEmbeddingModel {
   provider_name: string;
   chunk_size?: number;
   dimensions?: number;
+}
+
+export interface StreamingChunk {
+  message_type: 'ping' | 'assistant_message' | 'reasoning_message' | 'tool_call' | 'tool_response' | 'step_complete';
+  content?: string;
+  tool_call?: ToolCall;
+  tool_response?: any;
+  reasoning?: string;
+  step?: number;
+  run_id?: string;
+  seq_id?: number;
 }

@@ -9,18 +9,24 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
-  Modal 
+  Modal,
+  Linking 
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import lettaApi from './src/api/lettaApi';
+import Storage from './src/utils/storage';
 import CreateAgentScreen from './CreateAgentScreen';
-import type { LettaAgent, LettaMessage } from './src/types/letta';
+import type { LettaAgent, LettaMessage, StreamingChunk } from './src/types/letta';
+
+const TOKEN_KEY = 'letta_api_token';
+const AGENT_ID_KEY = 'letta_last_agent_id';
 
 export default function App() {
   // Authentication state
   const [apiToken, setApiToken] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isLoadingToken, setIsLoadingToken] = useState(true);
   
   // Agent state
   const [agents, setAgents] = useState<LettaAgent[]>([]);
@@ -33,6 +39,42 @@ export default function App() {
   const [inputText, setInputText] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  
+  // Streaming state
+  const [streamingMessage, setStreamingMessage] = useState<string>('');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingStep, setStreamingStep] = useState<string>('');
+
+  // Load saved token on app startup
+  useEffect(() => {
+    const loadSavedToken = async () => {
+      try {
+        console.log(`Using storage type: ${Storage.getStorageType()}`);
+        const savedToken = await Storage.getItem(TOKEN_KEY);
+        if (savedToken) {
+          console.log('Found saved token, attempting auto-login');
+          lettaApi.setAuthToken(savedToken);
+          const isValid = await lettaApi.testConnection();
+          
+          if (isValid) {
+            setApiToken(savedToken);
+            setIsConnected(true);
+            await loadAgents();
+            console.log('Auto-login successful');
+          } else {
+            console.log('Saved token is invalid, clearing it');
+            await Storage.removeItem(TOKEN_KEY);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved token:', error);
+      } finally {
+        setIsLoadingToken(false);
+      }
+    };
+
+    loadSavedToken();
+  }, []);
 
   const handleConnect = async () => {
     const trimmedToken = apiToken.trim();
@@ -47,6 +89,10 @@ export default function App() {
       const isValid = await lettaApi.testConnection();
       
       if (isValid) {
+        // Save token securely
+        await Storage.setItem(TOKEN_KEY, trimmedToken);
+        console.log(`Token saved securely using ${Storage.getStorageType()}`);
+        
         setIsConnected(true);
         await loadAgents();
         Alert.alert('Connected', 'Successfully connected to Letta API!');
@@ -67,10 +113,22 @@ export default function App() {
       setAgents(agentList);
       
       if (agentList.length > 0) {
-        // Auto-select first agent
-        const firstAgent = agentList[0];
-        setCurrentAgent(firstAgent);
-        await loadMessagesForAgent(firstAgent.id);
+        // Try to restore previously selected agent
+        const savedAgentId = await Storage.getItem(AGENT_ID_KEY);
+        let selectedAgent = agentList[0]; // Default to first agent
+        
+        if (savedAgentId) {
+          const foundAgent = agentList.find(agent => agent.id === savedAgentId);
+          if (foundAgent) {
+            selectedAgent = foundAgent;
+            console.log('Restored previously selected agent:', foundAgent.name);
+          } else {
+            console.log('Previously selected agent not found, using first agent');
+          }
+        }
+        
+        setCurrentAgent(selectedAgent);
+        await loadMessagesForAgent(selectedAgent.id);
       } else {
         // Show option to create agent
         Alert.alert(
@@ -114,7 +172,7 @@ export default function App() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !currentAgent) return;
+    if (!inputText.trim() || !currentAgent || isSendingMessage) return;
 
     const userMessage: LettaMessage = {
       id: `temp-${Date.now()}`,
@@ -125,46 +183,85 @@ export default function App() {
 
     setMessages(prev => [...prev, userMessage]);
     setIsSendingMessage(true);
+    setIsStreaming(true);
+    // Clear any previous streaming content when starting a new message
+    setStreamingMessage('');
+    setStreamingStep('');
+    
     const messageToSend = inputText.trim();
     setInputText('');
 
-    try {
-      const response = await lettaApi.sendMessage(currentAgent.id, {
-        messages: [{ role: 'user', content: messageToSend }],
-      });
+    // Local accumulator to preserve content through callback closures
+    let accumulatedMessage = '';
+    let accumulatedStep = '';
 
-      console.log('Response messages:', response.messages);
-      
-      // Filter and transform response messages for display
-      const displayMessages = response.messages
-        .filter(msg => msg.message_type === 'user_message' || msg.message_type === 'assistant_message')
-        .map(msg => ({
-          id: msg.id,
-          role: msg.message_type === 'user_message' ? 'user' : 'assistant',
-          content: msg.content || '',
-          created_at: msg.date,
-        }));
-      
-      // Check if the user message is included in the response
-      const hasUserMessage = displayMessages.some(msg => msg.role === 'user' && msg.content === messageToSend);
-      
-      setMessages(prev => {
-        const filteredPrev = prev.filter(m => m.id !== userMessage.id);
-        
-        if (hasUserMessage) {
-          // Response includes user message, use all response messages
-          return [...filteredPrev, ...displayMessages];
-        } else {
-          // Response doesn't include user message, keep our user message and add assistant messages
-          const assistantMessages = displayMessages.filter(msg => msg.role === 'assistant');
-          const finalUserMessage = {
-            ...userMessage,
-            id: `user-${Date.now()}`, // Give it a proper ID
-            created_at: new Date().toISOString(),
-          };
-          return [...filteredPrev, finalUserMessage, ...assistantMessages];
+    try {
+      await lettaApi.sendMessageStream(
+        currentAgent.id,
+        {
+          messages: [{ role: 'user', content: messageToSend }],
+        },
+        // onChunk callback - handle streaming tokens
+        (chunk) => {
+          console.log('Stream chunk:', chunk);
+          console.log('Chunk keys:', Object.keys(chunk));
+          
+          if (chunk.message_type === 'assistant_message' && chunk.content) {
+            // Append new content to streaming message
+            console.log('Adding assistant message content:', chunk.content);
+            accumulatedMessage += chunk.content;
+            setStreamingMessage(accumulatedMessage);
+          } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
+            // Show reasoning/thinking process
+            accumulatedStep = `Thinking: ${chunk.reasoning}`;
+            setStreamingStep(accumulatedStep);
+          } else if (chunk.message_type === 'tool_call') {
+            // Show tool execution
+            accumulatedStep = `Executing tool: ${chunk.tool_call?.function?.name || 'Unknown'}`;
+            setStreamingStep(accumulatedStep);
+          } else if (chunk.message_type === 'tool_response') {
+            // Tool completed
+            accumulatedStep = 'Processing tool result...';
+            setStreamingStep(accumulatedStep);
+          }
+        },
+        // onComplete callback
+        (response) => {
+          console.log('Stream complete:', response);
+          
+          // Add the completed assistant message to permanent messages if we have content
+          if (accumulatedMessage.trim()) {
+            const assistantMessage: LettaMessage = {
+              id: `assistant-${Date.now()}`,
+              role: 'assistant',
+              content: accumulatedMessage.trim(),
+              created_at: new Date().toISOString(),
+            };
+            
+            setMessages(prev => [...prev, assistantMessage]);
+            console.log('Added completed assistant message to chat history');
+          }
+          
+          // Clear streaming state
+          setIsStreaming(false);
+          setStreamingMessage('');
+          setStreamingStep('');
+        },
+        // onError callback
+        (error) => {
+          console.error('Stream error:', error);
+          Alert.alert('Error', 'Failed to send message: ' + error.message);
+          
+          // Remove the temp message on error
+          setMessages(prev => prev.filter(m => m.id !== userMessage.id));
+          setInputText(messageToSend); // Restore the message
+          
+          // Clear streaming state
+          setIsStreaming(false);
+          setStreamingMessage('');
+          setStreamingStep('');
         }
-      });
+      );
     } catch (error: any) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message: ' + error.message);
@@ -172,6 +269,11 @@ export default function App() {
       // Remove the temp message on error
       setMessages(prev => prev.filter(m => m.id !== userMessage.id));
       setInputText(messageToSend); // Restore the message
+      
+      // Clear streaming state
+      setIsStreaming(false);
+      setStreamingMessage('');
+      setStreamingStep('');
     } finally {
       setIsSendingMessage(false);
     }
@@ -181,6 +283,10 @@ export default function App() {
     setAgents(prev => [...prev, agent]);
     setCurrentAgent(agent);
     setShowCreateAgentScreen(false);
+    
+    // Save the new agent as the selected one
+    await Storage.setItem(AGENT_ID_KEY, agent.id);
+    console.log('Saved newly created agent as selected:', agent.name);
     
     // Load actual messages from the API
     await loadMessagesForAgent(agent.id);
@@ -192,6 +298,35 @@ export default function App() {
     setShowCreateAgentScreen(false);
   };
 
+  const handleLogout = async () => {
+    try {
+      await Storage.removeItem(TOKEN_KEY);
+      await Storage.removeItem(AGENT_ID_KEY);
+      lettaApi.removeAuthToken();
+      setApiToken('');
+      setIsConnected(false);
+      setCurrentAgent(null);
+      setAgents([]);
+      setMessages([]);
+      console.log('Logged out successfully');
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
+  };
+
+
+  if (isLoadingToken) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.setupContainer}>
+          <Text style={styles.title}>Letta Chat</Text>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.subtitle}>Loading...</Text>
+        </View>
+        <StatusBar style="auto" />
+      </SafeAreaView>
+    );
+  }
 
   if (!isConnected) {
     return (
@@ -221,7 +356,13 @@ export default function App() {
           </TouchableOpacity>
           
           <Text style={styles.instructions}>
-            Get your API token from the Letta dashboard
+            Get an API key from{' '}
+            <Text 
+              style={styles.link}
+              onPress={() => Linking.openURL('https://app.letta.com/api-keys')}
+            >
+              https://app.letta.com/api-keys
+            </Text>
           </Text>
         </View>
         <StatusBar style="auto" />
@@ -257,8 +398,8 @@ export default function App() {
           <TouchableOpacity onPress={() => setShowCreateAgentScreen(true)}>
             <Text style={styles.createAgentButton}>+</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsConnected(false)}>
-            <Text style={styles.disconnectButton}>Settings</Text>
+          <TouchableOpacity onPress={handleLogout}>
+            <Text style={styles.disconnectButton}>Logout</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -295,7 +436,28 @@ export default function App() {
             </View>
           ))}
           
-          {isSendingMessage && (
+          {/* Streaming message display */}
+          {(streamingMessage || streamingStep) && (
+            <View style={[styles.messageBubble, styles.agentMessage, isStreaming && styles.streamingMessage]}>
+              {streamingStep && (
+                <Text style={styles.streamingStep}>{streamingStep}</Text>
+              )}
+              {streamingMessage && String(streamingMessage).trim() && (
+                <Text style={[styles.messageText, styles.agentText]}>
+                  {String(streamingMessage).trim()}
+                  {isStreaming && <Text style={styles.cursor}>|</Text>}
+                </Text>
+              )}
+              {!streamingMessage && !streamingStep && isStreaming && (
+                <View style={styles.thinkingIndicator}>
+                  <ActivityIndicator size="small" color="#666" />
+                  <Text style={styles.thinkingText}>Agent is thinking...</Text>
+                </View>
+              )}
+            </View>
+          )}
+          
+          {isSendingMessage && !isStreaming && (
             <View style={[styles.messageBubble, styles.agentMessage]}>
               <ActivityIndicator size="small" color="#666" />
             </View>
@@ -347,6 +509,8 @@ export default function App() {
                   ]}
                   onPress={async () => {
                     setCurrentAgent(agent);
+                    await Storage.setItem(AGENT_ID_KEY, agent.id);
+                    console.log('Saved selected agent:', agent.name);
                     await loadMessagesForAgent(agent.id);
                     setShowAgentSelector(false);
                   }}
@@ -455,7 +619,6 @@ const styles = StyleSheet.create({
   headerButtons: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
   },
   createAgentButton: {
     fontSize: 24,
@@ -620,7 +783,6 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 12,
   },
   modalCancelButton: {
     flex: 1,
@@ -646,5 +808,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  
+  // Streaming message styles
+  streamingMessage: {
+    borderWidth: 1,
+    borderColor: '#007AFF',
+    borderStyle: 'dashed',
+  },
+  streamingStep: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  cursor: {
+    color: '#007AFF',
+    fontWeight: 'bold',
+    opacity: 0.8,
+  },
+  thinkingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  thinkingText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+    marginLeft: 8,
+  },
+  link: {
+    color: '#007AFF',
+    textDecorationLine: 'underline',
   },
 });
