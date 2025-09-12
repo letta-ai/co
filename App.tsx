@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TouchableOpacity, 
-  Alert, 
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Alert,
   TextInput,
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
   Modal,
-  Linking 
+  Linking
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import lettaApi from './src/api/lettaApi';
-import Storage from './src/utils/storage';
+import Storage, { STORAGE_KEYS } from './src/utils/storage';
 import CreateAgentScreen from './CreateAgentScreen';
-import type { LettaAgent, LettaMessage, StreamingChunk } from './src/types/letta';
-
-const TOKEN_KEY = 'letta_api_token';
-const AGENT_ID_KEY = 'letta_last_agent_id';
+import AgentSelectorScreen from './AgentSelectorScreen';
+import ProjectSelectorModal from './ProjectSelectorModal';
+import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
 
 export default function App() {
   // Authentication state
@@ -28,11 +27,16 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingToken, setIsLoadingToken] = useState(true);
   
+  // Project state
+  const [currentProject, setCurrentProject] = useState<Project | null>(null);
+  const [showProjectSelector, setShowProjectSelector] = useState(false);
+  
   // Agent state
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [currentAgent, setCurrentAgent] = useState<LettaAgent | null>(null);
-  const [showAgentSelector, setShowAgentSelector] = useState(false);
+  const [showAgentSelector, setShowAgentSelector] = useState(true); // Start with agent selector
   const [showCreateAgentScreen, setShowCreateAgentScreen] = useState(false);
+  const [showChatView, setShowChatView] = useState(false);
   
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
@@ -50,7 +54,7 @@ export default function App() {
     const loadSavedToken = async () => {
       try {
         console.log(`Using storage type: ${Storage.getStorageType()}`);
-        const savedToken = await Storage.getItem(TOKEN_KEY);
+        const savedToken = await Storage.getItem(STORAGE_KEYS.TOKEN);
         if (savedToken) {
           console.log('Found saved token, attempting auto-login');
           lettaApi.setAuthToken(savedToken);
@@ -59,11 +63,11 @@ export default function App() {
           if (isValid) {
             setApiToken(savedToken);
             setIsConnected(true);
-            await loadAgents();
+            await loadSavedProject();
             console.log('Auto-login successful');
           } else {
             console.log('Saved token is invalid, clearing it');
-            await Storage.removeItem(TOKEN_KEY);
+            await Storage.removeItem(STORAGE_KEYS.TOKEN);
           }
         }
       } catch (error) {
@@ -72,6 +76,28 @@ export default function App() {
         setIsLoadingToken(false);
       }
     };
+
+    const loadSavedProject = async () => {
+      try {
+        const savedProjectId = await Storage.getItem(STORAGE_KEYS.PROJECT_ID);
+        if (savedProjectId) {
+          const projects = await lettaApi.listProjects({ limit: 19 });
+          const foundProject = projects.projects.find(p => p.id === savedProjectId);
+          if (foundProject) {
+            setCurrentProject(foundProject);
+            console.log('Restored saved project:', foundProject.name);
+            return foundProject;
+          } else {
+            console.log('Saved project not found, clearing it');
+            await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved project:', error);
+      }
+      return null;
+    };
+
 
     loadSavedToken();
   }, []);
@@ -90,11 +116,10 @@ export default function App() {
       
       if (isValid) {
         // Save token securely
-        await Storage.setItem(TOKEN_KEY, trimmedToken);
+        await Storage.setItem(STORAGE_KEYS.TOKEN, trimmedToken);
         console.log(`Token saved securely using ${Storage.getStorageType()}`);
         
         setIsConnected(true);
-        await loadAgents();
         Alert.alert('Connected', 'Successfully connected to Letta API!');
       } else {
         Alert.alert('Error', 'Invalid API token. Please check your credentials.');
@@ -107,43 +132,34 @@ export default function App() {
     }
   };
 
-  const loadAgents = async () => {
+  const handleProjectSelect = async (project: Project) => {
     try {
-      const agentList = await lettaApi.listAgents();
-      setAgents(agentList);
-      
-      if (agentList.length > 0) {
-        // Try to restore previously selected agent
-        const savedAgentId = await Storage.getItem(AGENT_ID_KEY);
-        let selectedAgent = agentList[0]; // Default to first agent
-        
-        if (savedAgentId) {
-          const foundAgent = agentList.find(agent => agent.id === savedAgentId);
-          if (foundAgent) {
-            selectedAgent = foundAgent;
-            console.log('Restored previously selected agent:', foundAgent.name);
-          } else {
-            console.log('Previously selected agent not found, using first agent');
-          }
-        }
-        
-        setCurrentAgent(selectedAgent);
-        await loadMessagesForAgent(selectedAgent.id);
-      } else {
-        // Show option to create agent
-        Alert.alert(
-          'No Agents Found',
-          'Would you like to create your first agent?',
-          [
-            { text: 'Later', style: 'cancel' },
-            { text: 'Create Agent', onPress: () => setShowCreateAgentScreen(true) }
-          ]
-        );
-      }
-    } catch (error: any) {
-      console.error('Failed to load agents:', error);
-      Alert.alert('Error', 'Failed to load agents: ' + error.message);
+      await Storage.setItem(STORAGE_KEYS.PROJECT_ID, project.id);
+      setCurrentProject(project);
+      console.log('Selected project:', project.name);
+    } catch (error) {
+      console.error('Error saving selected project:', error);
     }
+  };
+
+  const handleAgentSelect = async (agent: LettaAgent) => {
+    try {
+      await Storage.setItem(STORAGE_KEYS.AGENT_ID, agent.id);
+      setCurrentAgent(agent);
+      setShowAgentSelector(false);
+      setShowChatView(true);
+      await loadMessagesForAgent(agent.id);
+      console.log('Selected agent:', agent.name);
+    } catch (error) {
+      console.error('Error selecting agent:', error);
+    }
+  };
+
+  const handleBackToAgentSelector = () => {
+    setShowChatView(false);
+    setShowAgentSelector(true);
+    setCurrentAgent(null);
+    setMessages([]);
   };
 
   const loadMessagesForAgent = async (agentId: string) => {
@@ -252,9 +268,8 @@ export default function App() {
           console.error('Stream error:', error);
           Alert.alert('Error', 'Failed to send message: ' + error.message);
           
-          // Remove the temp message on error
-          setMessages(prev => prev.filter(m => m.id !== userMessage.id));
-          setInputText(messageToSend); // Restore the message
+          // Keep the user message visible, just restore input for retry
+          setInputText(messageToSend);
           
           // Clear streaming state
           setIsStreaming(false);
@@ -266,9 +281,8 @@ export default function App() {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message: ' + error.message);
       
-      // Remove the temp message on error
-      setMessages(prev => prev.filter(m => m.id !== userMessage.id));
-      setInputText(messageToSend); // Restore the message
+      // Keep the user message visible, just restore input for retry
+      setInputText(messageToSend);
       
       // Clear streaming state
       setIsStreaming(false);
@@ -280,16 +294,10 @@ export default function App() {
   };
 
   const handleAgentCreated = async (agent: LettaAgent) => {
-    setAgents(prev => [...prev, agent]);
-    setCurrentAgent(agent);
     setShowCreateAgentScreen(false);
     
-    // Save the new agent as the selected one
-    await Storage.setItem(AGENT_ID_KEY, agent.id);
-    console.log('Saved newly created agent as selected:', agent.name);
-    
-    // Load actual messages from the API
-    await loadMessagesForAgent(agent.id);
+    // Auto-select the newly created agent and go to chat
+    await handleAgentSelect(agent);
     
     Alert.alert('Success', `Agent "${agent.name}" created successfully!`);
   };
@@ -300,20 +308,23 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      await Storage.removeItem(TOKEN_KEY);
-      await Storage.removeItem(AGENT_ID_KEY);
+      await Storage.removeItem(STORAGE_KEYS.TOKEN);
+      await Storage.removeItem(STORAGE_KEYS.AGENT_ID);
+      await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
       lettaApi.removeAuthToken();
       setApiToken('');
       setIsConnected(false);
+      setCurrentProject(null);
       setCurrentAgent(null);
       setAgents([]);
       setMessages([]);
+      setShowChatView(false);
+      setShowAgentSelector(true);
       console.log('Logged out successfully');
     } catch (error) {
       console.error('Error during logout:', error);
     }
   };
-
 
   if (isLoadingToken) {
     return (
@@ -379,18 +390,41 @@ export default function App() {
     );
   }
 
+  // Show agent selector after login (main screen) - only when we have a project
+  if (showAgentSelector && !showChatView) {
+    return (
+      <>
+        {currentProject ? (
+          <AgentSelectorScreen
+            currentProject={currentProject}
+            onAgentSelect={handleAgentSelect}
+            onProjectPress={() => setShowProjectSelector(true)}
+            onCreateAgent={() => setShowCreateAgentScreen(true)}
+            onLogout={handleLogout}
+          />
+        ) : null}
+        
+        <ProjectSelectorModal
+          visible={showProjectSelector || !currentProject}
+          currentProject={currentProject}
+          onProjectSelect={handleProjectSelect}
+          onClose={() => setShowProjectSelector(false)}
+        />
+      </>
+    );
+  }
+
+  // Show chat view when agent is selected
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.agentSelector}
-          onPress={() => setShowAgentSelector(true)}
+          onPress={handleBackToAgentSelector}
         >
+          <Text style={styles.backButton}>← Back</Text>
           <Text style={styles.headerTitle}>
-            {currentAgent ? currentAgent.name : 'Select Agent'}
-          </Text>
-          <Text style={styles.agentCount}>
-            {agents.length} agent{agents.length !== 1 ? 's' : ''}
+            {currentAgent ? currentAgent.name : 'Chat'}
           </Text>
         </TouchableOpacity>
         
@@ -419,7 +453,7 @@ export default function App() {
             </View>
           )}
           
-          {messages.map((message, index) => (
+          {messages.filter(message => message.role !== 'system').map((message, index) => (
             <View
               key={`${message.id || 'msg'}-${index}-${message.created_at}`}
               style={[
@@ -437,18 +471,18 @@ export default function App() {
           ))}
           
           {/* Streaming message display */}
-          {(streamingMessage || streamingStep) && (
-            <View style={[styles.messageBubble, styles.agentMessage, isStreaming && styles.streamingMessage]}>
-              {streamingStep && (
-                <Text style={styles.streamingStep}>{streamingStep}</Text>
+          {isStreaming && (
+            <View style={[styles.messageBubble, styles.agentMessage, styles.streamingMessage]}>
+              {streamingStep && streamingStep.trim() && streamingStep.trim().length > 0 && (
+                <Text style={styles.streamingStep}>{streamingStep.trim()}</Text>
               )}
-              {streamingMessage && String(streamingMessage).trim() && (
+              {streamingMessage && String(streamingMessage).trim() && String(streamingMessage).trim().length > 0 && (
                 <Text style={[styles.messageText, styles.agentText]}>
                   {String(streamingMessage).trim()}
-                  {isStreaming && <Text style={styles.cursor}>|</Text>}
+                  <Text style={styles.cursor}>|</Text>
                 </Text>
               )}
-              {!streamingMessage && !streamingStep && isStreaming && (
+              {(!streamingMessage?.trim() && !streamingStep?.trim()) && (
                 <View style={styles.thinkingIndicator}>
                   <ActivityIndicator size="small" color="#666" />
                   <Text style={styles.thinkingText}>Agent is thinking...</Text>
@@ -507,13 +541,7 @@ export default function App() {
                     styles.agentItem,
                     currentAgent?.id === agent.id && styles.selectedAgentItem
                   ]}
-                  onPress={async () => {
-                    setCurrentAgent(agent);
-                    await Storage.setItem(AGENT_ID_KEY, agent.id);
-                    console.log('Saved selected agent:', agent.name);
-                    await loadMessagesForAgent(agent.id);
-                    setShowAgentSelector(false);
-                  }}
+                  onPress={() => handleAgentSelect(agent)}
                 >
                   <Text style={styles.agentName}>{agent.name}</Text>
                   <Text style={styles.agentDescription}>
@@ -531,8 +559,6 @@ export default function App() {
           </View>
         </View>
       </Modal>
-
-
       <StatusBar style="auto" />
     </SafeAreaView>
   );
@@ -840,5 +866,10 @@ const styles = StyleSheet.create({
   link: {
     color: '#007AFF',
     textDecorationLine: 'underline',
+  },
+  backButton: {
+    fontSize: 16,
+    color: '#007AFF',
+    marginBottom: 2,
   },
 });

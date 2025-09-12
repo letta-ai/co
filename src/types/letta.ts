@@ -1,22 +1,120 @@
 export interface LettaAgent {
   id: string;
   name: string;
+  system?: string;
+  agent_type?: string;
   description?: string;
   created_at: string;
   updated_at: string;
-  system?: string;
-  model?: string;
-  embedding?: string;
-  memory_blocks?: MemoryBlock[];
-  tools?: string[];
-  sources?: string[];
+  project_id?: string;
+  last_run_completion?: string;
+  last_run_duration_ms?: number;
   metadata?: Record<string, any>;
   tags?: string[];
+  tools?: LettaTool[];
+  sources?: LettaSource[];
+  memory?: {
+    blocks: MemoryBlock[];
+    file_blocks?: FileBlock[];
+    prompt_template?: string;
+  };
+  llm_config?: LlmConfig;
+  embedding_config?: EmbeddingConfig;
+  hidden?: boolean;
+  timezone?: string;
+  enable_sleeptime?: boolean;
 }
 
 export interface MemoryBlock {
+  id: string;
   label: string;
   value: string;
+  limit?: number;
+  project_id?: string;
+  name?: string;
+  is_template?: boolean;
+  base_template_id?: string;
+  deployment_id?: string;
+  entity_id?: string;
+  preserve_on_migration?: boolean;
+  read_only?: boolean;
+  description?: string;
+  metadata?: Record<string, any>;
+  hidden?: boolean;
+  created_by_id?: string;
+  last_updated_by_id?: string;
+}
+
+export interface FileBlock extends MemoryBlock {
+  file_id?: string;
+  source_id?: string;
+  is_open?: boolean;
+  last_accessed_at?: string;
+}
+
+export interface LlmConfig {
+  model: string;
+  model_endpoint_type?: string;
+  context_window?: number;
+  model_endpoint?: string;
+  provider_name?: string;
+  provider_category?: string;
+  model_wrapper?: string;
+  put_inner_thoughts_in_kwargs?: boolean;
+  handle?: string;
+  temperature?: number;
+  max_tokens?: number;
+  enable_reasoner?: boolean;
+  reasoning_effort?: string;
+  max_reasoning_tokens?: number;
+  frequency_penalty?: number;
+  compatibility_type?: string;
+  verbosity?: string;
+  tier?: string;
+}
+
+export interface EmbeddingConfig {
+  embedding_endpoint_type?: string;
+  embedding_model?: string;
+  embedding_dim?: number;
+  embedding_endpoint?: string;
+  embedding_chunk_size?: number;
+  handle?: string;
+  batch_size?: number;
+  azure_endpoint?: string;
+  azure_version?: string;
+  azure_deployment?: string;
+}
+
+export interface LettaSource {
+  id: string;
+  name: string;
+  description?: string;
+  instructions?: string;
+  metadata?: Record<string, any>;
+  vector_db_provider?: string;
+  created_by_id?: string;
+  last_updated_by_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  embedding_config?: EmbeddingConfig;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface ListProjectsParams {
+  name?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface ListProjectsResponse {
+  projects: Project[];
+  hasNextPage: boolean;
 }
 
 export interface LettaMessage {
@@ -90,14 +188,15 @@ export interface CreateAgentRequest {
 export interface ListAgentsParams {
   name?: string;
   tags?: string[];
-  match_all_tags?: boolean;
+  matchAllTags?: boolean;
   before?: string;
   after?: string;
   limit?: number;
-  query_text?: string;
-  project_id?: string;
-  template_id?: string;
-  identity_id?: string;
+  queryText?: string;
+  projectId?: string;
+  templateId?: string;
+  identityId?: string;
+  sortBy?: string;
 }
 
 export interface ListMessagesParams {
