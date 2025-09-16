@@ -15,6 +15,7 @@
     "@react-navigation/drawer": "^7.5.8",
     "@react-navigation/native": "^7.1.17",
     "@react-navigation/stack": "^7.4.8",
+    "@ronradtke/react-native-markdown-display": "^8.1.0",
     "axios": "^1.11.0",
     "expo": "~53.0.22",
     "expo-secure-store": "~14.2.4",

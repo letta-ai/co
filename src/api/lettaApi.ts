@@ -221,57 +221,48 @@ class LettaApiService {
       console.log('sendMessageStream - messageData:', messageData);
       console.log('Client initialized:', !!this.client);
       
-      // Transform messages with detailed logging
-      const transformedMessages = messageData.messages.map((msg, index) => {
-        const transformedMsg = {
-          role: msg.role,
-          content: [
-            {
-              type: "text",
-              text: msg.content
-            }
-          ]
-        };
-        console.log(`Transformed message ${index}:`, transformedMsg);
-        return transformedMsg;
-      });
-      
+      // Simplify: only send required messages field
       const lettaStreamingRequest = {
-        messages: transformedMessages,
-        maxSteps: messageData.max_steps,
-        useAssistantMessage: messageData.use_assistant_message,
-        enableThinking: messageData.enable_thinking ? 'true' : undefined,
-        streamTokens: messageData.stream_tokens,
-        includePings: messageData.include_pings
+        messages: messageData.messages.map(msg => ({
+          role: msg.role,
+          content: [{
+            type: "text",
+            text: msg.content
+          }]
+        }))
       };
       
-      console.log('=== FULL REQUEST OBJECT ===');
-      console.log('lettaStreamingRequest:', JSON.stringify(lettaStreamingRequest, null, 2));
-      console.log('=== END REQUEST OBJECT ===');
-      
-      console.log('Individual field values:');
-      console.log('- messages.length:', lettaStreamingRequest.messages.length);
-      console.log('- maxSteps:', lettaStreamingRequest.maxSteps);
-      console.log('- useAssistantMessage:', lettaStreamingRequest.useAssistantMessage);
-      console.log('- enableThinking:', lettaStreamingRequest.enableThinking);
-      console.log('- streamTokens:', lettaStreamingRequest.streamTokens);
-      console.log('- includePings:', lettaStreamingRequest.includePings);
+      console.log('=== SIMPLIFIED REQUEST ===');
+      console.log('Request:', JSON.stringify(lettaStreamingRequest, null, 2));
+      console.log('Messages count:', lettaStreamingRequest.messages.length);
       
       const stream = await this.client.agents.messages.createStream(agentId, lettaStreamingRequest);
 
       // Handle the stream response using async iteration
       try {
         for await (const chunk of stream) {
-          console.log('Stream chunk received:', chunk);
+          console.log('=== RAW CHUNK RECEIVED ===');
+          console.log('Raw chunk:', JSON.stringify(chunk, null, 2));
+          console.log('Chunk keys:', Object.keys(chunk));
+          console.log('message_type variants:', {
+            messageType: chunk.messageType,
+            message_type: chunk.message_type
+          });
+          console.log('Content variants:', {
+            content: chunk.content,
+            assistantMessage: chunk.assistantMessage, 
+            assistant_message: chunk.assistant_message
+          });
+          
           onChunk({
-            message_type: chunk.messageType || chunk.message_type,
-            content: chunk.content || chunk.assistantMessage,
+            message_type: chunk.message_type || chunk.messageType,
+            content: chunk.assistant_message || chunk.assistantMessage || chunk.content,
             reasoning: chunk.reasoning,
-            tool_call: chunk.toolCall,
-            tool_response: chunk.toolResponse,
+            tool_call: chunk.tool_call || chunk.toolCall,
+            tool_response: chunk.tool_response || chunk.toolResponse,
             step: chunk.step,
-            run_id: chunk.runId,
-            seq_id: chunk.seqId
+            run_id: chunk.run_id || chunk.runId,
+            seq_id: chunk.seq_id || chunk.seqId
           });
         }
         
@@ -311,41 +302,100 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      
+
       console.log('listMessages - agentId:', agentId);
       console.log('listMessages - params:', params);
-      
+
       const response = await this.client.agents.messages.list(agentId, params);
       console.log('listMessages - response count:', response?.length || 0);
-      
-      // Transform SDK response to match our LettaMessage interface
-      const transformedMessages: LettaMessage[] = response.map((message: any) => {
-        // Map messageType to role for our components
-        let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
-        
-        if (message.messageType === 'user_message') {
-          role = 'user';
-        } else if (message.messageType === 'system_message') {
-          role = 'system';
-        } else if (message.messageType === 'tool_message' || message.messageType === 'tool_call') {
-          role = 'tool';
-        } else {
-          role = 'assistant'; // assistant_message, reasoning_message, etc.
-        }
 
-        return {
-          id: message.id,
-          role: role,
-          content: message.content || message.reasoning || '',
-          created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
-          tool_calls: message.tool_calls,
-          message_type: message.messageType,
-          sender_id: message.senderId,
-          step_id: message.stepId,
-          run_id: message.runId
-        };
+      // Group messages by run_id and step_id to associate reasoning with assistant messages
+      const groupedMessages = new Map<string, any[]>();
+
+      // First pass: group messages by run_id + step_id
+      response.forEach((message: any) => {
+        const key = `${message.runId || 'no-run'}-${message.stepId || 'no-step'}`;
+        if (!groupedMessages.has(key)) {
+          groupedMessages.set(key, []);
+        }
+        groupedMessages.get(key)!.push(message);
       });
-      
+
+      // Second pass: process groups to combine reasoning with assistant messages
+      const transformedMessages: LettaMessage[] = [];
+
+      for (const [key, messageGroup] of groupedMessages) {
+        // Sort messages in the group by creation time or message order
+        messageGroup.sort((a, b) => {
+          if (a.date && b.date) {
+            return new Date(a.date).getTime() - new Date(b.date).getTime();
+          }
+          return 0;
+        });
+
+        // Find reasoning and assistant messages in this group
+        const reasoningMessages = messageGroup.filter(m => m.messageType === 'reasoning_message');
+        const otherMessages = messageGroup.filter(m => m.messageType !== 'reasoning_message');
+
+        // Combine reasoning content
+        const combinedReasoning = reasoningMessages
+          .map(m => m.reasoning || m.content || '')
+          .filter(r => r.trim())
+          .join(' ');
+
+        // Process other messages and attach reasoning to assistant messages
+        otherMessages.forEach((message: any) => {
+          // Filter out heartbeat messages from user messages
+          if (message.messageType === 'user_message' && typeof message.content === 'string') {
+            try {
+              const parsed = JSON.parse(message.content);
+              if (parsed?.type === 'heartbeat') {
+                return; // Skip heartbeat messages
+              }
+            } catch {
+              // Keep message if content is not valid JSON
+            }
+          }
+
+          // Map messageType to role for our components
+          let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+
+          if (message.messageType === 'user_message') {
+            role = 'user';
+          } else if (message.messageType === 'system_message') {
+            role = 'system';
+          } else if (message.messageType === 'tool_message' || message.messageType === 'tool_call') {
+            role = 'tool';
+          } else {
+            role = 'assistant'; // assistant_message, etc.
+          }
+
+          const transformedMessage: LettaMessage = {
+            id: message.id,
+            role: role,
+            content: message.content || '',
+            created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
+            tool_calls: message.tool_calls,
+            message_type: message.messageType,
+            sender_id: message.senderId,
+            step_id: message.stepId,
+            run_id: message.runId
+          };
+
+          // Attach reasoning to assistant messages
+          if (role === 'assistant' && combinedReasoning) {
+            transformedMessage.reasoning = combinedReasoning;
+          }
+
+          transformedMessages.push(transformedMessage);
+        });
+      }
+
+      // Sort final messages by creation time
+      transformedMessages.sort((a, b) => {
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      });
+
       console.log('listMessages - transformed messages:', transformedMessages.slice(0, 2));
       return transformedMessages;
     } catch (error) {

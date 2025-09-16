@@ -127,6 +127,7 @@ export interface LettaMessage {
   sender_id?: string;
   step_id?: string;
   run_id?: string;
+  reasoning?: string;
 }
 
 export interface ToolCall {
