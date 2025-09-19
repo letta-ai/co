@@ -1315,14 +1315,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-  if (!fontsLoaded) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.setupContainer}>
-          <Wordmark width={320} height={60} />
-          <Text style={styles.subtitle}>Loading...</Text>
-        </View>
-        <StatusBar style="auto" />
-      </SafeAreaView>
-    );
-  }
