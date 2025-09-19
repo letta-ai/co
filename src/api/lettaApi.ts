@@ -221,16 +221,19 @@ class LettaApiService {
       console.log('sendMessageStream - messageData:', messageData);
       console.log('Client initialized:', !!this.client);
       
-      // Simplify: only send required messages field
-      const lettaStreamingRequest = {
+      // Build streaming request. Enable token streaming by default
+      const lettaStreamingRequest: any = {
         messages: messageData.messages.map(msg => ({
           role: msg.role,
-          content: [{
-            type: "text",
-            text: msg.content
-          }]
-        }))
+          content: [{ type: "text", text: msg.content }]
+        })),
+        // Token streaming provides partial chunks for real-time UX
+        streamTokens: messageData.stream_tokens !== false,
       };
+      // Optional ping events if requested by caller
+      if ((messageData as any).include_pings === true) {
+        lettaStreamingRequest.includePings = true;
+      }
       
       console.log('=== SIMPLIFIED REQUEST ===');
       console.log('Request:', JSON.stringify(lettaStreamingRequest, null, 2));

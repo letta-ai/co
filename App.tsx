@@ -1014,15 +1014,14 @@ const styles = StyleSheet.create({
 
   // Streaming styles (Technical indicators)
   streamingMessage: {
-    borderLeftWidth: 2,
-    borderLeftColor: darkTheme.colors.interactive.primary,
-    paddingLeft: darkTheme.spacing[1],
-    opacity: 0.8,
+    borderLeftWidth: 0,
+    paddingLeft: 0,
+    opacity: 0.9,
   },
   cursor: {
-    color: darkTheme.colors.interactive.primary,
+    color: darkTheme.colors.text.secondary,
     fontWeight: 'bold',
-    opacity: 0.8,
+    opacity: 0.6,
   },
   thinkingIndicator: {
     flexDirection: 'row',
