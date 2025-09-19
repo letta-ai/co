@@ -9,8 +9,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  useColorScheme,
 } from 'react-native';
 import lettaApi from './src/api/lettaApi';
+import { darkTheme } from './src/theme';
 import type { Project, ListProjectsParams } from './src/types/letta';
 
 interface ProjectSelectorModalProps {
@@ -26,6 +28,11 @@ export default function ProjectSelectorModal({
   onProjectSelect,
   onClose,
 }: ProjectSelectorModalProps) {
+  const colorScheme = useColorScheme();
+  const LogoLoader = require('./src/components/LogoLoader').default;
+  const logoSource = colorScheme === 'dark'
+    ? require('./assets/animations/Dark-sygnetrotate2.json')
+    : require('./assets/animations/Light-sygnetrotate2.json');
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -141,7 +148,7 @@ export default function ProjectSelectorModal({
 
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
+            <LogoLoader source={logoSource} size={120} />
             <Text style={styles.loadingText}>Loading projects...</Text>
           </View>
         ) : (
@@ -201,7 +208,7 @@ export default function ProjectSelectorModal({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: darkTheme.colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -210,9 +217,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     paddingTop: 50, // Account for status bar
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: darkTheme.colors.border.primary,
   },
   cancelButton: {
     fontSize: 16,
@@ -222,25 +229,26 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000',
+    color: darkTheme.colors.text.primary,
   },
   placeholder: {
     width: 60,
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: darkTheme.colors.border.primary,
   },
   searchInput: {
     height: 36,
     borderWidth: 1,
-    borderColor: '#e5e5ea',
+    borderColor: darkTheme.colors.border.primary,
     borderRadius: 8,
     paddingHorizontal: 12,
     fontSize: 16,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: darkTheme.colors.background.surface,
+    color: darkTheme.colors.text.primary,
   },
   loadingContainer: {
     flex: 1,
@@ -261,9 +269,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: darkTheme.colors.border.primary,
   },
   selectedProject: {
     backgroundColor: '#f0f8ff',
@@ -274,12 +282,12 @@ const styles = StyleSheet.create({
   projectName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 2,
   },
   projectSlug: {
     fontSize: 14,
-    color: '#666',
+    color: darkTheme.colors.text.secondary,
   },
   checkmark: {
     width: 24,
@@ -296,9 +304,9 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: darkTheme.colors.border.primary,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 50,
@@ -313,7 +321,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
   },
   emptyText: {
     fontSize: 16,

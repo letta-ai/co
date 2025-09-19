@@ -84,8 +84,9 @@ export class Storage {
 // Storage keys
 export const STORAGE_KEYS = {
   TOKEN: 'letta_api_token',
-  AGENT_ID: 'letta_last_agent_id', 
+  AGENT_ID: 'letta_last_agent_id',
   PROJECT_ID: 'letta_current_project_id',
+  PROJECT_NAME: 'letta_current_project_name',
 } as const;
 
 export default Storage;

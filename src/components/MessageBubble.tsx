@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { darkTheme } from '../theme';
 import { LettaMessage } from '../types/letta';
 
 interface MessageBubbleProps {
@@ -88,15 +89,15 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   userBubble: {
-    backgroundColor: '#007AFF',
+    backgroundColor: darkTheme.colors.interactive.primary,
     borderBottomRightRadius: 4,
   },
   assistantBubble: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: darkTheme.colors.background.surface,
     borderBottomLeftRadius: 4,
   },
   systemBubble: {
-    backgroundColor: '#FFCC02',
+    backgroundColor: darkTheme.colors.status.warning,
     borderRadius: 8,
     maxWidth: '90%',
     alignSelf: 'center',
@@ -106,13 +107,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   userText: {
-    color: '#FFFFFF',
+    color: darkTheme.colors.text.inverse,
   },
   assistantText: {
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
   },
   systemText: {
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     fontSize: 14,
     fontStyle: 'italic',
   },
@@ -124,7 +125,7 @@ const styles = StyleSheet.create({
   toolCallsContainer: {
     marginTop: 8,
     padding: 8,
-    backgroundColor: 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderRadius: 8,
   },
   toolCallsTitle: {

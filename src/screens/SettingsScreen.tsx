@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { darkTheme } from '../theme';
 import useAppStore from '../store/appStore';
 import { showAlert, showConfirmAlert } from '../utils/prompts';
 
@@ -94,7 +95,7 @@ const SettingsScreen: React.FC = () => {
                   value={tokenInput}
                   onChangeText={setTokenInput}
                   placeholder="Enter your Letta API token"
-                  placeholderTextColor="#8E8E93"
+                  placeholderTextColor={darkTheme.colors.text.secondary}
                   secureTextEntry={!showToken}
                   editable={!isLoading}
                   autoCapitalize="none"
@@ -107,7 +108,7 @@ const SettingsScreen: React.FC = () => {
                   <Ionicons
                     name={showToken ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
-                    color="#8E8E93"
+                    color={darkTheme.colors.text.secondary}
                   />
                 </TouchableOpacity>
               </View>
@@ -120,7 +121,7 @@ const SettingsScreen: React.FC = () => {
 
               {isAuthenticated && (
                 <View style={styles.successContainer}>
-                  <Ionicons name="checkmark-circle" size={16} color="#34C759" />
+                  <Ionicons name="checkmark-circle" size={16} color={darkTheme.colors.status.success} />
                   <Text style={styles.successText}>Connected successfully</Text>
                 </View>
               )}
@@ -191,7 +192,7 @@ const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: darkTheme.colors.background.primary,
   },
   scrollView: {
     flex: 1,
@@ -203,12 +204,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#6D6D72',
+    color: darkTheme.colors.text.secondary,
   },
   section: {
     marginBottom: 32,
@@ -216,7 +217,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 16,
     paddingHorizontal: 24,
   },
@@ -226,23 +227,23 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 8,
   },
   passwordInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: darkTheme.colors.background.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
+    borderColor: darkTheme.colors.border.primary,
   },
   tokenInput: {
     flex: 1,
     height: 48,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
   },
   eyeButton: {
     padding: 12,
@@ -250,32 +251,32 @@ const styles = StyleSheet.create({
   errorContainer: {
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#FFE6E6',
+    backgroundColor: darkTheme.colors.status.error + '20',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#FF3B30',
+    borderLeftColor: darkTheme.colors.status.error,
   },
   errorText: {
     fontSize: 14,
-    color: '#D70015',
+    color: darkTheme.colors.status.error,
   },
   successContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8,
     padding: 12,
-    backgroundColor: '#E6F7E6',
+    backgroundColor: darkTheme.colors.status.success + '20',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#34C759',
+    borderLeftColor: darkTheme.colors.status.success,
   },
   successText: {
     fontSize: 14,
-    color: '#1B7B2A',
+    color: darkTheme.colors.status.success,
     marginLeft: 8,
   },
   saveButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: darkTheme.colors.interactive.primary,
     borderRadius: 12,
     height: 48,
     alignItems: 'center',
@@ -288,7 +289,7 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: darkTheme.colors.text.inverse,
   },
   clearButton: {
     marginTop: 12,
@@ -298,7 +299,7 @@ const styles = StyleSheet.create({
   },
   clearButtonText: {
     fontSize: 16,
-    color: '#FF3B30',
+    color: darkTheme.colors.status.error,
     fontWeight: '500',
   },
   infoContainer: {
@@ -307,24 +308,24 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 8,
   },
   infoSubtitle: {
     fontSize: 16,
     fontWeight: '500',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginTop: 16,
     marginBottom: 8,
   },
   infoText: {
     fontSize: 14,
-    color: '#6D6D72',
+    color: darkTheme.colors.text.secondary,
     lineHeight: 20,
   },
   linkText: {
     fontSize: 14,
-    color: '#007AFF',
+    color: darkTheme.colors.interactive.primary,
     textDecorationLine: 'underline',
   },
   dangerButton: {
@@ -334,12 +335,12 @@ const styles = StyleSheet.create({
     marginHorizontal: 24,
     paddingVertical: 12,
     borderWidth: 1,
-    borderColor: '#FF3B30',
+    borderColor: darkTheme.colors.status.error,
     borderRadius: 12,
   },
   dangerButtonText: {
     fontSize: 16,
-    color: '#FF3B30',
+    color: darkTheme.colors.status.error,
     fontWeight: '500',
     marginLeft: 8,
   },

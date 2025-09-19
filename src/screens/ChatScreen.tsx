@@ -14,6 +14,7 @@ import MessageBubble from '../components/MessageBubble';
 import ChatInput from '../components/ChatInput';
 import useAppStore from '../store/appStore';
 import { LettaMessage } from '../types/letta';
+import { darkTheme } from '../theme';
 
 const ChatScreen: React.FC = () => {
   const flatListRef = useRef<FlatList>(null);
@@ -124,7 +125,7 @@ const ChatScreen: React.FC = () => {
               <RefreshControl
                 refreshing={isLoading}
                 onRefresh={handleRefresh}
-                tintColor="#007AFF"
+                tintColor={darkTheme.colors.interactive.primary}
               />
             }
             onContentSizeChange={() => {
@@ -154,7 +155,7 @@ const ChatScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: darkTheme.colors.background.primary,
   },
   messagesContainer: {
     flex: 1,
@@ -175,27 +176,27 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     textAlign: 'center',
     lineHeight: 22,
   },
   errorContainer: {
     margin: 16,
     padding: 12,
-    backgroundColor: '#FFE6E6',
+    backgroundColor: darkTheme.colors.status.error + '20',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#FF3B30',
+    borderLeftColor: darkTheme.colors.status.error,
   },
   errorText: {
     fontSize: 14,
-    color: '#D70015',
+    color: darkTheme.colors.status.error,
     textAlign: 'center',
   },
 });

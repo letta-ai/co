@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { darkTheme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 import { LettaAgent } from '../types/letta';
 
@@ -27,10 +28,10 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onPress }) => 
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
-            <Ionicons 
-              name="person-outline" 
-              size={20} 
-              color={isSelected ? '#FFFFFF' : '#007AFF'} 
+            <Ionicons
+              name="person-outline"
+              size={20}
+              color={isSelected ? darkTheme.colors.text.inverse : darkTheme.colors.interactive.primary}
             />
           </View>
           <View style={styles.textContainer}>
@@ -82,7 +83,7 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onPress }) => 
       
       {isSelected && (
         <View style={styles.selectedIndicator}>
-          <Ionicons name="checkmark" size={16} color="#FFFFFF" />
+          <Ionicons name="checkmark" size={16} color={darkTheme.colors.text.inverse} />
         </View>
       )}
     </TouchableOpacity>
@@ -94,10 +95,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginVertical: 6,
     padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
+    borderColor: darkTheme.colors.border.primary,
     elevation: 1,
     shadowColor: '#000',
     shadowOffset: {
@@ -108,8 +109,8 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
   },
   selectedContainer: {
-    backgroundColor: '#007AFF',
-    borderColor: '#007AFF',
+    backgroundColor: darkTheme.colors.interactive.primary,
+    borderColor: darkTheme.colors.interactive.primary,
   },
   content: {
     flex: 1,
@@ -123,7 +124,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: darkTheme.colors.background.surface,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -134,22 +135,22 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     marginBottom: 2,
   },
   selectedText: {
-    color: '#FFFFFF',
+    color: darkTheme.colors.text.inverse,
   },
   date: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
   },
   selectedSubtext: {
     color: 'rgba(255, 255, 255, 0.8)',
   },
   description: {
     fontSize: 14,
-    color: '#6D6D72',
+    color: darkTheme.colors.text.secondary,
     lineHeight: 18,
     marginBottom: 8,
   },
@@ -159,7 +160,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   tag: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: darkTheme.colors.background.surface,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -171,15 +172,15 @@ const styles = StyleSheet.create({
   },
   tagText: {
     fontSize: 11,
-    color: '#007AFF',
+    color: darkTheme.colors.interactive.primary,
     fontWeight: '500',
   },
   selectedTagText: {
-    color: '#FFFFFF',
+    color: darkTheme.colors.text.inverse,
   },
   moreText: {
     fontSize: 11,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     fontStyle: 'italic',
   },
   selectedIndicator: {

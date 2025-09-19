@@ -423,9 +423,44 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
       
-      // Note: This might be different in the SDK - adjust as needed
+      // Fetch raw models from SDK (shape can vary between SDK versions)
       const response = await this.client.models?.list?.() || [];
-      return response;
+
+      // Normalize to a consistent shape expected by the app
+      const normalizeProvider = (raw: any, modelName?: string): string | undefined => {
+        const direct = raw?.provider_name || raw?.provider || raw?.vendor || raw?.providerName;
+        if (direct) return String(direct);
+        const name = modelName || raw?.model || raw?.name || raw?.id;
+        if (!name || typeof name !== 'string') return undefined;
+        const lower = name.toLowerCase();
+        if (lower.includes('gpt') || lower.startsWith('o3') || lower.startsWith('o4')) return 'openai';
+        if (lower.includes('claude')) return 'anthropic';
+        if (lower.includes('gemini') || lower.startsWith('g') && lower.includes('flash')) return 'google_ai';
+        if (lower.includes('letta')) return 'letta';
+        if (lower.includes('llama') || lower.includes('mistral') || lower.includes('mixtral')) return 'together';
+        return undefined;
+      };
+
+      const normalize = (raw: any) => {
+        const modelName = raw?.model || raw?.name || (typeof raw?.id === 'string' ? raw.id.split('/').pop() : undefined);
+        const provider = normalizeProvider(raw, modelName);
+        const contextWindow = raw?.context_window || raw?.contextWindow || raw?.max_context || raw?.maxContext || raw?.context || 0;
+        const endpointType = raw?.model_endpoint_type || raw?.endpoint_type || raw?.type || raw?.modelType || 'chat';
+        return {
+          model: modelName,
+          provider_name: provider,
+          context_window: contextWindow,
+          model_endpoint_type: endpointType,
+          // pass through optional known fields if present
+          temperature: raw?.temperature,
+          max_tokens: raw?.max_tokens || raw?.maxTokens,
+          // include original for debugging if needed by callers
+          _raw: raw,
+        } as any;
+      };
+
+      const normalized = Array.isArray(response) ? response.map(normalize).filter(m => !!m.model) : [];
+      return normalized;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -437,9 +472,22 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
       
-      // Note: This might be different in the SDK - adjust as needed  
+      // Note: SDK shapes can vary; apply same normalization basics
       const response = await this.client.models?.embedding?.list?.() || [];
-      return response;
+      const normalized = Array.isArray(response)
+        ? response.map((raw: any) => {
+            const modelName = raw?.embedding_model || raw?.model || raw?.name || raw?.id;
+            const provider = raw?.provider_name || raw?.provider || raw?.vendor;
+            return {
+              model: modelName,
+              provider_name: provider,
+              context_window: raw?.context_window || raw?.contextWindow || 0,
+              model_endpoint_type: raw?.embedding_endpoint_type || raw?.endpoint_type || 'embedding',
+              _raw: raw,
+            } as any;
+          }).filter((m: any) => !!m.model)
+        : [];
+      return normalized;
     } catch (error) {
       throw this.handleError(error);
     }

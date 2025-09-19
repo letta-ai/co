@@ -6,12 +6,13 @@ import {
   TouchableOpacity,
   ScrollView,
   SafeAreaView,
-  ActivityIndicator,
   RefreshControl,
   Alert,
+  useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import lettaApi from './src/api/lettaApi';
+import { darkTheme } from './src/theme';
 import type { LettaAgent, Project } from './src/types/letta';
 
 interface AgentSelectorScreenProps {
@@ -29,9 +30,14 @@ export default function AgentSelectorScreen({
   onCreateAgent,
   onLogout,
 }: AgentSelectorScreenProps) {
+  const colorScheme = useColorScheme();
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const logoSource = colorScheme === 'dark'
+    ? require('./assets/animations/Dark-sygnetrotate2.json')
+    : require('./assets/animations/Light-sygnetrotate2.json');
+  const LogoLoader = require('./src/components/LogoLoader').default;
 
   const loadAgents = async (isRefresh = false) => {
     if (!currentProject) {
@@ -111,7 +117,7 @@ export default function AgentSelectorScreen({
         </View>
         
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <LogoLoader source={logoSource} size={120} />
           <Text style={styles.loadingText}>Loading agents...</Text>
         </View>
         <StatusBar style="auto" />
@@ -209,7 +215,7 @@ export default function AgentSelectorScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: darkTheme.colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -217,9 +223,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderBottomWidth: 1,
-    borderBottomColor: '#e5e5ea',
+    borderBottomColor: darkTheme.colors.border.primary,
   },
   projectSelector: {
     flex: 1,
@@ -227,11 +233,11 @@ const styles = StyleSheet.create({
   projectName: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#000',
+    color: darkTheme.colors.text.primary,
   },
   projectInfo: {
     fontSize: 12,
-    color: '#666',
+    color: darkTheme.colors.text.secondary,
     marginTop: 2,
   },
   headerButtons: {

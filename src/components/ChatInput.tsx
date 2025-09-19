@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { darkTheme } from '../theme';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ChatInputProps {
@@ -33,7 +34,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
           value={message}
           onChangeText={setMessage}
           placeholder={placeholder}
-          placeholderTextColor="#8E8E93"
+          placeholderTextColor={darkTheme.colors.text.secondary}
           multiline
           maxLength={2000}
           editable={!disabled}
@@ -46,10 +47,10 @@ const ChatInput: React.FC<ChatInputProps> = ({
           disabled={!canSend}
           activeOpacity={0.7}
         >
-          <Ionicons 
-            name="send" 
-            size={20} 
-            color={canSend ? '#FFFFFF' : '#8E8E93'} 
+          <Ionicons
+            name="send"
+            size={20}
+            color={canSend ? darkTheme.colors.text.inverse : darkTheme.colors.text.secondary}
           />
         </TouchableOpacity>
       </View>
@@ -61,14 +62,14 @@ const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
+    borderTopColor: darkTheme.colors.border.primary,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: '#F2F2F7',
+    backgroundColor: darkTheme.colors.background.surface,
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 8,
@@ -77,7 +78,7 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: 16,
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
     maxHeight: 100,
     paddingVertical: 8,
   },
@@ -88,13 +89,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#E5E5EA',
+    backgroundColor: darkTheme.colors.border.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
   },
   sendButtonActive: {
-    backgroundColor: '#007AFF',
+    backgroundColor: darkTheme.colors.interactive.primary,
   },
 });
 

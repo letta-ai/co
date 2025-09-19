@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,9 +11,13 @@ import {
   ActivityIndicator,
   Modal,
   Linking,
-  Dimensions
+  Dimensions,
+  useColorScheme
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import LogoLoader from './src/components/LogoLoader';
+import Wordmark from './src/components/Wordmark';
+// Wordmark is used in the sidebar, not in the chat header
 import lettaApi from './src/api/lettaApi';
 import Storage, { STORAGE_KEYS } from './src/utils/storage';
 import CreateAgentScreen from './CreateAgentScreen';
@@ -25,6 +29,7 @@ import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
 
 export default function App() {
+  const colorScheme = useColorScheme();
   // Authentication state
   const [apiToken, setApiToken] = useState('');
   const [isConnected, setIsConnected] = useState(false);
@@ -58,6 +63,9 @@ export default function App() {
   const [sidebarVisible, setSidebarVisible] = useState(false);
 
   const isDesktop = screenData.width >= 768;
+
+  // Ref for ScrollView to control scrolling
+  const scrollViewRef = useRef<ScrollView>(null);
 
   // Load saved token on app startup
   useEffect(() => {
@@ -93,15 +101,52 @@ export default function App() {
     const loadSavedProject = async () => {
       try {
         const savedProjectId = await Storage.getItem(STORAGE_KEYS.PROJECT_ID);
-        if (savedProjectId) {
-          const projects = await lettaApi.listProjects({ limit: 19 });
-          const foundProject = projects.projects.find(p => p.id === savedProjectId);
+        const savedProjectName = await Storage.getItem(STORAGE_KEYS.PROJECT_NAME);
+
+        if (savedProjectId && savedProjectName) {
+          console.log(`Restoring project: ${savedProjectName} (ID: ${savedProjectId})`);
+
+          // Use name query parameter for direct lookup
+          const response = await lettaApi.listProjects({ name: savedProjectName });
+          const foundProject = response.projects.find(p => p.id === savedProjectId);
+
           if (foundProject) {
             setCurrentProject(foundProject);
             console.log('Restored saved project:', foundProject.name);
             return foundProject;
           } else {
-            console.log('Saved project not found, clearing it');
+            console.log('Saved project not found by name query, clearing cached data');
+            await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
+            await Storage.removeItem(STORAGE_KEYS.PROJECT_NAME);
+          }
+        } else if (savedProjectId && !savedProjectName) {
+          // Legacy case: we have ID but no name - fall back to pagination search once
+          console.log('Legacy project ID found without name, doing one-time migration');
+
+          let foundProject = null;
+          let limit = 100;
+          let hasNextPage = true;
+          let offset = 0;
+
+          while (!foundProject && hasNextPage && offset < 500) {
+            const response = await lettaApi.listProjects({ limit, offset });
+            foundProject = response.projects.find(p => p.id === savedProjectId);
+
+            if (foundProject) {
+              // Migrate to new storage format with both ID and name
+              await Storage.setItem(STORAGE_KEYS.PROJECT_NAME, foundProject.name);
+              setCurrentProject(foundProject);
+              console.log('Migrated and restored project:', foundProject.name);
+              return foundProject;
+            }
+
+            hasNextPage = response.hasNextPage;
+            offset += limit;
+          }
+
+          // Clean up if not found
+          if (!foundProject) {
+            console.log('Legacy project not found, clearing it');
             await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
           }
         }
@@ -184,6 +229,7 @@ export default function App() {
   const handleProjectSelect = async (project: Project) => {
     try {
       await Storage.setItem(STORAGE_KEYS.PROJECT_ID, project.id);
+      await Storage.setItem(STORAGE_KEYS.PROJECT_NAME, project.name);
       setCurrentProject(project);
       console.log('Selected project:', project.name);
     } catch (error) {
@@ -248,6 +294,11 @@ export default function App() {
         }));
 
       setMessages(displayMessages);
+
+      // Scroll to bottom after messages are loaded
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     } catch (error: any) {
       console.error('Failed to load messages:', error);
       Alert.alert('Error', 'Failed to load messages: ' + error.message);
@@ -269,6 +320,11 @@ export default function App() {
     setMessages(prev => [...prev, userMessage]);
     setIsSendingMessage(true);
     setIsStreaming(true);
+
+    // Scroll to bottom when user sends a message
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 100);
     // Clear any previous streaming content when starting a new message
     setStreamingMessage('');
     setStreamingStep('');
@@ -335,6 +391,11 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
+
+          // Scroll to bottom when streaming completes
+          setTimeout(() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
+          }, 100);
         },
         // onError callback
         (error) => {
@@ -400,11 +461,14 @@ export default function App() {
   };
 
   if (isLoadingToken) {
+    const logoSource = colorScheme === 'dark'
+      ? require('./assets/animations/Dark-sygnetrotate2.json')
+      : require('./assets/animations/Light-sygnetrotate2.json');
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.setupContainer}>
-          <Text style={styles.title}>Letta Chat</Text>
-          <ActivityIndicator size="large" color="#007AFF" />
+          <Wordmark width={220} height={42} />
+          <LogoLoader source={logoSource} />
           <Text style={styles.subtitle}>Loading...</Text>
         </View>
         <StatusBar style="auto" />
@@ -416,7 +480,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.setupContainer}>
-          <Text style={styles.title}>Letta Chat</Text>
+          <Wordmark width={220} height={42} />
           <Text style={styles.subtitle}>Enter your Letta API token to get started</Text>
           
           <TextInput
@@ -572,11 +636,18 @@ export default function App() {
           {/* Messages */}
           {isLoadingMessages ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#007AFF" />
+              <LogoLoader
+                source={colorScheme === 'dark' 
+                  ? require('./assets/animations/Dark-sygnetrotate2.json') 
+                  : require('./assets/animations/Light-sygnetrotate2.json')}
+                size={120}
+              />
               <Text style={styles.loadingText}>Loading messages...</Text>
             </View>
           ) : (
-            <ScrollView style={styles.messagesContainer}>
+            <ScrollView
+              ref={scrollViewRef}
+              style={styles.messagesContainer}>
               <View style={styles.messagesList}>
                 {messages.length === 0 && currentAgent && (
                   <View style={styles.emptyContainer}>
@@ -649,7 +720,6 @@ export default function App() {
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.messageInput}
-                placeholder="Type a message..."
                 value={inputText}
                 onChangeText={setInputText}
                 multiline
@@ -704,7 +774,7 @@ const styles = StyleSheet.create({
     fontWeight: darkTheme.typography.h1.fontWeight,
     fontFamily: darkTheme.typography.h1.fontFamily,
     marginBottom: darkTheme.spacing[1],
-    color: darkTheme.colors.interactive.primary,
+    color: darkTheme.colors.text.primary,
     letterSpacing: darkTheme.typography.h1.letterSpacing,
   },
   subtitle: {
@@ -821,6 +891,7 @@ const styles = StyleSheet.create({
     color: darkTheme.colors.text.secondary,
     fontFamily: darkTheme.typography.h6.fontFamily,
   },
+  
   headerContent: {
     flex: 1,
   },
@@ -835,7 +906,7 @@ const styles = StyleSheet.create({
     fontSize: darkTheme.typography.caption.fontSize,
     fontFamily: darkTheme.typography.caption.fontFamily,
     color: darkTheme.colors.text.secondary,
-    marginTop: darkTheme.spacing[0.5],
+    marginTop: darkTheme.spacing[1],
   },
   headerAction: {
     fontSize: darkTheme.typography.h5.fontSize,
@@ -908,9 +979,10 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent',
   },
   messageText: {
-    fontSize: darkTheme.typography.chatMessage.fontSize,
+    fontSize: 15, // Refined font size (15px)
     fontFamily: darkTheme.typography.chatMessage.fontFamily,
-    lineHeight: darkTheme.typography.chatMessage.lineHeight * darkTheme.typography.chatMessage.fontSize,
+    fontWeight: '400', // Regular weight
+    lineHeight: 1.6 * 15, // 1.6 line height ratio for readability
     letterSpacing: darkTheme.typography.chatMessage.letterSpacing,
   },
   userText: {
@@ -920,24 +992,24 @@ const styles = StyleSheet.create({
     color: darkTheme.colors.text.primary,
   },
 
-  // Reasoning styles (Technical aesthetic)
+  // Reasoning styles (Subtle and readable)
   reasoningContainer: {
-    backgroundColor: darkTheme.colors.background.tertiary,
-    padding: darkTheme.spacing[1.5],
-    marginBottom: darkTheme.spacing[1],
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    borderLeftWidth: 4,
-    borderLeftColor: darkTheme.colors.interactive.primary,
+    backgroundColor: 'transparent', // No background
+    paddingVertical: darkTheme.spacing[1.5], // Reduced padding
+    paddingHorizontal: darkTheme.spacing[2], // Minimal horizontal padding
+    marginBottom: darkTheme.spacing[1], // Reduced spacing
+    borderLeftWidth: 1, // Very thin line
+    borderLeftColor: 'rgba(184, 184, 184, 0.3)', // Subtle gray line
     borderStyle: 'solid',
-    opacity: 0.9,
   },
   reasoningText: {
-    fontSize: darkTheme.typography.reasoning.fontSize,
+    fontSize: 13, // Slightly larger for readability
     fontFamily: darkTheme.typography.reasoning.fontFamily,
-    color: darkTheme.colors.text.secondary,
+    fontWeight: '400', // Regular weight for better readability
+    color: 'rgba(184, 184, 184, 0.8)', // More visible gray
     fontStyle: darkTheme.typography.reasoning.fontStyle,
-    lineHeight: darkTheme.typography.reasoning.lineHeight * darkTheme.typography.reasoning.fontSize,
-    letterSpacing: 0.3,
+    lineHeight: 1.5 * 13, // Comfortable line height
+    letterSpacing: 0.01, // Minimal letter spacing
   },
 
   // Streaming styles (Technical indicators)

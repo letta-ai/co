@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Switch,
+  useColorScheme,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import lettaApi from './src/api/lettaApi';
@@ -21,6 +22,7 @@ interface CreateAgentScreenProps {
 }
 
 export default function CreateAgentScreen({ onAgentCreated, onCancel }: CreateAgentScreenProps) {
+  const colorScheme = useColorScheme();
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -172,7 +174,13 @@ export default function CreateAgentScreen({ onAgentCreated, onCancel }: CreateAg
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#007AFF" />
+          {(() => {
+            const LogoLoader = require('./src/components/LogoLoader').default;
+            const logoSource = colorScheme === 'dark'
+              ? require('./assets/animations/Dark-sygnetrotate2.json')
+              : require('./assets/animations/Light-sygnetrotate2.json');
+            return <LogoLoader source={logoSource} size={120} />;
+          })()}
           <Text style={styles.loadingText}>Loading configuration...</Text>
         </View>
         <StatusBar style="auto" />

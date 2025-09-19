@@ -5,12 +5,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
   Alert,
+  useColorScheme,
 } from 'react-native';
 import lettaApi from '../api/lettaApi';
 import { darkTheme } from '../theme';
+import Wordmark from './Wordmark';
+import { Ionicons } from '@expo/vector-icons';
 import type { LettaAgent, Project } from '../types/letta';
 
 interface SidebarProps {
@@ -32,9 +34,15 @@ export default function Sidebar({
   onLogout,
   isVisible,
 }: SidebarProps) {
+  const colorScheme = useColorScheme();
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const logoSource = colorScheme === 'dark'
+    ? require('../../assets/animations/Dark-sygnetrotate2.json')
+    : require('../../assets/animations/Light-sygnetrotate2.json');
+
+  const LogoLoader = require('./LogoLoader').default;
 
   const loadAgents = async (isRefresh = false) => {
     if (!currentProject) {
@@ -77,22 +85,18 @@ export default function Sidebar({
 
   return (
     <View style={styles.sidebar}>
-      {/* Project Header */}
-      <TouchableOpacity style={styles.projectHeader} onPress={onProjectPress}>
-        <Text style={styles.projectName}>
-          {currentProject?.name || 'Select Project'}
-        </Text>
-        <Text style={styles.projectSubtext}>
-          {agents.length} agent{agents.length !== 1 ? 's' : ''}
-        </Text>
-      </TouchableOpacity>
+      {/* Brand at top-left */}
+      <View style={styles.brandBar}>
+        <Wordmark width={320} height={60} />
+      </View>
+      {/* Project Header moved to bottom */}
 
       {/* Agents List */}
       <View style={styles.agentListContainer}>
         <Text style={styles.sectionTitle}>Agents</Text>
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#666" />
+            <LogoLoader source={logoSource} size={80} />
             <Text style={styles.loadingText}>Loading agents...</Text>
           </View>
         ) : (
@@ -143,6 +147,17 @@ export default function Sidebar({
         <TouchableOpacity style={styles.createButton} onPress={onCreateAgent}>
           <Text style={styles.createButtonText}>+ New Agent</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.bottomProjectSelector} onPress={onProjectPress}>
+          <View style={styles.bottomProjectText}>
+            <Text style={styles.bottomProjectLabel}>Project</Text>
+            <Text style={styles.bottomProjectName} numberOfLines={1}>
+              {currentProject?.name || 'Select Project'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={darkTheme.colors.text.secondary} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.logoutButton} onPress={onLogout}>
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
@@ -160,18 +175,34 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     height: '100%',
   },
-  projectHeader: {
-    padding: darkTheme.spacing[2],
+  brandBar: {
+    paddingHorizontal: darkTheme.spacing[2],
+    paddingVertical: darkTheme.spacing[2],
     borderBottomWidth: 1,
-    borderBottomColor: darkTheme.colors.border.secondary,
-    backgroundColor: darkTheme.colors.background.tertiary,
+    borderBottomColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.secondary,
+  },
+  projectHeader: {
+    display: 'none',
+  },
+  projectHeaderText: {
+    display: 'none',
+  },
+  projectLabel: {
+    fontSize: darkTheme.typography.label.fontSize,
+    fontFamily: darkTheme.typography.label.fontFamily,
+    fontWeight: darkTheme.typography.label.fontWeight,
+    color: darkTheme.colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: darkTheme.typography.label.letterSpacing,
+    marginBottom: darkTheme.spacing[0.5],
   },
   projectName: {
-    fontSize: darkTheme.typography.agentName.fontSize,
-    fontWeight: darkTheme.typography.agentName.fontWeight,
-    fontFamily: darkTheme.typography.agentName.fontFamily,
+    fontSize: darkTheme.typography.h6.fontSize,
+    fontWeight: darkTheme.typography.h6.fontWeight,
+    fontFamily: darkTheme.typography.h6.fontFamily,
     color: darkTheme.colors.text.primary,
-    letterSpacing: darkTheme.typography.agentName.letterSpacing,
+    letterSpacing: darkTheme.typography.h6.letterSpacing,
   },
   projectSubtext: {
     fontSize: darkTheme.typography.caption.fontSize,
@@ -181,7 +212,7 @@ const styles = StyleSheet.create({
   },
   agentListContainer: {
     flex: 1,
-    paddingHorizontal: darkTheme.spacing[2],
+    paddingHorizontal: darkTheme.spacing[2.5] || darkTheme.spacing[2],
   },
   sectionTitle: {
     fontSize: darkTheme.typography.technical.fontSize,
@@ -221,39 +252,65 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   agentItem: {
-    paddingVertical: darkTheme.spacing[1.5],
-    paddingHorizontal: darkTheme.spacing[1.5],
-    marginBottom: darkTheme.spacing[0.5],
-    borderRadius: darkTheme.layout.borderRadius.medium,
+    paddingVertical: darkTheme.spacing[2],
+    paddingHorizontal: darkTheme.spacing[1.75] || darkTheme.spacing[2],
+    marginBottom: darkTheme.spacing[1.5] || darkTheme.spacing[1.25],
+    borderRadius: 0,
     borderLeftWidth: 0,
     borderLeftColor: 'transparent',
   },
   selectedAgentItem: {
-    backgroundColor: darkTheme.colors.background.tertiary,
-    borderLeftWidth: 3,
-    borderLeftColor: darkTheme.colors.interactive.primary,
+    backgroundColor: darkTheme.colors.background.surface,
+    borderLeftWidth: 0,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    borderRadius: 0,
   },
   agentName: {
-    fontSize: darkTheme.typography.bodySmall.fontSize,
-    fontWeight: '500',
-    fontFamily: darkTheme.typography.bodySmall.fontFamily,
+    fontSize: darkTheme.typography.body.fontSize,
+    fontWeight: '600',
+    fontFamily: darkTheme.typography.body.fontFamily,
     color: darkTheme.colors.text.primary,
   },
   selectedAgentName: {
-    color: darkTheme.colors.interactive.primary,
+    color: darkTheme.colors.text.primary,
     fontWeight: '600',
   },
   agentMeta: {
     fontSize: darkTheme.typography.caption.fontSize,
     fontFamily: darkTheme.typography.caption.fontFamily,
     color: darkTheme.colors.text.secondary,
-    marginTop: darkTheme.spacing[0.5],
+    marginTop: darkTheme.spacing[0.75] || darkTheme.spacing[0.5],
   },
   bottomActions: {
     padding: darkTheme.spacing[2],
     borderTopWidth: 1,
     borderTopColor: darkTheme.colors.border.secondary,
     backgroundColor: darkTheme.colors.background.tertiary,
+  },
+  bottomProjectSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: darkTheme.spacing[1],
+  },
+  bottomProjectText: {
+    flex: 1,
+  },
+  bottomProjectLabel: {
+    fontSize: darkTheme.typography.label.fontSize,
+    fontFamily: darkTheme.typography.label.fontFamily,
+    fontWeight: darkTheme.typography.label.fontWeight,
+    color: darkTheme.colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: darkTheme.typography.label.letterSpacing,
+    marginBottom: darkTheme.spacing[0.5],
+  },
+  bottomProjectName: {
+    fontSize: darkTheme.typography.bodySmall.fontSize,
+    fontWeight: darkTheme.typography.bodySmall.fontWeight,
+    fontFamily: darkTheme.typography.bodySmall.fontFamily,
+    color: darkTheme.colors.text.primary,
+    letterSpacing: darkTheme.typography.bodySmall.letterSpacing,
   },
   createButton: {
     backgroundColor: darkTheme.colors.interactive.secondary,

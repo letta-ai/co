@@ -4,13 +4,15 @@ import {
   Text, 
   ScrollView, 
   TouchableOpacity, 
-  StyleSheet 
+  StyleSheet,
+  useColorScheme,
 } from 'react-native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AgentCard from './AgentCard';
 import useAppStore from '../store/appStore';
+import { darkTheme } from '../theme';
 import { showPrompt, showAlert } from '../utils/prompts';
 
 const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
@@ -50,6 +52,11 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
   };
 
   const currentAgent = agents.find(agent => agent.id === currentAgentId);
+  const colorScheme = useColorScheme();
+  const logoSource = colorScheme === 'dark'
+    ? require('../../assets/animations/Dark-sygnetrotate2.json')
+    : require('../../assets/animations/Light-sygnetrotate2.json');
+  const LogoLoader = require('./LogoLoader').default;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -109,6 +116,7 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 
         {isLoading && (
           <View style={styles.loadingContainer}>
+            <LogoLoader source={logoSource} size={80} />
             <Text style={styles.loadingText}>Loading agents...</Text>
           </View>
         )}
@@ -129,7 +137,7 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: darkTheme.colors.background.primary,
   },
   header: {
     flexDirection: 'row',
@@ -138,12 +146,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5EA',
+    borderBottomColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.tertiary,
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
   },
   createButton: {
     padding: 8,
@@ -151,14 +160,14 @@ const styles = StyleSheet.create({
   errorContainer: {
     margin: 16,
     padding: 12,
-    backgroundColor: '#FFE6E6',
+    backgroundColor: darkTheme.colors.status.error + '20',
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#FF3B30',
+    borderLeftColor: darkTheme.colors.status.error,
   },
   errorText: {
     fontSize: 14,
-    color: '#D70015',
+    color: darkTheme.colors.status.error,
     marginBottom: 8,
   },
   retryButton: {
@@ -166,20 +175,20 @@ const styles = StyleSheet.create({
   },
   retryText: {
     fontSize: 14,
-    color: '#007AFF',
+    color: darkTheme.colors.interactive.primary,
     fontWeight: '600',
   },
   noSelectionContainer: {
     margin: 16,
     padding: 12,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderRadius: 8,
     borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
+    borderLeftColor: darkTheme.colors.interactive.primary,
   },
   noSelectionText: {
     fontSize: 14,
-    color: '#1565C0',
+    color: darkTheme.colors.text.secondary,
     textAlign: 'center',
   },
   agentsList: {
@@ -195,24 +204,24 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     marginTop: 16,
     marginBottom: 8,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     textAlign: 'center',
     marginBottom: 24,
   },
   emptyCreateButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: darkTheme.colors.interactive.primary,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
   emptyCreateButtonText: {
-    color: '#FFFFFF',
+    color: darkTheme.colors.text.inverse,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -222,23 +231,23 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
   },
   currentAgentInfo: {
     padding: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: darkTheme.colors.background.tertiary,
     borderTopWidth: 1,
-    borderTopColor: '#E5E5EA',
+    borderTopColor: darkTheme.colors.border.primary,
   },
   currentAgentLabel: {
     fontSize: 12,
-    color: '#8E8E93',
+    color: darkTheme.colors.text.secondary,
     marginBottom: 4,
   },
   currentAgentName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#000000',
+    color: darkTheme.colors.text.primary,
   },
 });
 
