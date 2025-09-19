@@ -6,6 +6,7 @@ import {
   TouchableOpacity, 
   StyleSheet,
   useColorScheme,
+  ActivityIndicator,
 } from 'react-native';
 import { DrawerContentComponentProps } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
@@ -53,10 +54,6 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 
   const currentAgent = agents.find(agent => agent.id === currentAgentId);
   const colorScheme = useColorScheme();
-  const logoSource = colorScheme === 'dark'
-    ? require('../../assets/animations/Dark-sygnetrotate2.json')
-    : require('../../assets/animations/Light-sygnetrotate2.json');
-  const LogoLoader = require('./LogoLoader').default;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -116,8 +113,8 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
 
         {isLoading && (
           <View style={styles.loadingContainer}>
-            <LogoLoader source={logoSource} size={80} />
-            <Text style={styles.loadingText}>Loading agents...</Text>
+            <ActivityIndicator size="small" color={darkTheme.colors.text.secondary} />
+            <Text style={styles.loadingText}>Loading agents…</Text>
           </View>
         )}
       </ScrollView>
@@ -226,12 +223,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   loadingContainer: {
-    padding: 32,
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
   },
   loadingText: {
-    fontSize: 16,
+    fontSize: 14,
     color: darkTheme.colors.text.secondary,
+    marginLeft: 8,
   },
   currentAgentInfo: {
     padding: 16,

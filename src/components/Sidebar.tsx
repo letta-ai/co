@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Alert,
   useColorScheme,
+  ActivityIndicator,
 } from 'react-native';
 import lettaApi from '../api/lettaApi';
 import { darkTheme } from '../theme';
@@ -38,11 +39,7 @@ export default function Sidebar({
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const logoSource = colorScheme === 'dark'
-    ? require('../../assets/animations/Dark-sygnetrotate2.json')
-    : require('../../assets/animations/Light-sygnetrotate2.json');
-
-  const LogoLoader = require('./LogoLoader').default;
+  // Simple, minimal loading indicator (no animated logo)
 
   const loadAgents = async (isRefresh = false) => {
     if (!currentProject) {
@@ -96,8 +93,8 @@ export default function Sidebar({
         <Text style={styles.sectionTitle}>Agents</Text>
         {isLoading ? (
           <View style={styles.loadingContainer}>
-            <LogoLoader source={logoSource} size={80} />
-            <Text style={styles.loadingText}>Loading agents...</Text>
+            <ActivityIndicator size="small" color={darkTheme.colors.text.secondary} />
+            <Text style={styles.loadingText}>Loading agents…</Text>
           </View>
         ) : (
           <ScrollView
@@ -227,8 +224,8 @@ const styles = StyleSheet.create({
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: darkTheme.spacing[3],
+    paddingVertical: darkTheme.spacing[1.5],
+    paddingHorizontal: darkTheme.spacing[2],
   },
   loadingText: {
     marginLeft: darkTheme.spacing[1],
@@ -285,7 +282,7 @@ const styles = StyleSheet.create({
   bottomActions: {
     padding: darkTheme.spacing[2],
     borderTopWidth: 1,
-    borderTopColor: darkTheme.colors.border.secondary,
+    borderTopColor: darkTheme.colors.border.primary,
     backgroundColor: darkTheme.colors.background.tertiary,
   },
   bottomProjectSelector: {
