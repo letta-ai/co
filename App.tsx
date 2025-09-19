@@ -970,7 +970,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[1.5],
+    paddingVertical: darkTheme.spacing[2],
     backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,

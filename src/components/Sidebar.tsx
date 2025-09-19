@@ -84,7 +84,7 @@ export default function Sidebar({
     <View style={styles.sidebar}>
       {/* Brand at top-left */}
       <View style={styles.brandBar}>
-        <Wordmark width={320} height={60} />
+        <Wordmark width={180} height={32} />
       </View>
       {/* Project Header moved to bottom */}
 
@@ -174,7 +174,8 @@ const styles = StyleSheet.create({
   },
   brandBar: {
     paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[2],
+    height: darkTheme.layout.headerHeight,
+    justifyContent: 'center',
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
     backgroundColor: darkTheme.colors.background.secondary,

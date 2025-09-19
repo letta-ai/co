@@ -55,7 +55,8 @@ export const createColorTokens = (isDark: boolean = true) => ({
     primary: isDark ? LettaColors.pureWhite : LettaColors.deepBlack,
     secondary: isDark ? LettaColors.neutralGray : '#666666',
     tertiary: isDark ? '#888888' : '#999999',
-    inverse: isDark ? LettaColors.deepBlack : LettaColors.pureWhite,
+    // Inverse of the canvas: light text on dark, dark text on light
+    inverse: isDark ? LettaColors.pureWhite : LettaColors.deepBlack,
   },
 
   // Interactive Elements
