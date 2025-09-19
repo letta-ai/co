@@ -66,6 +66,9 @@ export default function App() {
 
   // Ref for ScrollView to control scrolling
   const scrollViewRef = useRef<ScrollView>(null);
+  // Reserve space and anchor positioning for streaming response
+  const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
+  const [hasPositionedForStream, setHasPositionedForStream] = useState(false);
 
   // Load saved token on app startup
   useEffect(() => {
@@ -321,10 +324,10 @@ export default function App() {
     setIsSendingMessage(true);
     setIsStreaming(true);
 
-    // Scroll to bottom when user sends a message
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
+    // Reserve space at bottom so streamed content can expand without pushing user to scroll
+    const vh = Dimensions.get('window').height;
+    setBottomSpacerHeight(Math.floor(vh * 0.9));
+    setHasPositionedForStream(false);
     // Clear any previous streaming content when starting a new message
     setStreamingMessage('');
     setStreamingStep('');
@@ -333,9 +336,40 @@ export default function App() {
     setInputText('');
 
     // Local accumulator to preserve content through callback closures
+    // Accumulators for streaming assembly with light whitespace coalescing at chunk boundaries
     let accumulatedMessage = '';
     let accumulatedStep = '';
-    let accumulatedReasoning: string[] = [];
+    let accumulatedReasoningText = '';
+
+    // Normalize streamed text and coalesce boundary spacing to avoid duplicated spaces
+    const normalizeStreamText = (s: string) => {
+      if (!s) return '';
+      // Convert escaped sequences to real characters when server/SDK double-escapes
+      return s
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t');
+    };
+
+    // Coalesce boundary spacing to avoid duplicates like "word ." or double spaces
+    const coalesceBoundary = (prev: string, next: string) => {
+      if (!next) return '';
+      let piece = normalizeStreamText(next);
+      const prevLast = prev.slice(-1);
+      // If previous ends with whitespace and next begins with whitespace, drop leading whitespace
+      if (/\s/.test(prevLast) && /^\s/.test(piece)) {
+        piece = piece.replace(/^\s+/, '');
+      }
+      // If previous ends with space and next begins with punctuation that shouldn't be preceded by a space, drop that leading space
+      if (prevLast === ' ' && /^\s*[\.,;:!\?\)\]\}]/.test(piece)) {
+        piece = piece.replace(/^\s+/, '');
+      }
+      // If previous ends with an opening bracket and next starts with space, drop the leading space
+      if (/[\(\[\{]$/.test(prev) && /^\s+/.test(piece)) {
+        piece = piece.replace(/^\s+/, '');
+      }
+      return piece;
+    };
 
     try {
       await lettaApi.sendMessageStream(
@@ -349,16 +383,16 @@ export default function App() {
           console.log('Chunk keys:', Object.keys(chunk));
 
           if (chunk.message_type === 'assistant_message' && chunk.content) {
-            // Append new content to streaming message
-            console.log('Adding assistant message content:', chunk.content);
-            accumulatedMessage += chunk.content;
+            // Append new content with boundary coalescing
+            const piece = coalesceBoundary(accumulatedMessage, String(chunk.content));
+            accumulatedMessage += piece;
             setStreamingMessage(accumulatedMessage);
           } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-            // Show reasoning/thinking process
-            accumulatedStep = `Thinking: ${chunk.reasoning}`;
+            // Show reasoning/thinking process (accumulate) with boundary coalescing
+            const piece = coalesceBoundary(accumulatedReasoningText, String(chunk.reasoning));
+            accumulatedReasoningText += piece;
+            accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
-            // Store reasoning for later inclusion in message
-            accumulatedReasoning.push(chunk.reasoning);
           } else if (chunk.message_type === 'tool_call') {
             // Show tool execution
             accumulatedStep = `Executing tool: ${chunk.tool_call?.function?.name || 'Unknown'}`;
@@ -380,7 +414,7 @@ export default function App() {
               role: 'assistant',
               content: accumulatedMessage.trim(),
               created_at: new Date().toISOString(),
-              reasoning: accumulatedReasoning.length > 0 ? accumulatedReasoning.join(' ') : undefined,
+              reasoning: accumulatedReasoningText ? accumulatedReasoningText : undefined,
             };
 
             setMessages(prev => [...prev, assistantMessage]);
@@ -391,11 +425,7 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
-
-          // Scroll to bottom when streaming completes
-          setTimeout(() => {
-            scrollViewRef.current?.scrollToEnd({ animated: true });
-          }, 100);
+          setBottomSpacerHeight(0);
         },
         // onError callback
         (error) => {
@@ -461,14 +491,10 @@ export default function App() {
   };
 
   if (isLoadingToken) {
-    const logoSource = colorScheme === 'dark'
-      ? require('./assets/animations/Dark-sygnetrotate2.json')
-      : require('./assets/animations/Light-sygnetrotate2.json');
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.setupContainer}>
-          <Wordmark width={220} height={42} />
-          <LogoLoader source={logoSource} />
+          <Wordmark width={320} height={60} />
           <Text style={styles.subtitle}>Loading...</Text>
         </View>
         <StatusBar style="auto" />
@@ -480,7 +506,7 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.setupContainer}>
-          <Wordmark width={220} height={42} />
+          <Wordmark width={320} height={60} />
           <Text style={styles.subtitle}>Enter your Letta API token to get started</Text>
           
           <TextInput
@@ -647,7 +673,8 @@ export default function App() {
           ) : (
             <ScrollView
               ref={scrollViewRef}
-              style={styles.messagesContainer}>
+              style={styles.messagesContainer}
+              contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}>
               <View style={styles.messagesList}>
                 {messages.length === 0 && currentAgent && (
                   <View style={styles.emptyContainer}>
@@ -679,7 +706,17 @@ export default function App() {
 
                 {/* Streaming message display */}
                 {isStreaming && (
-                  <View style={styles.messageGroup}>
+                  <View
+                    style={styles.messageGroup}
+                    onLayout={(e) => {
+                      if (!hasPositionedForStream) {
+                        const y = e.nativeEvent.layout.y;
+                        // Position so the streaming assistant message starts near the top
+                        scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: false });
+                        setHasPositionedForStream(true);
+                      }
+                    }}
+                  >
                     {streamingStep && streamingStep.trim().length > 0 && (
                       <View style={styles.reasoningContainer}>
                         <Text style={styles.reasoningText}>{streamingStep.trim()}</Text>
@@ -711,6 +748,8 @@ export default function App() {
                     </View>
                   </View>
                 )}
+
+                {/* PaddingBottom above reserves vertical room while streaming */}
               </View>
             </ScrollView>
           )}
