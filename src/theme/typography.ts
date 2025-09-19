@@ -1,8 +1,9 @@
 // Letta Brand Typography System
 
 export const fontFamily = {
-  primary: '-apple-system, "SF Pro Display", Inter, "Helvetica Neue", sans-serif',
-  mono: 'SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace',
+  // Use the Expo-loaded font family name from useFonts in App.tsx
+  primary: 'Roobert',
+  mono: 'SFMono-Regular',
 } as const;
 
 export const fontSize = {

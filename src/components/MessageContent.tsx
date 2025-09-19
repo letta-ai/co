@@ -10,7 +10,7 @@ interface MessageContentProps {
 
 const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
   // Define colors based on Letta theme
-  const userTextColor = darkTheme.colors.text.primary; // White for user messages on dark background
+  const userTextColor = darkTheme.colors.text.inverse; // Inverse (light) text on brand-blue bubble
   const assistantTextColor = darkTheme.colors.text.primary; // White for assistant messages on dark background
   const userAccentColor = darkTheme.colors.text.inverse; // Dark for user message accents
   const assistantAccentColor = darkTheme.colors.text.secondary; // Gray for assistant message accents
@@ -157,7 +157,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       marginVertical: darkTheme.spacing[0.5],
     },
     link: {
-      color: isUser ? darkTheme.colors.interactive.primary : darkTheme.colors.interactive.primary,
+      color: isUser ? darkTheme.colors.text.inverse : darkTheme.colors.interactive.primary,
       textDecorationLine: 'underline',
     },
     hr: {

@@ -84,7 +84,7 @@ export default function Sidebar({
     <View style={styles.sidebar}>
       {/* Brand at top-left */}
       <View style={styles.brandBar}>
-        <Wordmark width={180} height={32} />
+        <Wordmark width={240} height={40} />
       </View>
       {/* Project Header moved to bottom */}
 

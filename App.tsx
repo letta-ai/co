@@ -15,6 +15,7 @@ import {
   useColorScheme
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
 import LogoLoader from './src/components/LogoLoader';
 import Wordmark from './src/components/Wordmark';
 // Wordmark is used in the sidebar, not in the chat header
@@ -29,6 +30,9 @@ import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
 
 export default function App() {
+  const [fontsLoaded] = useFonts({
+    Roobert: require('./assets/fonts/Roobert-Regular.ttf'),
+  });
   const colorScheme = useColorScheme();
   // Authentication state
   const [apiToken, setApiToken] = useState('');
@@ -970,11 +974,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[2],
     backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
-    minHeight: darkTheme.layout.headerHeight,
+    height: darkTheme.layout.headerHeight,
   },
   menuButton: {
     marginRight: darkTheme.spacing[1.5],
@@ -1058,13 +1061,13 @@ const styles = StyleSheet.create({
   userMessage: {
     alignSelf: 'flex-end',
     maxWidth: '70%',
-    backgroundColor: darkTheme.colors.background.tertiary,
-    paddingHorizontal: darkTheme.spacing[1.5],
-    paddingVertical: darkTheme.spacing[1],
-    borderRadius: darkTheme.layout.borderRadius.large,
-    borderBottomRightRadius: darkTheme.layout.borderRadius.small,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.secondary,
+    backgroundColor: darkTheme.colors.interactive.primary,
+    paddingHorizontal: darkTheme.spacing[1],
+    paddingVertical: darkTheme.spacing[0.5],
+    borderRadius: darkTheme.layout.borderRadius.round,
+    borderBottomRightRadius: darkTheme.layout.borderRadius.round,
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   assistantMessage: {
     alignSelf: 'flex-start',
@@ -1144,7 +1147,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     backgroundColor: darkTheme.colors.background.primary,
-    borderRadius: darkTheme.layout.borderRadius.round,
+    borderRadius: darkTheme.layout.borderRadius.large,
     padding: darkTheme.spacing[0.5],
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
@@ -1167,6 +1170,10 @@ const styles = StyleSheet.create({
     fontFamily: darkTheme.typography.input.fontFamily,
     backgroundColor: 'transparent',
     color: darkTheme.colors.text.primary,
+    // Remove noisy blue focus ring on web
+    outlineStyle: 'none',
+    outlineWidth: 0,
+    outlineColor: 'transparent',
   },
   sendButton: {
     backgroundColor: darkTheme.colors.interactive.secondary,
@@ -1308,3 +1315,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+  if (!fontsLoaded) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.setupContainer}>
+          <Wordmark width={320} height={60} />
+          <Text style={styles.subtitle}>Loading...</Text>
+        </View>
+        <StatusBar style="auto" />
+      </SafeAreaView>
+    );
+  }
