@@ -72,6 +72,32 @@ export default function App() {
   // Track scroll position to counteract padding removal jump
   const [scrollY, setScrollY] = useState(0);
 
+  // Smoothly shrink the bottom spacer and counter-scroll to avoid visual jumps
+  const smoothRemoveSpacer = (durationMs: number = 220) => {
+    const start = Date.now();
+    const initial = bottomSpacerHeight;
+    if (initial <= 0) return;
+    const step = () => {
+      const elapsed = Date.now() - start;
+      const t = Math.min(1, elapsed / durationMs);
+      // ease-out cubic
+      const eased = 1 - Math.pow(1 - t, 3);
+      const newH = Math.round(initial * (1 - eased));
+      const delta = bottomSpacerHeight - newH; // amount removed this frame
+      if (delta !== 0) {
+        // Counteract layout shift by adjusting scroll position upward by the same delta
+        const targetY = Math.max(0, scrollY - delta);
+        scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
+        setScrollY(targetY);
+        setBottomSpacerHeight(newH);
+      }
+      if (t < 1) {
+        requestAnimationFrame(step);
+      }
+    };
+    requestAnimationFrame(step);
+  };
+
   // Load saved token on app startup
   useEffect(() => {
     const loadSavedToken = async () => {
@@ -449,13 +475,8 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
-          // Remove reserved space but preserve visual position to avoid jump
-          const prevSpacer = bottomSpacerHeight;
-          setBottomSpacerHeight(0);
-          requestAnimationFrame(() => {
-            const targetY = Math.max(0, scrollY - prevSpacer);
-            scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
-          });
+          // Smoothly remove reserved space and counter-scroll to avoid jump
+          smoothRemoveSpacer(240);
         },
         // onError callback
         (error) => {
@@ -469,13 +490,8 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
-          // Remove reserved space but preserve visual position to avoid jump
-          const prevSpacer = bottomSpacerHeight;
-          setBottomSpacerHeight(0);
-          requestAnimationFrame(() => {
-            const targetY = Math.max(0, scrollY - prevSpacer);
-            scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
-          });
+          // Smoothly remove reserved space and counter-scroll to avoid jump
+          smoothRemoveSpacer(240);
         }
       );
     } catch (error: any) {
@@ -1127,17 +1143,16 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: 'rgba(26, 26, 26, 0.85)', // Semi-transparent dark background
-    backdropFilter: 'blur(20px)', // Glass blur effect (may not work on all platforms)
+    backgroundColor: darkTheme.colors.background.primary,
     borderRadius: darkTheme.layout.borderRadius.round,
     padding: darkTheme.spacing[0.5],
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)', // Subtle white border for glass effect
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8, // Higher elevation for floating effect
+    borderColor: darkTheme.colors.border.primary,
+    shadowColor: 'transparent',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
   },
   messageInput: {
     flex: 1,

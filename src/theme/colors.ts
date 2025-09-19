@@ -43,12 +43,11 @@ export const LettaColors = {
 export const createColorTokens = (isDark: boolean = true) => ({
   // Backgrounds
   background: {
-    // Subtle elevation around #202020 in dark mode
-    // primary: canvas, secondary: sidebars/rails, tertiary: headers/cards, surface: chat bubbles/inputs
+    // Flatten dark backgrounds to a single tone for visual consistency
     primary: isDark ? '#202020' : LettaColors.pureWhite,
-    secondary: isDark ? '#1C1C1C' : LettaColors.lightGray[100],
-    tertiary: isDark ? '#242424' : LettaColors.lightGray[200],
-    surface: isDark ? '#262626' : LettaColors.pureWhite,
+    secondary: isDark ? '#202020' : LettaColors.pureWhite,
+    tertiary: isDark ? '#202020' : LettaColors.pureWhite,
+    surface: isDark ? '#202020' : LettaColors.pureWhite,
   },
 
   // Text Colors
