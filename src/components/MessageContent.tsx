@@ -23,8 +23,8 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       fontFamily: darkTheme.typography.chatMessage.fontFamily,
     },
     paragraph: {
-      marginTop: 0,
-      marginBottom: darkTheme.spacing[1.25],
+      marginTop: darkTheme.spacing[1],
+      marginBottom: darkTheme.spacing[2],
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: darkTheme.typography.chatMessage.fontSize,
       lineHeight: darkTheme.typography.chatMessage.lineHeight * darkTheme.typography.chatMessage.fontSize,
@@ -57,7 +57,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       fontFamily: darkTheme.typography.code.fontFamily,
       fontSize: darkTheme.typography.code.fontSize,
       marginTop: darkTheme.spacing[1],
-      marginBottom: darkTheme.spacing[1.25],
+      marginBottom: darkTheme.spacing[2],
     },
     fence: {
       backgroundColor: darkTheme.colors.background.surface,
@@ -68,7 +68,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       fontFamily: darkTheme.typography.code.fontFamily,
       fontSize: darkTheme.typography.code.fontSize,
       marginTop: darkTheme.spacing[1],
-      marginBottom: darkTheme.spacing[1.25],
+      marginBottom: darkTheme.spacing[2],
     },
     heading1: {
       fontSize: darkTheme.typography.h1.fontSize,

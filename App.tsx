@@ -69,6 +69,8 @@ export default function App() {
   // Reserve space and anchor positioning for streaming response
   const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
   const [hasPositionedForStream, setHasPositionedForStream] = useState(false);
+  // Track scroll position to counteract padding removal jump
+  const [scrollY, setScrollY] = useState(0);
 
   // Load saved token on app startup
   useEffect(() => {
@@ -351,6 +353,28 @@ export default function App() {
         .replace(/\\t/g, '\t');
     };
 
+    // Safely extract text from various SDK/object shapes to avoid "[object Object]"
+    const extractText = (val: any): string => {
+      if (val == null) return '';
+      if (typeof val === 'string') return val;
+      if (Array.isArray(val)) return val.map(extractText).join('');
+      if (typeof val === 'object') {
+        // Common fields that may hold text
+        if (typeof (val as any).text === 'string') return (val as any).text as string;
+        if (typeof (val as any).content === 'string') return (val as any).content as string;
+        if (typeof (val as any).message === 'string') return (val as any).message as string;
+        // Some SDKs wrap parts under choices[0].delta/content
+        const choices = (val as any).choices;
+        if (choices && Array.isArray(choices) && choices.length) {
+          const c = choices[0];
+          return extractText(c?.delta?.content ?? c?.message?.content ?? c?.content);
+        }
+        // Fallback: do not stringify raw objects into [object Object]
+        return '';
+      }
+      return '';
+    };
+
     // Coalesce boundary spacing to avoid duplicates like "word ." or double spaces
     const coalesceBoundary = (prev: string, next: string) => {
       if (!next) return '';
@@ -384,12 +408,12 @@ export default function App() {
 
           if (chunk.message_type === 'assistant_message' && chunk.content) {
             // Append new content with boundary coalescing
-            const piece = coalesceBoundary(accumulatedMessage, String(chunk.content));
+            const piece = coalesceBoundary(accumulatedMessage, extractText(chunk.content));
             accumulatedMessage += piece;
             setStreamingMessage(accumulatedMessage);
           } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
             // Show reasoning/thinking process (accumulate) with boundary coalescing
-            const piece = coalesceBoundary(accumulatedReasoningText, String(chunk.reasoning));
+            const piece = coalesceBoundary(accumulatedReasoningText, extractText(chunk.reasoning));
             accumulatedReasoningText += piece;
             accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
@@ -425,7 +449,13 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
+          // Remove reserved space but preserve visual position to avoid jump
+          const prevSpacer = bottomSpacerHeight;
           setBottomSpacerHeight(0);
+          requestAnimationFrame(() => {
+            const targetY = Math.max(0, scrollY - prevSpacer);
+            scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
+          });
         },
         // onError callback
         (error) => {
@@ -439,6 +469,13 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
+          // Remove reserved space but preserve visual position to avoid jump
+          const prevSpacer = bottomSpacerHeight;
+          setBottomSpacerHeight(0);
+          requestAnimationFrame(() => {
+            const targetY = Math.max(0, scrollY - prevSpacer);
+            scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
+          });
         }
       );
     } catch (error: any) {
@@ -674,7 +711,9 @@ export default function App() {
             <ScrollView
               ref={scrollViewRef}
               style={styles.messagesContainer}
-              contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}>
+              contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}
+              onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+              scrollEventThrottle={16}>
               <View style={styles.messagesList}>
                 {messages.length === 0 && currentAgent && (
                   <View style={styles.emptyContainer}>
