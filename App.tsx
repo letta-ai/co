@@ -1166,9 +1166,7 @@ const styles = StyleSheet.create({
     paddingLeft: 0, // Remove left padding
     paddingRight: darkTheme.spacing[2], // Keep some right breathing room
     marginBottom: darkTheme.spacing[1], // Reduced spacing
-    borderLeftWidth: 1, // Very thin line
-    borderLeftColor: 'rgba(184, 184, 184, 0.3)', // Subtle gray line
-    borderStyle: 'solid',
+    borderLeftWidth: 0, // Remove left border
   },
   reasoningText: {
     fontSize: 14, // Slightly larger for readability
