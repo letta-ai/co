@@ -167,30 +167,42 @@ class LettaApiService {
       
       const response = await this.client.agents.messages.create(agentId, lettaRequest);
       
-      // Transform messages to match our interface
+      // Transform messages to match our interface, preserving tool step types
       const transformedMessages = (response.messages || []).map((message: any) => {
+        const type = message.messageType;
+        // Extract possible tool call/return shapes from SDK variants
+        const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+        const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
+
+        // Default role mapping
         let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
-        
-        if (message.messageType === 'user_message') {
+        if (type === 'user_message') {
           role = 'user';
-        } else if (message.messageType === 'system_message') {
+        } else if (type === 'system_message') {
           role = 'system';
-        } else if (message.messageType === 'tool_message' || message.messageType === 'tool_call') {
-          role = 'tool';
-        } else {
+        } else if (type === 'assistant_message' || type === 'reasoning_message') {
           role = 'assistant';
+        } else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') {
+          // Preserve tool role for tool steps
+          role = 'tool';
         }
+
+        // Prefer original content; downstream UI will render tool steps into readable lines when needed
+        const content: string = message.content || message.reasoning || '';
 
         return {
           id: message.id,
-          role: role,
-          content: message.content || message.reasoning || '',
+          role,
+          content,
           created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
           tool_calls: message.tool_calls,
-          message_type: message.messageType,
+          message_type: type,
           sender_id: message.senderId,
           step_id: message.stepId,
-          run_id: message.runId
+          run_id: message.runId,
+          // Pass through tool details for UI reassembly
+          tool_call: toolCall,
+          tool_response: toolReturn,
         };
       });
       
@@ -360,29 +372,38 @@ class LettaApiService {
             }
           }
 
-          // Map messageType to role for our components
-          let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+          // Map messageType to role and content for our components
+          const type = message.messageType;
+          const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+          const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
-          if (message.messageType === 'user_message') {
+          let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+          if (type === 'user_message') {
             role = 'user';
-          } else if (message.messageType === 'system_message') {
+          } else if (type === 'system_message') {
             role = 'system';
-          } else if (message.messageType === 'tool_message' || message.messageType === 'tool_call') {
+          } else if (type === 'assistant_message' || type === 'reasoning_message') {
+            role = 'assistant';
+          } else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') {
             role = 'tool';
-          } else {
-            role = 'assistant'; // assistant_message, etc.
           }
+
+          // Preserve content; UI will render readable tool lines as needed
+          const content: string = message.content || '';
 
           const transformedMessage: LettaMessage = {
             id: message.id,
-            role: role,
-            content: message.content || '',
+            role,
+            content,
             created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
             tool_calls: message.tool_calls,
-            message_type: message.messageType,
+            message_type: type,
             sender_id: message.senderId,
             step_id: message.stepId,
-            run_id: message.runId
+            run_id: message.runId,
+            // Pass through tool details for UI reassembly
+            tool_call: toolCall,
+            tool_response: toolReturn,
           };
 
           // Attach reasoning to assistant messages

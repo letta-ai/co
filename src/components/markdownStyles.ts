@@ -13,7 +13,7 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
   const codeFontFamily = Platform.select({
     ios: 'Menlo',
     android: 'monospace',
-    default: 'SFMono-Regular',
+    default: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
   });
 
   return StyleSheet.create({
@@ -35,14 +35,17 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
     em: { fontStyle: 'italic' },
 
     code_inline: {
-      backgroundColor: theme.colors.background.surface,
+      // Inline code should look like text (no bubble)
+      backgroundColor: 'transparent',
       color: isUser ? userTextColor : '#E5E5E5',
-      paddingHorizontal: theme.spacing[0.5],
-      paddingVertical: theme.spacing[0.25],
-      borderRadius: theme.layout.borderRadius.small,
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      borderRadius: 0,
+      borderWidth: 0,
+      borderColor: 'transparent',
       fontFamily: codeFontFamily,
-      fontSize: theme.typography.body.fontSize,
-      lineHeight: theme.typography.body.fontSize * 1.5,
+      fontSize: theme.typography.code.fontSize,
+      lineHeight: theme.typography.code.fontSize * 1.5,
     },
     code_block: {
       backgroundColor: theme.colors.background.surface,
@@ -125,4 +128,3 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
 };
 
 export default createMarkdownStyles;
-

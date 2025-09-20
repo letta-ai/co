@@ -123,6 +123,8 @@ export interface LettaMessage {
   content: string;
   created_at: string;
   tool_calls?: ToolCall[];
+  tool_call?: ToolCall;
+  tool_response?: any;
   message_type?: string;
   sender_id?: string;
   step_id?: string;

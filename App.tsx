@@ -26,6 +26,7 @@ import AgentSelectorScreen from './AgentSelectorScreen';
 import ProjectSelectorModal from './ProjectSelectorModal';
 import Sidebar from './src/components/Sidebar';
 import MessageContent from './src/components/MessageContent';
+import ToolCallItem from './src/components/ToolCallItem';
 import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
 
@@ -321,8 +322,8 @@ export default function App() {
       // Filter and transform messages for display
       const displayMessages = messageHistory
         .filter(msg => {
-          // Keep user and assistant; drop system. We'll show assistant tool steps as-is.
-          if (msg.role !== 'user' && msg.role !== 'assistant') return false;
+          // Keep user, assistant, and tool messages; drop system
+          if (msg.role === 'system') return false;
           // Filter out heartbeat user messages
           if (msg.role === 'user' && typeof msg.content === 'string') {
             try {
@@ -333,28 +334,35 @@ export default function App() {
           return true;
         })
         .map(msg => {
-          // Use what's there; never change message type/role
+          // Preserve role; render readable content for tool steps if needed
           const call = (msg as any).tool_call || (msg as any).tool_calls?.[0];
           const ret = (msg as any).tool_response || (msg as any).tool_return;
           let content = msg.content as any;
-          if (!content || typeof content !== 'string') {
-            if (call?.function?.name) {
-              const args = formatArgsPython(call.function.arguments ?? {});
-              content = `${call.function.name}(${args})`;
-            } else if (ret != null) {
-              try { content = `→ ${typeof ret === 'string' ? ret : JSON.stringify(ret)}`; } catch { content = `→ ${String(ret)}`; }
-            } else if (content != null) {
-              content = String(content);
-            } else {
-              content = '';
+          if ((!content || typeof content !== 'string') && (msg as any).message_type) {
+            const mt = (msg as any).message_type;
+            if (mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message') {
+              const callObj = call?.function ? call.function : call;
+              const name = callObj?.name || callObj?.tool_name || 'tool';
+              if (name) {
+                const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
+                content = `${name}(${args})`;
+              }
+            } else if (mt === 'tool_response' || mt === 'tool_return_message') {
+              if (ret != null) {
+                try { content = `→ ${typeof ret === 'string' ? ret : JSON.stringify(ret)}`; } catch { content = `→ ${String(ret)}`; }
+              }
             }
           }
+          if (content != null && typeof content !== 'string') content = String(content);
           return {
             id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content,
+            role: msg.role as 'user' | 'assistant' | 'tool',
+            content: content || '',
             created_at: msg.created_at,
             reasoning: (msg as any).reasoning,
+            // keep metadata for grouping tool call/return pairs
+            message_type: (msg as any).message_type,
+            step_id: (msg as any).step_id,
           };
         });
 
@@ -477,23 +485,24 @@ export default function App() {
             accumulatedReasoningText += piece;
             accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
-          } else if (chunk.message_type === 'tool_call') {
-            // Show tool call inline as assistant text (do not alter message type semantics)
-            const name = chunk.tool_call?.function?.name || 'tool';
-            const args = formatArgsPython(chunk.tool_call?.function?.arguments ?? {});
+          } else if (chunk.message_type === 'tool_call' || chunk.message_type === 'tool_call_message') {
+            // Render tool call as a tool message
+            const callObj: any = (chunk as any).tool_call?.function ? (chunk as any).tool_call.function : (chunk as any).tool_call;
+            const name = callObj?.name || callObj?.tool_name || 'tool';
+            const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
             const toolLine = `${name}(${args})`;
             setMessages(prev => [
               ...prev,
-              { id: `tool-${Date.now()}`, role: 'assistant', content: toolLine, created_at: new Date().toISOString() }
+              { id: `tool-${Date.now()}`, role: 'tool', content: toolLine, created_at: new Date().toISOString(), message_type: chunk.message_type, step_id: chunk.step ? String(chunk.step) : undefined }
             ]);
-          } else if (chunk.message_type === 'tool_response') {
-            // Show tool result inline as assistant text
+          } else if (chunk.message_type === 'tool_response' || chunk.message_type === 'tool_return_message') {
+            // Render tool result as a tool message
             const r = chunk.tool_response;
             let resultStr = '';
             try { resultStr = typeof r === 'string' ? r : JSON.stringify(r); } catch {}
             setMessages(prev => [
               ...prev,
-              { id: `toolret-${Date.now()}`, role: 'assistant', content: `→ ${resultStr}`, created_at: new Date().toISOString() }
+              { id: `toolret-${Date.now()}`, role: 'tool', content: `→ ${resultStr}`, created_at: new Date().toISOString(), message_type: chunk.message_type, step_id: chunk.step ? String(chunk.step) : undefined }
             ]);
           }
         },
@@ -782,26 +791,41 @@ export default function App() {
                     </Text>
                   </View>
                 )}
-
-                {messages.filter(message => message.role !== 'system').map((message, index) => (
-                  <View key={`${message.id || 'msg'}-${index}-${message.created_at}`} style={styles.messageGroup}>
-                    {/* Show reasoning above assistant messages */}
-                    {message.role === 'assistant' && message.reasoning && (
-                      <View style={styles.reasoningContainer}>
-                        <Text style={styles.reasoningText}>{message.reasoning}</Text>
+                {(() => {
+                  const items: any[] = [];
+                  const callTypes = new Set(['tool_call', 'tool_call_message', 'tool_message']);
+                  const retTypes = new Set(['tool_response', 'tool_return_message']);
+                  for (let i = 0; i < messages.length; i++) {
+                    const m: any = messages[i];
+                    if (m.role === 'tool' && callTypes.has(m.message_type)) {
+                      const next: any = messages[i + 1];
+                      const paired = next && next.role === 'tool' && retTypes.has(next.message_type) && next.step_id && m.step_id && next.step_id === m.step_id;
+                      items.push(
+                        <View key={`${m.id}-grp-${i}`} style={styles.messageGroup}>
+                          <View style={[styles.message, styles.assistantMessage]}>
+                            <ToolCallItem callText={m.content} resultText={paired ? next.content : undefined} />
+                          </View>
+                        </View>
+                      );
+                      if (paired) { i++; }
+                      continue;
+                    }
+                    // Default rendering for non-tool or unpaired tool messages
+                    items.push(
+                      <View key={`${m.id || 'msg'}-${i}-${m.created_at}`} style={styles.messageGroup}>
+                        {m.role === 'assistant' && (m as any).reasoning && (
+                          <View style={styles.reasoningContainer}>
+                            <Text style={styles.reasoningText}>{(m as any).reasoning}</Text>
+                          </View>
+                        )}
+                        <View style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
+                          <MessageContent content={m.content} isUser={m.role === 'user'} />
+                        </View>
                       </View>
-                    )}
-                    <View style={[
-                      styles.message,
-                      message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-                    ]}>
-                      <MessageContent
-                        content={message.content}
-                        isUser={message.role === 'user'}
-                      />
-                    </View>
-                  </View>
-                ))}
+                    );
+                  }
+                  return items;
+                })()}
 
                 {/* Streaming message display */}
                 {isStreaming && (

@@ -1,9 +1,16 @@
 // Letta Brand Typography System
+import { Platform } from 'react-native';
 
 export const fontFamily = {
   // Use the Expo-loaded font family name from useFonts in App.tsx
   primary: 'Roobert',
-  mono: 'SFMono-Regular',
+  // Use reliable monospace stacks per platform to ensure actual monospace rendering
+  mono: Platform.select({
+    ios: 'Menlo',
+    android: 'monospace',
+    default:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
+  }) as string,
 } as const;
 
 export const fontSize = {
