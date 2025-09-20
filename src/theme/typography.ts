@@ -8,12 +8,14 @@ export const fontFamily = {
 
 export const fontSize = {
   // Headlines (H1-H6)
-  h1: 64,
-  h2: 40,
-  h3: 32,
-  h4: 24,
-  h5: 20,
-  h6: 18,
+  // Chat-first scale; add display for large hero titles
+  display: 40,
+  h1: 32,
+  h2: 24,
+  h3: 20,
+  h4: 18,
+  h5: 16,
+  h6: 15,
 
   // Body Text
   body: 16,
@@ -27,6 +29,7 @@ export const fontSize = {
 
   // Technical
   code: 14,
+  codeBlock: 13,
   tiny: 10,
 } as const;
 
@@ -39,10 +42,10 @@ export const fontWeight = {
 } as const;
 
 export const lineHeight = {
-  tight: 1.2,
+  tight: 1.25,
   normal: 1.4,
-  relaxed: 1.6,
-  loose: 1.8,
+  relaxed: 1.5,
+  loose: 1.7,
 } as const;
 
 export const letterSpacing = {
@@ -53,6 +56,13 @@ export const letterSpacing = {
 
 // Typography Tokens
 export const typography = {
+  display: {
+    fontSize: fontSize.display,
+    fontWeight: fontWeight.bold,
+    lineHeight: lineHeight.tight,
+    letterSpacing: letterSpacing.tight,
+    fontFamily: fontFamily.primary,
+  },
   // Headlines
   h1: {
     fontSize: fontSize.h1,
@@ -158,6 +168,13 @@ export const typography = {
     fontSize: fontSize.code,
     fontWeight: fontWeight.regular,
     lineHeight: lineHeight.relaxed,
+    letterSpacing: letterSpacing.normal,
+    fontFamily: fontFamily.mono,
+  },
+  codeBlock: {
+    fontSize: fontSize.codeBlock,
+    fontWeight: fontWeight.regular,
+    lineHeight: lineHeight.normal,
     letterSpacing: letterSpacing.normal,
     fontFamily: fontFamily.mono,
   },

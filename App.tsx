@@ -321,41 +321,40 @@ export default function App() {
       // Filter and transform messages for display
       const displayMessages = messageHistory
         .filter(msg => {
-          // Keep user, assistant, and tool messages; drop system/heartbeat
-          if (msg.role !== 'user' && msg.role !== 'assistant' && msg.role !== 'tool') {
-            return false;
-          }
-
-          // Filter out heartbeat messages from user messages
+          // Keep user and assistant; drop system. We'll show assistant tool steps as-is.
+          if (msg.role !== 'user' && msg.role !== 'assistant') return false;
+          // Filter out heartbeat user messages
           if (msg.role === 'user' && typeof msg.content === 'string') {
             try {
               const parsed = JSON.parse(msg.content);
-              if (parsed?.type === 'heartbeat') {
-                return false; // Hide heartbeat messages
-              }
-            } catch {
-              // Keep message if content is not valid JSON
-            }
+              if (parsed?.type === 'heartbeat') return false;
+            } catch {}
           }
-
           return true;
         })
         .map(msg => {
-          let content = msg.content || '';
-          // For tool messages, synthesize a readable python-style call if needed
-          if (msg.role === 'tool' && (!content || typeof content !== 'string')) {
-            const tc = (msg as any).tool_calls?.[0];
-            if (tc?.function?.name) {
-              const args = formatArgsPython(tc.function.arguments ?? {});
-              content = `${tc.function.name}(${args})`;
+          // Use what's there; never change message type/role
+          const call = (msg as any).tool_call || (msg as any).tool_calls?.[0];
+          const ret = (msg as any).tool_response || (msg as any).tool_return;
+          let content = msg.content as any;
+          if (!content || typeof content !== 'string') {
+            if (call?.function?.name) {
+              const args = formatArgsPython(call.function.arguments ?? {});
+              content = `${call.function.name}(${args})`;
+            } else if (ret != null) {
+              try { content = `→ ${typeof ret === 'string' ? ret : JSON.stringify(ret)}`; } catch { content = `→ ${String(ret)}`; }
+            } else if (content != null) {
+              content = String(content);
+            } else {
+              content = '';
             }
           }
           return {
             id: msg.id,
-            role: msg.role as 'user' | 'assistant' | 'tool',
-            content: content,
+            role: msg.role as 'user' | 'assistant',
+            content,
             created_at: msg.created_at,
-            reasoning: (msg as any).reasoning, // Preserve reasoning field from API
+            reasoning: (msg as any).reasoning,
           };
         });
 
@@ -479,30 +478,23 @@ export default function App() {
             accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
           } else if (chunk.message_type === 'tool_call') {
-            // Append a Python-style tool call message to the timeline
+            // Show tool call inline as assistant text (do not alter message type semantics)
             const name = chunk.tool_call?.function?.name || 'tool';
             const args = formatArgsPython(chunk.tool_call?.function?.arguments ?? {});
-            const toolMsg: LettaMessage = {
-              id: `tool-${Date.now()}`,
-              role: 'tool',
-              content: `${name}(${args})`,
-              created_at: new Date().toISOString(),
-            };
-            setMessages(prev => [...prev, toolMsg]);
+            const toolLine = `${name}(${args})`;
+            setMessages(prev => [
+              ...prev,
+              { id: `tool-${Date.now()}`, role: 'assistant', content: toolLine, created_at: new Date().toISOString() }
+            ]);
           } else if (chunk.message_type === 'tool_response') {
-            // Append a tool response message
-            const resultStr = (() => {
-              const r = chunk.tool_response;
-              if (!r) return '';
-              try { return typeof r === 'string' ? r : JSON.stringify(r); } catch { return ''; }
-            })();
-            const toolReturn: LettaMessage = {
-              id: `toolret-${Date.now()}`,
-              role: 'tool',
-              content: `→ ${resultStr}`,
-              created_at: new Date().toISOString(),
-            };
-            setMessages(prev => [...prev, toolReturn]);
+            // Show tool result inline as assistant text
+            const r = chunk.tool_response;
+            let resultStr = '';
+            try { resultStr = typeof r === 'string' ? r : JSON.stringify(r); } catch {}
+            setMessages(prev => [
+              ...prev,
+              { id: `toolret-${Date.now()}`, role: 'assistant', content: `→ ${resultStr}`, created_at: new Date().toISOString() }
+            ]);
           }
         },
         // onComplete callback
@@ -799,21 +791,15 @@ export default function App() {
                         <Text style={styles.reasoningText}>{message.reasoning}</Text>
                       </View>
                     )}
-                    {message.role === 'tool' ? (
-                      <View style={[styles.message, styles.toolMessage]}>
-                        <Text style={styles.toolText}>{String(message.content)}</Text>
-                      </View>
-                    ) : (
-                      <View style={[
-                        styles.message,
-                        message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-                      ]}>
-                        <MessageContent
-                          content={message.content}
-                          isUser={message.role === 'user'}
-                        />
-                      </View>
-                    )}
+                    <View style={[
+                      styles.message,
+                      message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+                    ]}>
+                      <MessageContent
+                        content={message.content}
+                        isUser={message.role === 'user'}
+                      />
+                    </View>
                   </View>
                 ))}
 
@@ -1132,23 +1118,8 @@ const styles = StyleSheet.create({
   assistantMessage: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
-    borderLeftWidth: 2,
-    borderLeftColor: 'transparent',
-  },
-  toolMessage: {
-    alignSelf: 'flex-start',
-    maxWidth: '85%',
-    backgroundColor: darkTheme.colors.background.surface,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    paddingHorizontal: darkTheme.spacing[1.25],
-    paddingVertical: darkTheme.spacing[1],
-    borderRadius: darkTheme.layout.borderRadius.medium,
-  },
-  toolText: {
-    color: darkTheme.colors.text.secondary,
-    fontSize: 13,
-    fontFamily: darkTheme.typography.code.fontFamily,
+    paddingHorizontal: darkTheme.spacing[1],
+    paddingVertical: darkTheme.spacing[0.5],
   },
   messageText: {
     fontSize: 15, // Refined font size (15px)
