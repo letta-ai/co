@@ -1163,19 +1163,20 @@ const styles = StyleSheet.create({
   reasoningContainer: {
     backgroundColor: 'transparent', // No background
     paddingVertical: darkTheme.spacing[1.5], // Reduced padding
-    paddingHorizontal: darkTheme.spacing[2], // Minimal horizontal padding
+    paddingLeft: 0, // Remove left padding
+    paddingRight: darkTheme.spacing[2], // Keep some right breathing room
     marginBottom: darkTheme.spacing[1], // Reduced spacing
     borderLeftWidth: 1, // Very thin line
     borderLeftColor: 'rgba(184, 184, 184, 0.3)', // Subtle gray line
     borderStyle: 'solid',
   },
   reasoningText: {
-    fontSize: 13, // Slightly larger for readability
+    fontSize: 14, // Slightly larger for readability
     fontFamily: darkTheme.typography.reasoning.fontFamily,
     fontWeight: '400', // Regular weight for better readability
     color: 'rgba(184, 184, 184, 0.8)', // More visible gray
     fontStyle: darkTheme.typography.reasoning.fontStyle,
-    lineHeight: 1.5 * 13, // Comfortable line height
+    lineHeight: 1.5 * 14, // Comfortable line height
     letterSpacing: 0.01, // Minimal letter spacing
   },
 
