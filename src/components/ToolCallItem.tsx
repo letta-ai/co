@@ -17,7 +17,6 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText }) => 
         onPress={() => setExpanded((e) => !e)}
         activeOpacity={0.7}
       >
-        <Text style={styles.chevron}>{expanded ? '▾' : '▸'}</Text>
         <Text style={styles.callText} numberOfLines={expanded ? 0 : 2}>
           {callText}
         </Text>
@@ -51,10 +50,6 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
-  chevron: {
-    color: darkTheme.colors.text.secondary,
-    marginTop: 2,
-  },
   callText: {
     color: darkTheme.colors.text.primary,
     fontFamily: 'Menlo',
@@ -86,4 +81,3 @@ const styles = StyleSheet.create({
 });
 
 export default ToolCallItem;
-
