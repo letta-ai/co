@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, Platform } from 'react-native';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import { darkTheme } from '../theme';
 
@@ -15,11 +15,18 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
   const userAccentColor = darkTheme.colors.text.inverse; // Dark for user message accents
   const assistantAccentColor = darkTheme.colors.text.secondary; // Gray for assistant message accents
 
+  const codeFontFamily = Platform.select({
+    ios: 'Menlo',
+    android: 'monospace',
+    default: 'SFMono-Regular',
+  });
+
   const markdownStyles = StyleSheet.create({
     body: {
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: darkTheme.typography.chatMessage.fontSize,
-      lineHeight: darkTheme.typography.chatMessage.lineHeight * darkTheme.typography.chatMessage.fontSize,
+      // Tighter line-height helps visually center single-line text in bubbles
+      lineHeight: darkTheme.typography.chatMessage.fontSize * 1.4,
       fontFamily: darkTheme.typography.chatMessage.fontFamily,
     },
     paragraph: {
@@ -27,7 +34,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       marginBottom: darkTheme.spacing[2],
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: darkTheme.typography.chatMessage.fontSize,
-      lineHeight: darkTheme.typography.chatMessage.lineHeight * darkTheme.typography.chatMessage.fontSize,
+      lineHeight: darkTheme.typography.chatMessage.fontSize * 1.4,
       fontFamily: darkTheme.typography.chatMessage.fontFamily,
     },
     strong: {
@@ -45,8 +52,10 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       paddingVertical: darkTheme.spacing[0.25],
       borderRadius: darkTheme.layout.borderRadius.small,
       borderWidth: 0,
-      fontFamily: darkTheme.typography.code.fontFamily,
-      fontSize: darkTheme.typography.code.fontSize,
+      fontFamily: codeFontFamily,
+      // Match body size/line-height for consistency in lists
+      fontSize: darkTheme.typography.chatMessage.fontSize,
+      lineHeight: darkTheme.typography.chatMessage.fontSize * 1.4,
     },
     code_block: {
       backgroundColor: darkTheme.colors.background.surface,
@@ -54,7 +63,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       padding: darkTheme.spacing[1.5],
       borderRadius: darkTheme.layout.borderRadius.small,
       borderWidth: 0,
-      fontFamily: darkTheme.typography.code.fontFamily,
+      fontFamily: codeFontFamily,
       fontSize: darkTheme.typography.code.fontSize,
       marginTop: darkTheme.spacing[1],
       marginBottom: darkTheme.spacing[2],
@@ -75,21 +84,30 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       fontWeight: darkTheme.typography.h1.fontWeight,
       fontFamily: darkTheme.typography.h1.fontFamily,
       color: isUser ? userTextColor : assistantTextColor,
-      marginVertical: darkTheme.spacing[1],
+      lineHeight: darkTheme.typography.h1.lineHeight * darkTheme.typography.h1.fontSize,
+      letterSpacing: darkTheme.typography.h1.letterSpacing,
+      marginTop: darkTheme.spacing[2],
+      marginBottom: darkTheme.spacing[1],
     },
     heading2: {
       fontSize: darkTheme.typography.h2.fontSize,
       fontWeight: darkTheme.typography.h2.fontWeight,
       fontFamily: darkTheme.typography.h2.fontFamily,
       color: isUser ? userTextColor : assistantTextColor,
-      marginVertical: darkTheme.spacing[1],
+      lineHeight: darkTheme.typography.h2.lineHeight * darkTheme.typography.h2.fontSize,
+      letterSpacing: darkTheme.typography.h2.letterSpacing,
+      marginTop: darkTheme.spacing[1.5],
+      marginBottom: darkTheme.spacing[1],
     },
     heading3: {
       fontSize: darkTheme.typography.h3.fontSize,
       fontWeight: darkTheme.typography.h3.fontWeight,
       fontFamily: darkTheme.typography.h3.fontFamily,
       color: isUser ? userTextColor : assistantTextColor,
-      marginVertical: darkTheme.spacing[0.5],
+      lineHeight: darkTheme.typography.h3.lineHeight * darkTheme.typography.h3.fontSize,
+      letterSpacing: darkTheme.typography.h3.letterSpacing,
+      marginTop: darkTheme.spacing[1.25] || darkTheme.spacing[1],
+      marginBottom: darkTheme.spacing[0.75] || darkTheme.spacing[0.5],
     },
     heading4: {
       fontSize: darkTheme.typography.h4.fontSize,
@@ -122,7 +140,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
     },
     list_item: {
       flexDirection: 'row',
-      marginVertical: darkTheme.spacing[0.5],
+      marginVertical: 2,
     },
     bullet_list_icon: {
       color: isUser ? userTextColor : assistantAccentColor,
@@ -133,7 +151,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: darkTheme.typography.body.fontSize,
       fontFamily: darkTheme.typography.body.fontFamily,
-      lineHeight: darkTheme.typography.body.lineHeight * darkTheme.typography.body.fontSize,
+      lineHeight: darkTheme.typography.chatMessage.fontSize * 1.4,
       flex: 1,
     },
     ordered_list_icon: {
@@ -154,7 +172,8 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
       borderLeftColor: isUser ? darkTheme.colors.text.secondary : darkTheme.colors.interactive.primary,
       paddingLeft: darkTheme.spacing[1.5],
       paddingVertical: darkTheme.spacing[1],
-      marginVertical: darkTheme.spacing[0.5],
+      marginTop: darkTheme.spacing[1.5],
+      marginBottom: darkTheme.spacing[2],
     },
     link: {
       color: isUser ? darkTheme.colors.text.inverse : darkTheme.colors.interactive.primary,

@@ -102,6 +102,26 @@ export default function App() {
     requestAnimationFrame(step);
   };
 
+  // Format tool arguments in a compact Python-style signature
+  const formatArgsPython = (raw: any): string => {
+    try {
+      if (!raw) return '';
+      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (Array.isArray(obj)) {
+        return obj.map(v => JSON.stringify(v)).join(', ');
+      }
+      if (typeof obj === 'object') {
+        return Object.entries(obj)
+          .map(([k, v]) => `${k}=${typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v)}`)
+          .join(', ');
+      }
+      return String(raw);
+    } catch {
+      // Fallback to raw string (truncated)
+      return typeof raw === 'string' ? raw : JSON.stringify(raw);
+    }
+  };
+
   // Load saved token on app startup
   useEffect(() => {
     const loadSavedToken = async () => {
@@ -301,13 +321,13 @@ export default function App() {
       // Filter and transform messages for display
       const displayMessages = messageHistory
         .filter(msg => {
-          // Filter by message type
-          if (msg.message_type !== 'user_message' && msg.message_type !== 'assistant_message') {
+          // Keep user, assistant, and tool messages; drop system/heartbeat
+          if (msg.role !== 'user' && msg.role !== 'assistant' && msg.role !== 'tool') {
             return false;
           }
 
           // Filter out heartbeat messages from user messages
-          if (msg.message_type === 'user_message' && typeof msg.content === 'string') {
+          if (msg.role === 'user' && typeof msg.content === 'string') {
             try {
               const parsed = JSON.parse(msg.content);
               if (parsed?.type === 'heartbeat') {
@@ -320,13 +340,24 @@ export default function App() {
 
           return true;
         })
-        .map(msg => ({
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content || '',
-          created_at: msg.created_at,
-          reasoning: msg.reasoning, // Preserve reasoning field from API
-        }));
+        .map(msg => {
+          let content = msg.content || '';
+          // For tool messages, synthesize a readable python-style call if needed
+          if (msg.role === 'tool' && (!content || typeof content !== 'string')) {
+            const tc = (msg as any).tool_calls?.[0];
+            if (tc?.function?.name) {
+              const args = formatArgsPython(tc.function.arguments ?? {});
+              content = `${tc.function.name}(${args})`;
+            }
+          }
+          return {
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant' | 'tool',
+            content: content,
+            created_at: msg.created_at,
+            reasoning: (msg as any).reasoning, // Preserve reasoning field from API
+          };
+        });
 
       setMessages(displayMessages);
 
@@ -448,13 +479,30 @@ export default function App() {
             accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
           } else if (chunk.message_type === 'tool_call') {
-            // Show tool execution
-            accumulatedStep = `Executing tool: ${chunk.tool_call?.function?.name || 'Unknown'}`;
-            setStreamingStep(accumulatedStep);
+            // Append a Python-style tool call message to the timeline
+            const name = chunk.tool_call?.function?.name || 'tool';
+            const args = formatArgsPython(chunk.tool_call?.function?.arguments ?? {});
+            const toolMsg: LettaMessage = {
+              id: `tool-${Date.now()}`,
+              role: 'tool',
+              content: `${name}(${args})`,
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, toolMsg]);
           } else if (chunk.message_type === 'tool_response') {
-            // Tool completed
-            accumulatedStep = 'Processing tool result...';
-            setStreamingStep(accumulatedStep);
+            // Append a tool response message
+            const resultStr = (() => {
+              const r = chunk.tool_response;
+              if (!r) return '';
+              try { return typeof r === 'string' ? r : JSON.stringify(r); } catch { return ''; }
+            })();
+            const toolReturn: LettaMessage = {
+              id: `toolret-${Date.now()}`,
+              role: 'tool',
+              content: `→ ${resultStr}`,
+              created_at: new Date().toISOString(),
+            };
+            setMessages(prev => [...prev, toolReturn]);
           }
         },
         // onComplete callback
@@ -751,15 +799,21 @@ export default function App() {
                         <Text style={styles.reasoningText}>{message.reasoning}</Text>
                       </View>
                     )}
-                    <View style={[
-                      styles.message,
-                      message.role === 'user' ? styles.userMessage : styles.assistantMessage,
-                    ]}>
-                      <MessageContent
-                        content={message.content}
-                        isUser={message.role === 'user'}
-                      />
-                    </View>
+                    {message.role === 'tool' ? (
+                      <View style={[styles.message, styles.toolMessage]}>
+                        <Text style={styles.toolText}>{String(message.content)}</Text>
+                      </View>
+                    ) : (
+                      <View style={[
+                        styles.message,
+                        message.role === 'user' ? styles.userMessage : styles.assistantMessage,
+                      ]}>
+                        <MessageContent
+                          content={message.content}
+                          isUser={message.role === 'user'}
+                        />
+                      </View>
+                    )}
                   </View>
                 ))}
 
@@ -1062,18 +1116,39 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
     maxWidth: '70%',
     backgroundColor: darkTheme.colors.interactive.primary,
-    paddingHorizontal: darkTheme.spacing[1],
-    paddingVertical: darkTheme.spacing[0.5],
-    borderRadius: darkTheme.layout.borderRadius.round,
-    borderBottomRightRadius: darkTheme.layout.borderRadius.round,
+    paddingHorizontal: darkTheme.spacing[2],
+    paddingVertical: darkTheme.spacing[1.5],
+    borderRadius: darkTheme.layout.borderRadius.large,
+    borderBottomRightRadius: darkTheme.layout.borderRadius.small,
     borderWidth: 0,
     borderColor: 'transparent',
+    // Subtle lift so user bubbles float off the page
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
   },
   assistantMessage: {
     alignSelf: 'flex-start',
     maxWidth: '100%',
     borderLeftWidth: 2,
     borderLeftColor: 'transparent',
+  },
+  toolMessage: {
+    alignSelf: 'flex-start',
+    maxWidth: '85%',
+    backgroundColor: darkTheme.colors.background.surface,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    paddingHorizontal: darkTheme.spacing[1.25],
+    paddingVertical: darkTheme.spacing[1],
+    borderRadius: darkTheme.layout.borderRadius.medium,
+  },
+  toolText: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: 13,
+    fontFamily: darkTheme.typography.code.fontFamily,
   },
   messageText: {
     fontSize: 15, // Refined font size (15px)

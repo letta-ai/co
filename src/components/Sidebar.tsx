@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   selectedAgentItem: {
     backgroundColor: darkTheme.colors.background.surface,
-    borderLeftWidth: 0,
+    borderLeftWidth: 1,
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
     borderRadius: 0,
