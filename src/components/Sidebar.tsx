@@ -254,12 +254,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: darkTheme.spacing[1.75] || darkTheme.spacing[2],
     marginBottom: darkTheme.spacing[1.5] || darkTheme.spacing[1.25],
     borderRadius: 0,
-    borderLeftWidth: 0,
-    borderLeftColor: 'transparent',
+    // Keep a 1px transparent border so size doesn't change on selection
+    borderWidth: 1,
+    borderColor: 'transparent',
+    backgroundColor: 'transparent',
   },
   selectedAgentItem: {
-    backgroundColor: darkTheme.colors.background.surface,
-    borderLeftWidth: 1,
+    backgroundColor: (darkTheme as any).colors.background.selected || darkTheme.colors.background.surface,
+    // Simple 1px outline on all sides; 90-degree corners
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
     borderRadius: 0,

@@ -43,11 +43,15 @@ export const LettaColors = {
 export const createColorTokens = (isDark: boolean = true) => ({
   // Backgrounds
   background: {
-    // Flatten dark backgrounds to a single tone for visual consistency
+    // Establish subtle steps for contrast between surfaces
     primary: isDark ? '#202020' : LettaColors.pureWhite,
-    secondary: isDark ? '#202020' : LettaColors.pureWhite,
-    tertiary: isDark ? '#202020' : LettaColors.pureWhite,
-    surface: isDark ? '#202020' : LettaColors.pureWhite,
+    secondary: isDark ? '#202020' : '#FAFAFA',
+    // Slightly lighter panels
+    tertiary: isDark ? '#242424' : '#F5F5F5',
+    // Most elevated surfaces (cards, selection states)
+    surface: isDark ? '#2A2A2A' : '#F0F0F0',
+    // A touch brighter than surface for selected items
+    selected: isDark ? '#303030' : '#EDEDED',
   },
 
   // Text Colors

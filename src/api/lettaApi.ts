@@ -270,14 +270,14 @@ class LettaApiService {
           });
           
           onChunk({
-            message_type: chunk.message_type || chunk.messageType,
-            content: chunk.assistant_message || chunk.assistantMessage || chunk.content,
-            reasoning: chunk.reasoning,
-            tool_call: chunk.tool_call || chunk.toolCall,
-            tool_response: chunk.tool_response || chunk.toolResponse,
-            step: chunk.step,
-            run_id: chunk.run_id || chunk.runId,
-            seq_id: chunk.seq_id || chunk.seqId
+            message_type: (chunk as any).message_type || (chunk as any).messageType,
+            content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
+            reasoning: (chunk as any).reasoning || (chunk as any).hiddenReasoning,
+            tool_call: (chunk as any).tool_call || (chunk as any).toolCall,
+            tool_response: (chunk as any).tool_response || (chunk as any).toolResponse || (chunk as any).toolReturn,
+            step: (chunk as any).step || (chunk as any).stepId,
+            run_id: (chunk as any).run_id || (chunk as any).runId,
+            seq_id: (chunk as any).seq_id || (chunk as any).seqId
           });
         }
         
@@ -349,7 +349,7 @@ class LettaApiService {
         });
 
         // Find reasoning and assistant messages in this group
-        const reasoningMessages = messageGroup.filter(m => m.messageType === 'reasoning_message');
+        const reasoningMessages = messageGroup.filter((m: any) => m.messageType === 'reasoning_message');
         const otherMessages = messageGroup.filter(m => m.messageType !== 'reasoning_message');
 
         // Combine reasoning content
@@ -373,7 +373,7 @@ class LettaApiService {
           }
 
           // Map messageType to role and content for our components
-          const type = message.messageType;
+          const type = message.messageType as string;
           const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
           const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
@@ -388,8 +388,29 @@ class LettaApiService {
             role = 'tool';
           }
 
-          // Preserve content; UI will render readable tool lines as needed
-          const content: string = message.content || '';
+          // Derive a readable content string for tool steps
+          let content: string = message.content || '';
+          if ((!content || typeof content !== 'string') && type) {
+            if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_message') {
+              const callObj = toolCall?.function ? toolCall.function : toolCall;
+              const name = callObj?.name || callObj?.tool_name || 'tool';
+              const argsRaw = callObj?.arguments ?? callObj?.args ?? {};
+              let args = '';
+              try {
+                if (typeof argsRaw === 'string') {
+                  args = argsRaw;
+                } else {
+                  args = JSON.stringify(argsRaw);
+                }
+              } catch { args = String(argsRaw); }
+              content = `${name}(${args})`;
+            } else if (type === 'tool_response' || type === 'tool_return_message') {
+              if (toolReturn != null) {
+                try { content = typeof toolReturn === 'string' ? toolReturn : JSON.stringify(toolReturn); }
+                catch { content = String(toolReturn); }
+              }
+            }
+          }
 
           const transformedMessage: LettaMessage = {
             id: message.id,
@@ -399,7 +420,7 @@ class LettaApiService {
             tool_calls: message.tool_calls,
             message_type: type,
             sender_id: message.senderId,
-            step_id: message.stepId,
+            step_id: message.stepId || message.step_id,
             run_id: message.runId,
             // Pass through tool details for UI reassembly
             tool_call: toolCall,

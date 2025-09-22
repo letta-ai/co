@@ -14,6 +14,7 @@ import {
   Dimensions,
   useColorScheme
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import LogoLoader from './src/components/LogoLoader';
@@ -62,6 +63,9 @@ export default function App() {
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingStep, setStreamingStep] = useState<string>('');
+  // Track in-progress tool messages per step so we can accumulate
+  const toolCallMsgIdsRef = useRef<Map<string, string>>(new Map());
+  const toolReturnMsgIdsRef = useRef<Map<string, string>>(new Map());
 
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
@@ -306,6 +310,12 @@ export default function App() {
     }
   };
 
+  const handleOpenAgentInDashboard = () => {
+    if (!currentAgent) return;
+    const url = `https://app.letta.com/agents/${encodeURIComponent(currentAgent.id)}`;
+    Linking.openURL(url);
+  };
+
   const handleBackToAgentSelector = () => {
     setShowChatView(false);
     setShowAgentSelector(true);
@@ -349,7 +359,7 @@ export default function App() {
               }
             } else if (mt === 'tool_response' || mt === 'tool_return_message') {
               if (ret != null) {
-                try { content = `→ ${typeof ret === 'string' ? ret : JSON.stringify(ret)}`; } catch { content = `→ ${String(ret)}`; }
+                try { content = typeof ret === 'string' ? ret : JSON.stringify(ret); } catch { content = String(ret) }
               }
             }
           }
@@ -362,7 +372,7 @@ export default function App() {
             reasoning: (msg as any).reasoning,
             // keep metadata for grouping tool call/return pairs
             message_type: (msg as any).message_type,
-            step_id: (msg as any).step_id,
+            step_id: (msg as any).step_id != null ? String((msg as any).step_id) : undefined,
           };
         });
 
@@ -401,6 +411,9 @@ export default function App() {
     // Clear any previous streaming content when starting a new message
     setStreamingMessage('');
     setStreamingStep('');
+    // Reset tool accumulation maps at the start of a new stream
+    toolCallMsgIdsRef.current.clear();
+    toolReturnMsgIdsRef.current.clear();
     
     const messageToSend = inputText.trim();
     setInputText('');
@@ -474,7 +487,11 @@ export default function App() {
           console.log('Stream chunk:', chunk);
           console.log('Chunk keys:', Object.keys(chunk));
 
-          if (chunk.message_type === 'assistant_message' && chunk.content) {
+          const mt = (chunk as any).message_type as string | undefined;
+          const isCallType = mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message' || (!!(chunk as any).tool_call && !(chunk as any).tool_response);
+          const isReturnType = mt === 'tool_response' || mt === 'tool_return_message' || (!!(chunk as any).tool_response);
+
+          if (mt === 'assistant_message' && chunk.content) {
             // Append new content with boundary coalescing
             const piece = coalesceBoundary(accumulatedMessage, extractText(chunk.content));
             accumulatedMessage += piece;
@@ -485,25 +502,62 @@ export default function App() {
             accumulatedReasoningText += piece;
             accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
             setStreamingStep(accumulatedStep);
-          } else if (chunk.message_type === 'tool_call' || chunk.message_type === 'tool_call_message') {
-            // Render tool call as a tool message
-            const callObj: any = (chunk as any).tool_call?.function ? (chunk as any).tool_call.function : (chunk as any).tool_call;
+          } else if (isCallType) {
+            // Accumulate tool call text by step instead of creating new entries
+            const callRaw: any = (chunk as any).tool_call ?? (chunk as any).toolCall ?? {};
+            const callObj: any = (callRaw as any).function ? (callRaw as any).function : callRaw;
             const name = callObj?.name || callObj?.tool_name || 'tool';
             const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
             const toolLine = `${name}(${args})`;
-            setMessages(prev => [
-              ...prev,
-              { id: `tool-${Date.now()}`, role: 'tool', content: toolLine, created_at: new Date().toISOString(), message_type: chunk.message_type, step_id: chunk.step ? String(chunk.step) : undefined }
-            ]);
-          } else if (chunk.message_type === 'tool_response' || chunk.message_type === 'tool_return_message') {
-            // Render tool result as a tool message
-            const r = chunk.tool_response;
+            const stepId = chunk.step ? String(chunk.step) : 'no-step';
+
+            console.log('[UI] tool_call update', { stepId, toolLine });
+            setMessages(prev => {
+              const idFromMap = toolCallMsgIdsRef.current.get(stepId);
+              if (idFromMap) {
+                console.log('[UI] updating existing tool_call message', idFromMap);
+                // Update existing message content for this step
+                return prev.map(m => m.id === idFromMap ? { ...m, content: toolLine } : m);
+              }
+              // Insert a new message and remember its id for subsequent updates
+              const newId = `toolcall-${stepId}-${Date.now()}`;
+              toolCallMsgIdsRef.current.set(stepId, newId);
+              console.log('[UI] inserting new tool_call message', newId);
+              return [
+                ...prev,
+                {
+                  id: newId,
+                  role: 'tool',
+                  content: toolLine,
+                  created_at: new Date().toISOString(),
+                  message_type: mt || 'tool_message',
+                  step_id: stepId,
+                  reasoning: accumulatedReasoningText ? accumulatedReasoningText : undefined,
+                }
+              ];
+            });
+          } else if (isReturnType) {
+            // Accumulate tool return text by step
+            const r = (chunk as any).tool_response ?? (chunk as any).toolReturn ?? (chunk as any).result;
             let resultStr = '';
             try { resultStr = typeof r === 'string' ? r : JSON.stringify(r); } catch {}
-            setMessages(prev => [
-              ...prev,
-              { id: `toolret-${Date.now()}`, role: 'tool', content: `→ ${resultStr}`, created_at: new Date().toISOString(), message_type: chunk.message_type, step_id: chunk.step ? String(chunk.step) : undefined }
-            ]);
+            const stepId = chunk.step ? String(chunk.step) : 'no-step';
+            const line = resultStr;
+            console.log('[UI] tool_return update', { stepId, line });
+            setMessages(prev => {
+              const idFromMap = toolReturnMsgIdsRef.current.get(stepId);
+              if (idFromMap) {
+                console.log('[UI] updating existing tool_return message', idFromMap);
+                return prev.map(m => m.id === idFromMap ? { ...m, content: line } : m);
+              }
+              const newId = `toolret-${stepId}-${Date.now()}`;
+              toolReturnMsgIdsRef.current.set(stepId, newId);
+              console.log('[UI] inserting new tool_return message', newId);
+              return [
+                ...prev,
+                { id: newId, role: 'tool', content: line, created_at: new Date().toISOString(), message_type: mt || 'tool_return_message', step_id: stepId }
+              ];
+            });
           }
         },
         // onComplete callback
@@ -528,6 +582,9 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
+          // Reset tool accumulation maps for next message
+          toolCallMsgIdsRef.current.clear();
+          toolReturnMsgIdsRef.current.clear();
           // Smoothly remove reserved space and counter-scroll to avoid jump
           smoothRemoveSpacer(240);
         },
@@ -543,6 +600,8 @@ export default function App() {
           setIsStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
+          toolCallMsgIdsRef.current.clear();
+          toolReturnMsgIdsRef.current.clear();
           // Smoothly remove reserved space and counter-scroll to avoid jump
           smoothRemoveSpacer(240);
         }
@@ -758,9 +817,13 @@ export default function App() {
                 </Text>
               )}
             </View>
-            {!isDesktop && (
-              <TouchableOpacity onPress={() => setShowCreateAgentScreen(true)}>
-                <Text style={styles.headerAction}>+</Text>
+            {currentAgent && (
+              <TouchableOpacity
+                onPress={handleOpenAgentInDashboard}
+                style={styles.headerIconButton}
+                accessibilityLabel="Open in Letta agent editor"
+              >
+                <Ionicons name="open-outline" size={18} color={darkTheme.colors.text.secondary} />
               </TouchableOpacity>
             )}
           </View>
@@ -795,35 +858,80 @@ export default function App() {
                   const items: any[] = [];
                   const callTypes = new Set(['tool_call', 'tool_call_message', 'tool_message']);
                   const retTypes = new Set(['tool_response', 'tool_return_message']);
+                  // Track which step_id has already shown reasoning to avoid duplicates
+                  const shownReasoningForStep = new Set<string>();
+
+                  // Helper: find reasoning text for a given step by scanning ahead
+                  const findReasoningForStep = (fromIndex: number, stepId?: string): string | undefined => {
+                    if (!stepId) return undefined;
+                    for (let j = fromIndex; j < messages.length; j++) {
+                      const msgAny: any = messages[j];
+                      if (msgAny.role === 'assistant' && msgAny.step_id && String(msgAny.step_id) === String(stepId) && msgAny.reasoning) {
+                        return String(msgAny.reasoning);
+                      }
+                    }
+                    return undefined;
+                  };
+
                   for (let i = 0; i < messages.length; i++) {
                     const m: any = messages[i];
+
                     if (m.role === 'tool' && callTypes.has(m.message_type)) {
                       const next: any = messages[i + 1];
-                      const paired = next && next.role === 'tool' && retTypes.has(next.message_type) && next.step_id && m.step_id && next.step_id === m.step_id;
+                      const paired = !!(next && next.role === 'tool' && retTypes.has(next.message_type) && (
+                        (next.step_id && m.step_id && String(next.step_id) === String(m.step_id)) ||
+                        (!m.step_id || m.step_id === 'no-step')
+                      ));
+
+                      // Resolve reasoning to show above this tool-call group
+                      let reasoningToShow: string | undefined = m.reasoning;
+                      if (!reasoningToShow && m.step_id && !shownReasoningForStep.has(m.step_id)) {
+                        reasoningToShow = findReasoningForStep(i + 1, m.step_id);
+                      }
+
                       items.push(
                         <View key={`${m.id}-grp-${i}`} style={styles.messageGroup}>
+                          {reasoningToShow && (
+                            <View style={styles.reasoningContainer}>
+                              <Text style={styles.reasoningLabel}>Reasoning</Text>
+                              <Text style={styles.reasoningText}>{reasoningToShow}</Text>
+                            </View>
+                          )}
                           <View style={[styles.message, styles.assistantMessage]}>
                             <ToolCallItem callText={m.content} resultText={paired ? next.content : undefined} />
                           </View>
                         </View>
                       );
+
+                      if (m.step_id && reasoningToShow) {
+                        shownReasoningForStep.add(m.step_id);
+                      }
                       if (paired) { i++; }
                       continue;
                     }
+
                     // Default rendering for non-tool or unpaired tool messages
                     items.push(
                       <View key={`${m.id || 'msg'}-${i}-${m.created_at}`} style={styles.messageGroup}>
-                        {m.role === 'assistant' && (m as any).reasoning && (
+                        {m.role === 'assistant' && (m as any).reasoning && (!m.step_id || !shownReasoningForStep.has(m.step_id)) && (
                           <View style={styles.reasoningContainer}>
                             <Text style={styles.reasoningLabel}>Reasoning</Text>
                             <Text style={styles.reasoningText}>{(m as any).reasoning}</Text>
                           </View>
                         )}
                         <View style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
-                          <MessageContent content={m.content} isUser={m.role === 'user'} />
+                          {m.role === 'tool' ? (
+                            <Text style={styles.messageText}>{m.content}</Text>
+                          ) : (
+                            <MessageContent content={m.content} isUser={m.role === 'user'} />
+                          )}
                         </View>
                       </View>
                     );
+
+                    if (m.role === 'assistant' && (m as any).reasoning && m.step_id) {
+                      shownReasoningForStep.add(m.step_id);
+                    }
                   }
                   return items;
                 })()}
@@ -1078,6 +1186,10 @@ const styles = StyleSheet.create({
     marginLeft: darkTheme.spacing[1.5],
     padding: darkTheme.spacing[1],
   },
+  headerIconButton: {
+    marginLeft: darkTheme.spacing[1.5],
+    padding: darkTheme.spacing[1],
+  },
 
   // Messages styles
   messagesContainer: {
@@ -1129,7 +1241,7 @@ const styles = StyleSheet.create({
     maxWidth: '70%',
     backgroundColor: darkTheme.colors.interactive.primary,
     paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[1.5],
+    paddingVertical: darkTheme.spacing[1],
     borderRadius: darkTheme.layout.borderRadius.large,
     borderBottomRightRadius: darkTheme.layout.borderRadius.small,
     borderWidth: 0,
@@ -1153,6 +1265,15 @@ const styles = StyleSheet.create({
     fontWeight: '400', // Regular weight
     lineHeight: 1.6 * 15, // 1.6 line height ratio for readability
     letterSpacing: darkTheme.typography.chatMessage.letterSpacing,
+    // Ensure long tokens (URLs) can wrap in bubbles
+    wordBreak: 'break-word' as any,
+    overflowWrap: 'anywhere' as any,
+    whiteSpace: 'pre-wrap' as any,
+  },
+  codeText: {
+    fontSize: 13,
+    fontFamily: 'Menlo',
+    color: darkTheme.colors.text.primary,
   },
   userText: {
     color: darkTheme.colors.text.primary,
@@ -1163,12 +1284,14 @@ const styles = StyleSheet.create({
 
   // Reasoning styles (Subtle and readable)
   reasoningContainer: {
-    backgroundColor: 'transparent', // No background
-    paddingVertical: darkTheme.spacing[1.5], // Reduced padding
-    paddingLeft: 0, // Remove left padding
-    paddingRight: darkTheme.spacing[2], // Keep some right breathing room
-    marginBottom: darkTheme.spacing[1], // Reduced spacing
-    borderLeftWidth: 0, // Remove left border
+    backgroundColor: 'transparent',
+    // Align with assistant message horizontal padding
+    paddingHorizontal: darkTheme.spacing[1],
+    paddingTop: darkTheme.spacing[1],
+    paddingBottom: darkTheme.spacing[0.5],
+    // Breathing room from previous block (e.g., tool call)
+    marginTop: darkTheme.spacing[1],
+    marginBottom: darkTheme.spacing[1],
   },
   reasoningText: {
     fontSize: 14, // Slightly larger for readability
@@ -1184,7 +1307,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
-    marginBottom: 6,
+    marginBottom: darkTheme.spacing[0.5],
   },
 
   // Streaming styles (Technical indicators)
