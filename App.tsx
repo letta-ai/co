@@ -1180,7 +1180,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.01, // Minimal letter spacing
   },
   reasoningLabel: {
-    color: darkTheme.colors.text.secondary,
+    color: 'rgba(184, 184, 184, 0.8)',
     fontSize: 11,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
