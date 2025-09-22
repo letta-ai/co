@@ -277,7 +277,8 @@ class LettaApiService {
             tool_response: (chunk as any).tool_response || (chunk as any).toolResponse || (chunk as any).toolReturn,
             step: (chunk as any).step || (chunk as any).stepId,
             run_id: (chunk as any).run_id || (chunk as any).runId,
-            seq_id: (chunk as any).seq_id || (chunk as any).seqId
+            seq_id: (chunk as any).seq_id || (chunk as any).seqId,
+            id: (chunk as any).id || (chunk as any).message_id || (chunk as any).messageId
           });
         }
         
@@ -507,6 +508,67 @@ class LettaApiService {
       const normalized = Array.isArray(response) ? response.map(normalize).filter(m => !!m.model) : [];
       return normalized;
     } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  // Approve or deny an approval request
+  async approveToolRequest(
+    agentId: string,
+    params: { approval_request_id: string; approve: boolean; reason?: string }
+  ): Promise<SendMessageResponse> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const requestBody: any = {
+        messages: [
+          {
+            type: 'approval',
+            approve: params.approve,
+            approvalRequestId: params.approval_request_id,
+            reason: params.reason,
+          },
+        ],
+      };
+
+      const response = await this.client.agents.messages.create(agentId, requestBody);
+
+      const transformedMessages = (response.messages || []).map((message: any) => {
+        const type = message.messageType;
+        const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+        const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
+
+        let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+        if (type === 'user_message') role = 'user';
+        else if (type === 'system_message') role = 'system';
+        else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') role = 'tool';
+
+        const content: string = message.content || message.reasoning || '';
+
+        return {
+          id: message.id,
+          role,
+          content,
+          created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
+          tool_calls: message.tool_calls,
+          message_type: type,
+          sender_id: message.senderId,
+          step_id: message.stepId,
+          run_id: message.runId,
+          tool_call: toolCall,
+          tool_response: toolReturn,
+        } as LettaMessage;
+      });
+
+      return {
+        messages: transformedMessages,
+        stop_reason: response.stopReason,
+        usage: response.usage,
+      };
+    } catch (error) {
+      console.error('approveToolRequest - error:', error);
       throw this.handleError(error);
     }
   }

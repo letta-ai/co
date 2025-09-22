@@ -63,6 +63,16 @@ export default function App() {
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingStep, setStreamingStep] = useState<string>('');
+  // HITL approval state
+  const [approvalVisible, setApprovalVisible] = useState(false);
+  const [approvalData, setApprovalData] = useState<{
+    id?: string;
+    toolName?: string;
+    toolArgs?: string;
+    reasoning?: string;
+  } | null>(null);
+  const [approvalReason, setApprovalReason] = useState('');
+  const [isApproving, setIsApproving] = useState(false);
   // Track in-progress tool messages per step so we can accumulate
   const toolCallMsgIdsRef = useRef<Map<string, string>>(new Map());
   const toolReturnMsgIdsRef = useRef<Map<string, string>>(new Map());
@@ -378,6 +388,20 @@ export default function App() {
 
       setMessages(displayMessages);
 
+      // If the latest message is an approval request, prompt for approval
+      const lastRaw: any = messageHistory[messageHistory.length - 1];
+      if (lastRaw && lastRaw.message_type === 'approval_request_message' && lastRaw.tool_call) {
+        try {
+          const raw = lastRaw.tool_call?.function ? lastRaw.tool_call.function : lastRaw.tool_call;
+          const args = formatArgsPython(raw?.arguments ?? raw?.args ?? {});
+          setApprovalData({ id: lastRaw.id, toolName: raw?.name || raw?.tool_name, toolArgs: args, reasoning: lastRaw.reasoning });
+          setApprovalVisible(true);
+        } catch {}
+      } else {
+        setApprovalVisible(false);
+        setApprovalData(null);
+      }
+
       // Scroll to bottom after messages are loaded
       setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true });
@@ -558,6 +582,13 @@ export default function App() {
                 { id: newId, role: 'tool', content: line, created_at: new Date().toISOString(), message_type: mt || 'tool_return_message', step_id: stepId }
               ];
             });
+          } else if (mt === 'approval_request_message') {
+            const callRaw: any = (chunk as any).tool_call ?? (chunk as any).toolCall ?? {};
+            const callObj: any = (callRaw as any).function ? (callRaw as any).function : callRaw;
+            const name = callObj?.name || callObj?.tool_name || 'tool';
+            const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
+            setApprovalData({ id: (chunk as any).id, toolName: name, toolArgs: args, reasoning: (chunk as any).reasoning });
+            setApprovalVisible(true);
           }
         },
         // onComplete callback
@@ -999,10 +1030,10 @@ export default function App() {
               <TouchableOpacity
                 style={[
                   styles.sendButton,
-                  (!inputText.trim() || !currentAgent || isSendingMessage) && styles.sendButtonDisabled
+                  (!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible) && styles.sendButtonDisabled
                 ]}
                 onPress={handleSendMessage}
-                disabled={!inputText.trim() || !currentAgent || isSendingMessage}
+                disabled={!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible}
               >
                 {isSendingMessage ? (
                   <ActivityIndicator size="small" color="#fff" />
@@ -1022,6 +1053,108 @@ export default function App() {
         onProjectSelect={handleProjectSelect}
         onClose={() => setShowProjectSelector(false)}
       />
+
+      {/* Approval Request Modal (HITL) */}
+      <Modal
+        visible={approvalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          // Prevent closing without a decision
+        }}
+      >
+        <SafeAreaView style={styles.approvalOverlay}>
+          <View style={styles.approvalCard}>
+            <Text style={styles.approvalTitle}>Approval Required</Text>
+            {!!approvalData?.reasoning && (
+              <View style={styles.reasoningContainer}>
+                <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
+                <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
+              </View>
+            )}
+            <View style={styles.approvalBlock}>
+              <Text style={styles.approvalLabel}>Proposed Tool</Text>
+              <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
+            </View>
+            <View style={styles.approvalButtons}>
+              <TouchableOpacity
+                style={[styles.approvalBtn, styles.approve]}
+                disabled={isApproving}
+                onPress={async () => {
+                  if (!currentAgent || !approvalData?.id) return;
+                  try {
+                    setIsApproving(true);
+                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: true });
+                    setApprovalVisible(false);
+                    setApprovalData(null);
+                    setApprovalReason('');
+                    await loadMessagesForAgent(currentAgent.id);
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message || 'Failed to approve');
+                  } finally {
+                    setIsApproving(false);
+                  }
+                }}
+              >
+                <Text style={styles.approvalBtnText}>Approve</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.approvalBtn, styles.reject]}
+                disabled={isApproving}
+                onPress={async () => {
+                  if (!currentAgent || !approvalData?.id) return;
+                  try {
+                    setIsApproving(true);
+                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: false });
+                    setApprovalVisible(false);
+                    setApprovalData(null);
+                    setApprovalReason('');
+                    await loadMessagesForAgent(currentAgent.id);
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message || 'Failed to deny');
+                  } finally {
+                    setIsApproving(false);
+                  }
+                }}
+              >
+                <Text style={styles.approvalBtnText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.feedbackBlock}>
+              <Text style={styles.approvalLabel}>Reject with feedback</Text>
+              <TextInput
+                style={styles.approvalInput}
+                placeholder="Provide guidance for the agent"
+                placeholderTextColor={darkTheme.colors.text.secondary}
+                value={approvalReason}
+                onChangeText={setApprovalReason}
+                multiline
+              />
+              <TouchableOpacity
+                style={[styles.approvalBtn, styles.reject]}
+                disabled={isApproving || approvalReason.trim().length === 0}
+                onPress={async () => {
+                  if (!currentAgent || !approvalData?.id) return;
+                  try {
+                    setIsApproving(true);
+                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() });
+                    setApprovalVisible(false);
+                    setApprovalData(null);
+                    setApprovalReason('');
+                    await loadMessagesForAgent(currentAgent.id);
+                  } catch (e: any) {
+                    Alert.alert('Error', e.message || 'Failed to deny with feedback');
+                  } finally {
+                    setIsApproving(false);
+                  }
+                }}
+              >
+                <Text style={styles.approvalBtnText}>Send Feedback</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
 
       <StatusBar style="auto" />
     </SafeAreaView>
@@ -1189,6 +1322,92 @@ const styles = StyleSheet.create({
   headerIconButton: {
     marginLeft: darkTheme.spacing[1.5],
     padding: darkTheme.spacing[1],
+  },
+  // Approval modal styles
+  approvalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: darkTheme.spacing[2],
+  },
+  approvalCard: {
+    width: '100%',
+    maxWidth: 720,
+    backgroundColor: darkTheme.colors.background.surface,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    borderRadius: 0,
+    padding: darkTheme.spacing[2],
+  },
+  approvalTitle: {
+    fontSize: darkTheme.typography.h5.fontSize,
+    fontWeight: darkTheme.typography.h5.fontWeight,
+    fontFamily: darkTheme.typography.h5.fontFamily,
+    color: darkTheme.colors.text.primary,
+    marginBottom: darkTheme.spacing[1.5],
+  },
+  approvalBlock: {
+    marginTop: darkTheme.spacing[1],
+    marginBottom: darkTheme.spacing[2],
+  },
+  approvalLabel: {
+    fontSize: darkTheme.typography.label.fontSize,
+    fontFamily: darkTheme.typography.label.fontFamily,
+    fontWeight: darkTheme.typography.label.fontWeight,
+    color: darkTheme.colors.text.secondary,
+    letterSpacing: darkTheme.typography.label.letterSpacing,
+    textTransform: 'uppercase',
+    marginBottom: darkTheme.spacing[0.5],
+  },
+  approvalCode: {
+    fontFamily: 'Menlo',
+    fontSize: 13,
+    color: darkTheme.colors.text.primary,
+    backgroundColor: darkTheme.colors.background.tertiary,
+    padding: darkTheme.spacing[1],
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderColor: darkTheme.colors.border.primary,
+  },
+  approvalButtons: {
+    flexDirection: 'row',
+    gap: darkTheme.spacing[1],
+    marginTop: darkTheme.spacing[1],
+  },
+  approvalBtn: {
+    flex: 1,
+    borderRadius: 0,
+    paddingVertical: darkTheme.spacing[1.25] || darkTheme.spacing[1],
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  approve: {
+    backgroundColor: darkTheme.colors.interactive.primary,
+    borderColor: darkTheme.colors.interactive.primary,
+  },
+  reject: {
+    backgroundColor: 'transparent',
+    borderColor: darkTheme.colors.border.primary,
+  },
+  approvalBtnText: {
+    color: darkTheme.colors.text.inverse,
+    fontSize: darkTheme.typography.buttonSmall.fontSize,
+    fontWeight: darkTheme.typography.buttonSmall.fontWeight,
+    fontFamily: darkTheme.typography.buttonSmall.fontFamily,
+  },
+  feedbackBlock: {
+    marginTop: darkTheme.spacing[2],
+  },
+  approvalInput: {
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.tertiary,
+    color: darkTheme.colors.text.primary,
+    padding: darkTheme.spacing[1],
+    marginTop: darkTheme.spacing[0.5],
+    marginBottom: darkTheme.spacing[1],
   },
 
   // Messages styles
