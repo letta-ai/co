@@ -815,6 +815,7 @@ export default function App() {
                       <View key={`${m.id || 'msg'}-${i}-${m.created_at}`} style={styles.messageGroup}>
                         {m.role === 'assistant' && (m as any).reasoning && (
                           <View style={styles.reasoningContainer}>
+                            <Text style={styles.reasoningLabel}>Reasoning</Text>
                             <Text style={styles.reasoningText}>{(m as any).reasoning}</Text>
                           </View>
                         )}
@@ -842,6 +843,7 @@ export default function App() {
                   >
                     {streamingStep && streamingStep.trim().length > 0 && (
                       <View style={styles.reasoningContainer}>
+                        <Text style={styles.reasoningLabel}>Reasoning</Text>
                         <Text style={styles.reasoningText}>{streamingStep.trim()}</Text>
                       </View>
                     )}
@@ -1176,6 +1178,13 @@ const styles = StyleSheet.create({
     fontStyle: darkTheme.typography.reasoning.fontStyle,
     lineHeight: 1.5 * 14, // Comfortable line height
     letterSpacing: 0.01, // Minimal letter spacing
+  },
+  reasoningLabel: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: 6,
   },
 
   // Streaming styles (Technical indicators)
