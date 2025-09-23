@@ -533,7 +533,19 @@ class LettaApiService {
         ],
       };
 
-      const response = await this.client.agents.messages.create(agentId, requestBody);
+      // Defensive sanitize to avoid accidental union-conflicting keys
+      const sanitized: any = JSON.parse(JSON.stringify(requestBody));
+      delete sanitized.group_id; delete sanitized.groupId;
+      if (Array.isArray(sanitized.messages)) {
+        sanitized.messages = sanitized.messages.map((m: any) => {
+          const { group_id, groupId, ...rest } = m || {};
+          return rest;
+        });
+      }
+
+      console.log('approveToolRequest - requestBody:', JSON.stringify(sanitized));
+
+      const response = await this.client.agents.messages.create(agentId, sanitized);
 
       const transformedMessages = (response.messages || []).map((message: any) => {
         const type = message.messageType;
