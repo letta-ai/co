@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import LogoLoader from './src/components/LogoLoader';
 import Wordmark from './src/components/Wordmark';
 // Wordmark is used in the sidebar, not in the chat header
@@ -32,10 +33,8 @@ import ToolCallItem from './src/components/ToolCallItem';
 import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
 
-export default function App() {
-  const [fontsLoaded] = useFonts({
-    Roobert: require('./assets/fonts/Roobert-Regular.ttf'),
-  });
+function MainApp() {
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   // Authentication state
   const [apiToken, setApiToken] = useState('');
@@ -697,20 +696,20 @@ export default function App() {
 
   if (isLoadingToken) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.setupContainer}>
+      <View style={styles.container}>
+        <View style={[styles.setupContainer, { paddingTop: insets.top }]}>
           <Wordmark width={320} height={60} />
           <Text style={styles.subtitle}>Loading...</Text>
         </View>
         <StatusBar style="auto" />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!isConnected) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.setupContainer}>
+      <View style={styles.container}>
+        <View style={[styles.setupContainer, { paddingTop: insets.top }]}>
           <Wordmark width={320} height={60} />
           <Text style={styles.subtitle}>Enter your Letta API token to get started</Text>
           
@@ -745,7 +744,7 @@ export default function App() {
           </Text>
         </View>
         <StatusBar style="auto" />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -784,7 +783,7 @@ export default function App() {
 
   // Show chat view when agent is selected
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <View style={[styles.mainLayout, isDesktop && styles.desktopLayout]}>
         {/* Sidebar for desktop */}
         {isDesktop && (
@@ -838,7 +837,13 @@ export default function App() {
         {/* Chat Area */}
         <View style={styles.chatArea}>
           {/* Header */}
-          <View style={styles.chatHeader}>
+          <View style={[
+            styles.chatHeader,
+            {
+              paddingTop: Platform.OS === 'android' ? insets.top : 0,
+              height: darkTheme.layout.headerHeight + (Platform.OS === 'android' ? insets.top : 0)
+            }
+          ]}>
             {!isDesktop && (
               <TouchableOpacity
                 style={styles.menuButton}
@@ -1182,8 +1187,11 @@ export default function App() {
       />
 
 
-      <StatusBar style="auto" />
-    </SafeAreaView>
+      <StatusBar
+        style={Platform.OS === 'android' ? 'light' : 'auto'}
+        backgroundColor={darkTheme.colors.background.secondary}
+      />
+    </View>
   );
 }
 
@@ -1756,3 +1764,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+export default function App() {
+  const [fontsLoaded] = useFonts({
+    Roobert: require('./assets/fonts/Roobert-Regular.ttf'),
+  });
+
+  if (!fontsLoaded) {
+    return null;
+  }
+
+  return (
+    <SafeAreaProvider>
+      <MainApp />
+    </SafeAreaProvider>
+  );
+}
