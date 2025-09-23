@@ -678,8 +678,9 @@ class LettaApiService {
       const stream = await this.client.agents.messages.createStream(agentId, body);
 
       for await (const chunk of stream) {
-        onChunk?.({
-          message_type: (chunk as any).message_type || (chunk as any).messageType,
+        const mt = (chunk as any).message_type || (chunk as any).messageType;
+        const mapped: StreamingChunk = {
+          message_type: mt,
           content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
           reasoning: (chunk as any).reasoning,
           tool_call: (chunk as any).tool_call,
@@ -688,9 +689,17 @@ class LettaApiService {
           run_id: (chunk as any).run_id || (chunk as any).runId,
           seq_id: (chunk as any).seq_id || (chunk as any).seqId,
           id: (chunk as any).id || (chunk as any).message_id || (chunk as any).messageId,
-        });
+        };
+        onChunk?.(mapped);
+
+        // Close early when we receive the approval response or initial tool result
+        if (mt === 'approval_response_message' || mt === 'tool_return_message') {
+          onComplete?.({ messages: [], usage: undefined });
+          return; // stop awaiting the stream so UI can resume
+        }
       }
 
+      // Fallback: if stream ends without explicit response, still complete
       onComplete?.({ messages: [], usage: undefined });
     } catch (err) {
       onError?.(this.handleError(err));
