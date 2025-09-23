@@ -12,7 +12,8 @@ import {
   Modal,
   Linking,
   Dimensions,
-  useColorScheme
+  useColorScheme,
+  Platform
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -310,6 +311,10 @@ export default function App() {
   const handleAgentSelect = async (agent: LettaAgent) => {
     try {
       await Storage.setItem(STORAGE_KEYS.AGENT_ID, agent.id);
+      // Reset any pending approvals when switching agents
+      setApprovalVisible(false);
+      setApprovalData(null);
+      setApprovalReason('');
       setCurrentAgent(agent);
       setShowAgentSelector(false);
       setShowChatView(true);
@@ -327,6 +332,10 @@ export default function App() {
   };
 
   const handleBackToAgentSelector = () => {
+    // Clear any pending approval UI when leaving chat
+    setApprovalVisible(false);
+    setApprovalData(null);
+    setApprovalReason('');
     setShowChatView(false);
     setShowAgentSelector(true);
     setCurrentAgent(null);
@@ -795,7 +804,7 @@ export default function App() {
           <Modal
             visible={sidebarVisible}
             animationType="slide"
-            presentationStyle="overCurrentContext"
+            presentationStyle="overFullScreen"
             onRequestClose={() => setSidebarVisible(false)}
           >
             <SafeAreaView style={styles.mobileModal}>
@@ -1013,6 +1022,124 @@ export default function App() {
                   </View>
                 )}
 
+                {/* Inline Approval Request (scrolls with history) */}
+                {approvalVisible && (
+                  <View style={styles.messageGroup}>
+                    <View style={[styles.message, styles.assistantMessage]}>
+                      <View style={styles.approvalCardInline}>
+                        <Text style={styles.approvalTitle}>Approval Required</Text>
+                        {!!approvalData?.reasoning && (
+                          <View style={styles.reasoningContainer}>
+                            <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
+                            <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
+                          </View>
+                        )}
+                        <View style={styles.approvalBlock}>
+                          <Text style={styles.approvalLabel}>Proposed Tool</Text>
+                          <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
+                        </View>
+                        <View style={styles.approvalButtons}>
+                          <TouchableOpacity
+                            style={[styles.approvalBtn, styles.approve]}
+                            disabled={isApproving}
+                            onPress={async () => {
+                              if (!currentAgent || !approvalData?.id) return;
+                              try {
+                                setIsApproving(true);
+                                await lettaApi.approveToolRequestStream(
+                                  currentAgent.id,
+                                  { approval_request_id: approvalData.id, approve: true },
+                                  undefined,
+                                  async () => {
+                                    setApprovalVisible(false);
+                                    setApprovalData(null);
+                                    setApprovalReason('');
+                                    await loadMessagesForAgent(currentAgent.id);
+                                  },
+                                  (err) => {
+                                    Alert.alert('Error', err.message || 'Failed to approve');
+                                  }
+                                );
+                              } finally {
+                                setIsApproving(false);
+                              }
+                            }}
+                          >
+                            <Text style={styles.approvalBtnText}>Approve</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.approvalBtn, styles.reject]}
+                            disabled={isApproving}
+                            onPress={async () => {
+                              if (!currentAgent || !approvalData?.id) return;
+                              try {
+                                setIsApproving(true);
+                                await lettaApi.approveToolRequestStream(
+                                  currentAgent.id,
+                                  { approval_request_id: approvalData.id, approve: false },
+                                  undefined,
+                                  async () => {
+                                    setApprovalVisible(false);
+                                    setApprovalData(null);
+                                    setApprovalReason('');
+                                    await loadMessagesForAgent(currentAgent.id);
+                                  },
+                                  (err) => {
+                                    Alert.alert('Error', err.message || 'Failed to deny');
+                                  }
+                                );
+                              } finally {
+                                setIsApproving(false);
+                              }
+                            }}
+                          >
+                            <Text style={styles.approvalBtnText}>Reject</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <View style={styles.feedbackBlock}>
+                          <Text style={styles.approvalLabel}>Reject with feedback</Text>
+                          <TextInput
+                            style={styles.approvalInput}
+                            placeholder="Provide guidance for the agent"
+                            placeholderTextColor={darkTheme.colors.text.secondary}
+                            value={approvalReason}
+                            onChangeText={setApprovalReason}
+                            multiline
+                          />
+                          <TouchableOpacity
+                            style={[styles.approvalBtn, styles.reject]}
+                            disabled={isApproving || approvalReason.trim().length === 0}
+                            onPress={async () => {
+                              if (!currentAgent || !approvalData?.id) return;
+                              try {
+                                setIsApproving(true);
+                                await lettaApi.approveToolRequestStream(
+                                  currentAgent.id,
+                                  { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
+                                  undefined,
+                                  async () => {
+                                    setApprovalVisible(false);
+                                    setApprovalData(null);
+                                    setApprovalReason('');
+                                    await loadMessagesForAgent(currentAgent.id);
+                                  },
+                                  (err) => {
+                                    Alert.alert('Error', err.message || 'Failed to deny with feedback');
+                                  }
+                                );
+                              } finally {
+                                setIsApproving(false);
+                              }
+                            }}
+                          >
+                            <Text style={styles.approvalBtnText}>Send Feedback</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
                 {/* PaddingBottom above reserves vertical room while streaming */}
               </View>
             </ScrollView>
@@ -1054,128 +1181,6 @@ export default function App() {
         onClose={() => setShowProjectSelector(false)}
       />
 
-      {/* Approval Request Modal (HITL) */}
-      <Modal
-        visible={approvalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          // Prevent closing without a decision
-        }}
-      >
-        <SafeAreaView style={styles.approvalOverlay}>
-          <View style={styles.approvalCard}>
-            <Text style={styles.approvalTitle}>Approval Required</Text>
-            {!!approvalData?.reasoning && (
-              <View style={styles.reasoningContainer}>
-                <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
-                <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
-              </View>
-            )}
-            <View style={styles.approvalBlock}>
-              <Text style={styles.approvalLabel}>Proposed Tool</Text>
-              <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
-            </View>
-            <View style={styles.approvalButtons}>
-              <TouchableOpacity
-                style={[styles.approvalBtn, styles.approve]}
-                disabled={isApproving}
-                onPress={async () => {
-                  if (!currentAgent || !approvalData?.id) return;
-                  try {
-                    setIsApproving(true);
-                    await lettaApi.approveToolRequestStream(
-                      currentAgent.id,
-                      { approval_request_id: approvalData.id, approve: true },
-                      undefined,
-                      async () => {
-                        setApprovalVisible(false);
-                        setApprovalData(null);
-                        setApprovalReason('');
-                        await loadMessagesForAgent(currentAgent.id);
-                      },
-                      (err) => {
-                        Alert.alert('Error', err.message || 'Failed to approve');
-                      }
-                    );
-                  } finally {
-                    setIsApproving(false);
-                  }
-                }}
-              >
-                <Text style={styles.approvalBtnText}>Approve</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.approvalBtn, styles.reject]}
-                disabled={isApproving}
-                onPress={async () => {
-                  if (!currentAgent || !approvalData?.id) return;
-                  try {
-                    setIsApproving(true);
-                    await lettaApi.approveToolRequestStream(
-                      currentAgent.id,
-                      { approval_request_id: approvalData.id, approve: false },
-                      undefined,
-                      async () => {
-                        setApprovalVisible(false);
-                        setApprovalData(null);
-                        setApprovalReason('');
-                        await loadMessagesForAgent(currentAgent.id);
-                      },
-                      (err) => {
-                        Alert.alert('Error', err.message || 'Failed to deny');
-                      }
-                    );
-                  } finally {
-                    setIsApproving(false);
-                  }
-                }}
-              >
-                <Text style={styles.approvalBtnText}>Reject</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.feedbackBlock}>
-              <Text style={styles.approvalLabel}>Reject with feedback</Text>
-              <TextInput
-                style={styles.approvalInput}
-                placeholder="Provide guidance for the agent"
-                placeholderTextColor={darkTheme.colors.text.secondary}
-                value={approvalReason}
-                onChangeText={setApprovalReason}
-                multiline
-              />
-              <TouchableOpacity
-                style={[styles.approvalBtn, styles.reject]}
-                disabled={isApproving || approvalReason.trim().length === 0}
-                onPress={async () => {
-                  if (!currentAgent || !approvalData?.id) return;
-                  try {
-                    setIsApproving(true);
-                    await lettaApi.approveToolRequestStream(
-                      currentAgent.id,
-                      { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
-                      undefined,
-                      async () => {
-                        setApprovalVisible(false);
-                        setApprovalData(null);
-                        setApprovalReason('');
-                        await loadMessagesForAgent(currentAgent.id);
-                      },
-                      (err) => {
-                        Alert.alert('Error', err.message || 'Failed to deny with feedback');
-                      }
-                    );
-                  } finally {
-                    setIsApproving(false);
-                  }
-                }}
-              >
-                <Text style={styles.approvalBtnText}>Send Feedback</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
 
       <StatusBar style="auto" />
     </SafeAreaView>
@@ -1297,6 +1302,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
     backgroundColor: darkTheme.colors.background.primary,
+    position: 'relative',
   },
   chatHeader: {
     flexDirection: 'row',
@@ -1344,17 +1350,9 @@ const styles = StyleSheet.create({
     marginLeft: darkTheme.spacing[1.5],
     padding: darkTheme.spacing[1],
   },
-  // Approval modal styles
-  approvalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: darkTheme.spacing[2],
-  },
-  approvalCard: {
+  // Approval message card (inline in the chat)
+  approvalCardInline: {
     width: '100%',
-    maxWidth: 720,
     backgroundColor: darkTheme.colors.background.surface,
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
@@ -1399,7 +1397,7 @@ const styles = StyleSheet.create({
   approvalBtn: {
     flex: 1,
     borderRadius: 0,
-    paddingVertical: darkTheme.spacing[1.25] || darkTheme.spacing[1],
+    paddingVertical: darkTheme.spacing[1.5] || darkTheme.spacing[1],
     alignItems: 'center',
     borderWidth: 1,
   },
@@ -1612,9 +1610,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     color: darkTheme.colors.text.primary,
     // Remove noisy blue focus ring on web
-    outlineStyle: 'none',
-    outlineWidth: 0,
-    outlineColor: 'transparent',
+    ...(Platform.OS === 'web' && {
+      outlineStyle: 'none' as any,
+      outlineWidth: 0,
+      outlineColor: 'transparent',
+    }),
   },
   sendButton: {
     backgroundColor: darkTheme.colors.interactive.secondary,
