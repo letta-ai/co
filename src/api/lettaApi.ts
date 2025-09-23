@@ -648,6 +648,55 @@ class LettaApiService {
     }
   }
 
+  // Approve/deny via streaming endpoint (background mode)
+  async approveToolRequestStream(
+    agentId: string,
+    params: { approval_request_id: string; approve: boolean; reason?: string },
+    onChunk?: (chunk: StreamingChunk) => void,
+    onComplete?: (response: SendMessageResponse) => void,
+    onError?: (error: any) => void
+  ): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const body: any = {
+        messages: [
+          {
+            type: 'approval',
+            approve: params.approve,
+            approvalRequestId: params.approval_request_id,
+            reason: params.reason,
+          },
+        ],
+        streamTokens: true,
+        background: true,
+        includePings: true,
+      };
+
+      const stream = await this.client.agents.messages.createStream(agentId, body);
+
+      for await (const chunk of stream) {
+        onChunk?.({
+          message_type: (chunk as any).message_type || (chunk as any).messageType,
+          content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
+          reasoning: (chunk as any).reasoning,
+          tool_call: (chunk as any).tool_call,
+          tool_response: (chunk as any).tool_response || (chunk as any).toolReturn,
+          step: (chunk as any).step,
+          run_id: (chunk as any).run_id || (chunk as any).runId,
+          seq_id: (chunk as any).seq_id || (chunk as any).seqId,
+          id: (chunk as any).id || (chunk as any).message_id || (chunk as any).messageId,
+        });
+      }
+
+      onComplete?.({ messages: [], usage: undefined });
+    } catch (err) {
+      onError?.(this.handleError(err));
+    }
+  }
+
   async listEmbeddingModels(): Promise<any[]> {
     try {
       if (!this.client) {

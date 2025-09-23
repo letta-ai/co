@@ -1084,13 +1084,20 @@ export default function App() {
                   if (!currentAgent || !approvalData?.id) return;
                   try {
                     setIsApproving(true);
-                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: true });
-                    setApprovalVisible(false);
-                    setApprovalData(null);
-                    setApprovalReason('');
-                    await loadMessagesForAgent(currentAgent.id);
-                  } catch (e: any) {
-                    Alert.alert('Error', e.message || 'Failed to approve');
+                    await lettaApi.approveToolRequestStream(
+                      currentAgent.id,
+                      { approval_request_id: approvalData.id, approve: true },
+                      undefined,
+                      async () => {
+                        setApprovalVisible(false);
+                        setApprovalData(null);
+                        setApprovalReason('');
+                        await loadMessagesForAgent(currentAgent.id);
+                      },
+                      (err) => {
+                        Alert.alert('Error', err.message || 'Failed to approve');
+                      }
+                    );
                   } finally {
                     setIsApproving(false);
                   }
@@ -1105,13 +1112,20 @@ export default function App() {
                   if (!currentAgent || !approvalData?.id) return;
                   try {
                     setIsApproving(true);
-                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: false });
-                    setApprovalVisible(false);
-                    setApprovalData(null);
-                    setApprovalReason('');
-                    await loadMessagesForAgent(currentAgent.id);
-                  } catch (e: any) {
-                    Alert.alert('Error', e.message || 'Failed to deny');
+                    await lettaApi.approveToolRequestStream(
+                      currentAgent.id,
+                      { approval_request_id: approvalData.id, approve: false },
+                      undefined,
+                      async () => {
+                        setApprovalVisible(false);
+                        setApprovalData(null);
+                        setApprovalReason('');
+                        await loadMessagesForAgent(currentAgent.id);
+                      },
+                      (err) => {
+                        Alert.alert('Error', err.message || 'Failed to deny');
+                      }
+                    );
                   } finally {
                     setIsApproving(false);
                   }
@@ -1137,13 +1151,20 @@ export default function App() {
                   if (!currentAgent || !approvalData?.id) return;
                   try {
                     setIsApproving(true);
-                    await lettaApi.approveToolRequest(currentAgent.id, { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() });
-                    setApprovalVisible(false);
-                    setApprovalData(null);
-                    setApprovalReason('');
-                    await loadMessagesForAgent(currentAgent.id);
-                  } catch (e: any) {
-                    Alert.alert('Error', e.message || 'Failed to deny with feedback');
+                    await lettaApi.approveToolRequestStream(
+                      currentAgent.id,
+                      { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
+                      undefined,
+                      async () => {
+                        setApprovalVisible(false);
+                        setApprovalData(null);
+                        setApprovalReason('');
+                        await loadMessagesForAgent(currentAgent.id);
+                      },
+                      (err) => {
+                        Alert.alert('Error', err.message || 'Failed to deny with feedback');
+                      }
+                    );
                   } finally {
                     setIsApproving(false);
                   }
