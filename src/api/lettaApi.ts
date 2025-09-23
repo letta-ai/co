@@ -16,6 +16,7 @@ import type {
 
 class LettaApiService {
   private client: LettaClient | null = null;
+  private token: string | null = null;
 
   constructor(token?: string) {
     if (token) {
@@ -29,12 +30,14 @@ class LettaApiService {
     
     // Initialize the official Letta client - no base URL needed, routes to Letta cloud by default
     this.client = new LettaClient({ token });
+    this.token = token;
     
     console.log('setAuthToken - Client created successfully:', !!this.client);
   }
 
   removeAuthToken(): void {
     this.client = null;
+    this.token = null;
   }
 
   isAuthenticated(): boolean {
@@ -545,40 +548,100 @@ class LettaApiService {
 
       console.log('approveToolRequest - requestBody:', JSON.stringify(sanitized));
 
-      const response = await this.client.agents.messages.create(agentId, sanitized);
+      try {
+        const response = await this.client.agents.messages.create(agentId, sanitized);
+        const transformedMessages = (response.messages || []).map((message: any) => {
+          const type = message.messageType;
+          const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+          const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
-      const transformedMessages = (response.messages || []).map((message: any) => {
-        const type = message.messageType;
-        const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
-        const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
+          let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+          if (type === 'user_message') role = 'user';
+          else if (type === 'system_message') role = 'system';
+          else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') role = 'tool';
 
-        let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
-        if (type === 'user_message') role = 'user';
-        else if (type === 'system_message') role = 'system';
-        else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') role = 'tool';
+          const content: string = message.content || message.reasoning || '';
 
-        const content: string = message.content || message.reasoning || '';
+          return {
+            id: message.id,
+            role,
+            content,
+            created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
+            tool_calls: message.tool_calls,
+            message_type: type,
+            sender_id: message.senderId,
+            step_id: message.stepId,
+            run_id: message.runId,
+            tool_call: toolCall,
+            tool_response: toolReturn,
+          } as LettaMessage;
+        });
 
         return {
-          id: message.id,
-          role,
-          content,
-          created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
-          tool_calls: message.tool_calls,
-          message_type: type,
-          sender_id: message.senderId,
-          step_id: message.stepId,
-          run_id: message.runId,
-          tool_call: toolCall,
-          tool_response: toolReturn,
-        } as LettaMessage;
-      });
+          messages: transformedMessages,
+          stop_reason: (response as any).stopReason,
+          usage: (response as any).usage,
+        };
+      } catch (sdkErr: any) {
+        // If the server complains about group_id on ApprovalCreate, retry with raw fetch and minimal body
+        const bodyStr = sdkErr?.body ? JSON.stringify(sdkErr.body) : '';
+        if (sdkErr?.statusCode === 400 && /ApprovalCreate/.test(bodyStr) && /group_id/.test(bodyStr) && this.token) {
+          const raw = {
+            messages: [
+              {
+                type: 'approval',
+                approve: params.approve,
+                approval_request_id: params.approval_request_id,
+                ...(params.reason ? { reason: params.reason } : {}),
+              },
+            ],
+          } as any;
+          const resp = await fetch(`https://api.letta.com/v1/agents/${encodeURIComponent(agentId)}/messages`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${this.token}`,
+            },
+            body: JSON.stringify(raw),
+          });
+          if (!resp.ok) {
+            const txt = await resp.text();
+            throw new Error(`Approval POST failed: ${resp.status} ${txt}`);
+          }
+          const json = await resp.json();
+          const transformedMessages = (json.messages || []).map((message: any) => {
+            const type = message.message_type || message.messageType;
+            const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+            const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
-      return {
-        messages: transformedMessages,
-        stop_reason: response.stopReason,
-        usage: response.usage,
-      };
+            let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+            if (type === 'user_message') role = 'user';
+            else if (type === 'system_message') role = 'system';
+            else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') role = 'tool';
+
+            const content: string = message.content || message.reasoning || '';
+            return {
+              id: message.id,
+              role,
+              content,
+              created_at: message.date ? new Date(message.date).toISOString() : new Date().toISOString(),
+              tool_calls: message.tool_calls,
+              message_type: type,
+              sender_id: message.senderId,
+              step_id: message.stepId,
+              run_id: message.runId,
+              tool_call: toolCall,
+              tool_response: toolReturn,
+            } as LettaMessage;
+          });
+          return {
+            messages: transformedMessages,
+            stop_reason: json.stop_reason || json.stopReason,
+            usage: json.usage,
+          };
+        }
+        throw sdkErr;
+      }
     } catch (error) {
       console.error('approveToolRequest - error:', error);
       throw this.handleError(error);
