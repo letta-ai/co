@@ -8,9 +8,11 @@ interface AgentCardProps {
   agent: LettaAgent;
   isSelected: boolean;
   onPress: () => void;
+  isFavorited?: boolean;
+  onToggleFavorite?: () => void;
 }
 
-const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onPress }) => {
+const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onPress, isFavorited, onToggleFavorite }) => {
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -35,12 +37,23 @@ const AgentCard: React.FC<AgentCardProps> = ({ agent, isSelected, onPress }) => 
             />
           </View>
           <View style={styles.textContainer}>
-            <Text 
-              style={[styles.name, isSelected && styles.selectedText]}
-              numberOfLines={1}
-            >
-              {agent.name}
-            </Text>
+            <View style={styles.rowHeader}>
+              <Text 
+                style={[styles.name, isSelected && styles.selectedText]}
+                numberOfLines={1}
+              >
+                {agent.name}
+              </Text>
+              {onToggleFavorite && (
+                <TouchableOpacity
+                  accessibilityLabel={isFavorited ? 'Unfavorite agent' : 'Favorite agent'}
+                  onPress={onToggleFavorite}
+                  style={styles.starBtn}
+                >
+                  <Ionicons name={isFavorited ? 'star' : 'star-outline'} size={16} color={isFavorited ? '#ffd166' : (isSelected ? darkTheme.colors.text.inverse : darkTheme.colors.text.secondary)} />
+                </TouchableOpacity>
+              )}
+            </View>
             <Text 
               style={[styles.date, isSelected && styles.selectedSubtext]}
             >
@@ -120,6 +133,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   avatarContainer: {
     width: 40,
     height: 40,
@@ -137,6 +155,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: darkTheme.colors.text.primary,
     marginBottom: 2,
+  },
+  starBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    marginLeft: 8,
   },
   selectedText: {
     color: darkTheme.colors.text.inverse,

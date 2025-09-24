@@ -167,29 +167,40 @@ export default function Sidebar({
                   <Text style={styles.emptyText}>Loading favorites…</Text>
                 </View>
               ) : (
-                favoriteAgents.map((agent) => (
-                  <TouchableOpacity
-                    key={agent.id}
-                    style={[
-                      styles.agentItem,
-                      currentAgent?.id === agent.id && styles.selectedAgentItem
-                    ]}
-                    onPress={() => onAgentSelect(agent)}
-                  >
-                    <Text style={[
-                      styles.agentName,
-                      currentAgent?.id === agent.id && styles.selectedAgentName
-                    ]}>
-                      {agent.name}
-                    </Text>
-                    <Text style={styles.agentMeta}>
-                      {agent.last_run_completion
-                        ? `Last run: ${new Date(agent.last_run_completion).toLocaleDateString()}`
-                        : 'Never run'
-                      }
-                    </Text>
-                  </TouchableOpacity>
-                ))
+                favoriteAgents.map((agent) => {
+                  const starred = favorites.includes(agent.id)
+                  return (
+                    <TouchableOpacity
+                      key={agent.id}
+                      style={[
+                        styles.agentItem,
+                        currentAgent?.id === agent.id && styles.selectedAgentItem
+                      ]}
+                      onPress={() => onAgentSelect(agent)}
+                    >
+                      <View style={styles.rowHeader}>
+                        <Text style={[
+                          styles.agentName,
+                          currentAgent?.id === agent.id && styles.selectedAgentName
+                        ]}>
+                          {agent.name}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.starBtn}
+                          onPress={() => useAppStore.getState().toggleFavorite(agent.id)}
+                          accessibilityLabel={starred ? 'Unfavorite agent' : 'Favorite agent'}
+                        >
+                          <Ionicons name={starred ? 'star' : 'star-outline'} size={16} color={starred ? '#ffd166' : darkTheme.colors.text.secondary} />
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.agentMeta}>
+                        {agent.last_run_completion
+                          ? `Last run: ${new Date(agent.last_run_completion).toLocaleDateString()}`
+                          : 'Never run'}
+                      </Text>
+                    </TouchableOpacity>
+                  )
+                })
               )
             ) : agents.length === 0 ? (
               <View style={styles.emptyContainer}>
@@ -199,29 +210,40 @@ export default function Sidebar({
                 </TouchableOpacity>
               </View>
             ) : (
-              agents.map((agent) => (
-                <TouchableOpacity
-                  key={agent.id}
-                  style={[
-                    styles.agentItem,
-                    currentAgent?.id === agent.id && styles.selectedAgentItem
-                  ]}
-                  onPress={() => onAgentSelect(agent)}
-                >
-                  <Text style={[
-                    styles.agentName,
-                    currentAgent?.id === agent.id && styles.selectedAgentName
-                  ]}>
-                    {agent.name}
-                  </Text>
-                  <Text style={styles.agentMeta}>
-                    {agent.last_run_completion
-                      ? `Last run: ${new Date(agent.last_run_completion).toLocaleDateString()}`
-                      : 'Never run'
-                    }
-                  </Text>
-                </TouchableOpacity>
-              ))
+              agents.map((agent) => {
+                const starred = favorites.includes(agent.id)
+                return (
+                  <TouchableOpacity
+                    key={agent.id}
+                    style={[
+                      styles.agentItem,
+                      currentAgent?.id === agent.id && styles.selectedAgentItem
+                    ]}
+                    onPress={() => onAgentSelect(agent)}
+                  >
+                    <View style={styles.rowHeader}>
+                      <Text style={[
+                        styles.agentName,
+                        currentAgent?.id === agent.id && styles.selectedAgentName
+                      ]}>
+                        {agent.name}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.starBtn}
+                        onPress={() => useAppStore.getState().toggleFavorite(agent.id)}
+                        accessibilityLabel={starred ? 'Unfavorite agent' : 'Favorite agent'}
+                      >
+                        <Ionicons name={starred ? 'star' : 'star-outline'} size={16} color={starred ? '#ffd166' : darkTheme.colors.text.secondary} />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.agentMeta}>
+                      {agent.last_run_completion
+                        ? `Last run: ${new Date(agent.last_run_completion).toLocaleDateString()}`
+                        : 'Never run'}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })
             )}
           </ScrollView>
         )}
@@ -380,11 +402,20 @@ const styles = StyleSheet.create({
     borderColor: darkTheme.colors.border.primary,
     borderRadius: 0,
   },
+  rowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   agentName: {
     fontSize: darkTheme.typography.body.fontSize,
     fontWeight: '600',
     fontFamily: darkTheme.typography.body.fontFamily,
     color: darkTheme.colors.text.primary,
+  },
+  starBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
   },
   selectedAgentName: {
     color: darkTheme.colors.text.primary,

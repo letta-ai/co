@@ -26,6 +26,8 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
     setCurrentAgent,
     createAgent,
     fetchAgents,
+    toggleFavorite,
+    isFavorite,
   } = useAppStore();
 
   useEffect(() => {
@@ -92,6 +94,8 @@ const AgentsDrawerContent: React.FC<DrawerContentComponentProps> = (props) => {
             agent={agent}
             isSelected={agent.id === currentAgentId}
             onPress={() => handleAgentPress(agent.id)}
+            isFavorited={isFavorite(agent.id)}
+            onToggleFavorite={() => toggleFavorite(agent.id)}
           />
         ))}
         
