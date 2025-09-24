@@ -10,7 +10,10 @@ import {
   ActivityIndicator,
   Alert,
   useColorScheme,
+  Platform,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import lettaApi from './src/api/lettaApi';
 import { darkTheme } from './src/theme';
 import type { Project, ListProjectsParams } from './src/types/letta';
@@ -29,6 +32,7 @@ export default function ProjectSelectorModal({
   onClose,
 }: ProjectSelectorModalProps) {
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const LogoLoader = require('./src/components/LogoLoader').default;
   const logoSource = colorScheme === 'dark'
     ? require('./assets/animations/Dark-sygnetrotate2.json')
@@ -124,10 +128,11 @@ export default function ProjectSelectorModal({
       visible={visible}
       animationType="slide"
       transparent={false}
+      presentationStyle={Platform.OS === 'ios' ? 'fullScreen' : 'overFullScreen'}
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
-        <View style={styles.header}>
+      <SafeAreaView style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.cancelButton}>Cancel</Text>
           </TouchableOpacity>
@@ -200,7 +205,8 @@ export default function ProjectSelectorModal({
             )}
           </ScrollView>
         )}
-      </View>
+        <StatusBar style="light" />
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -216,8 +222,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    paddingTop: 50, // Account for status bar
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
   },
@@ -236,7 +241,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
   },
@@ -269,12 +274,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 16,
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
   },
   selectedProject: {
-    backgroundColor: '#f0f8ff',
+    backgroundColor: darkTheme.colors.background.selected,
   },
   projectInfo: {
     flex: 1,
@@ -304,7 +309,7 @@ const styles = StyleSheet.create({
   },
   loadMoreButton: {
     padding: 16,
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
     alignItems: 'center',
@@ -321,7 +326,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 40,
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: darkTheme.colors.background.primary,
   },
   emptyText: {
     fontSize: 16,
