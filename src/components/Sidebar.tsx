@@ -90,16 +90,17 @@ export default function Sidebar({
   const loadFavoriteAgents = async (isRefresh = false) => {
     try {
       if (!isRefresh) setIsLoading(true);
-      const list: LettaAgent[] = [];
-      for (const id of favorites) {
-        try {
-          const agent = await lettaApi.getAgent(id);
-          list.push(agent);
-        } catch (e) {
-          // ignore missing/unauthorized agents
-          console.warn('Failed to fetch favorited agent', id, e);
-        }
-      }
+      const results = await Promise.all(
+        favorites.map(async (id) => {
+          try {
+            return await lettaApi.getAgent(id);
+          } catch (e) {
+            console.warn('Failed to fetch favorited agent', id, e);
+            return null;
+          }
+        })
+      );
+      const list = results.filter((a): a is LettaAgent => !!a);
       // Keep same ordering as favorites list
       const ordered = favorites
         .map((id) => list.find((a) => a.id === id))
