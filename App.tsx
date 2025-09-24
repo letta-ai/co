@@ -281,7 +281,12 @@ function MainApp() {
       setBlocksError(null);
       try {
         const blocks = await lettaApi.listAgentBlocks(currentAgent.id);
-        setMemoryBlocks(blocks || []);
+        const sorted = (blocks || []).slice().sort((a, b) => {
+          const la = (a.label || a.name || '').toLowerCase();
+          const lb = (b.label || b.name || '').toLowerCase();
+          return la.localeCompare(lb);
+        });
+        setMemoryBlocks(sorted);
       } catch (e: any) {
         setBlocksError(e?.message || 'Failed to load memory blocks');
       } finally {
@@ -977,19 +982,26 @@ function MainApp() {
                       <Text style={styles.emptyText}>No memory blocks</Text>
                     </View>
                   ) : (
-                    memoryBlocks.map((b) => (
-                      <TouchableOpacity
-                        key={b.id}
-                        style={styles.agentItem}
-                        onPress={() => setSelectedBlock(b)}
-                      >
-                        {!!b.label && <Text style={styles.bottomProjectLabel}>{b.label}</Text>}
-                        <Text style={styles.agentName}>{b.name || 'Untitled'}</Text>
-                        {!!b.description && (
-                          <Text style={styles.agentMeta}>{b.description}</Text>
-                        )}
-                      </TouchableOpacity>
-                    ))
+                    memoryBlocks.map((b) => {
+                      const derivedName = (b.name && b.name.trim())
+                        ? b.name.trim()
+                        : (b.label ? b.label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Untitled')
+                      return (
+                        <TouchableOpacity
+                          key={b.id}
+                          style={styles.blockItem}
+                          onPress={() => setSelectedBlock(b)}
+                        >
+                          {!!b.label && (
+                            <Text numberOfLines={1} style={styles.blockLabel}>{b.label}</Text>
+                          )}
+                          <Text numberOfLines={1} style={styles.blockName}>{derivedName}</Text>
+                          {!!b.description && (
+                            <Text numberOfLines={2} style={styles.blockDesc}>{b.description}</Text>
+                          )}
+                        </TouchableOpacity>
+                      )
+                    })
                   )}
                 </View>
               </ScrollView>
@@ -1570,6 +1582,35 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: darkTheme.spacing[3],
     paddingVertical: darkTheme.spacing[2],
+  },
+  // Memory block list styles
+  blockItem: {
+    paddingVertical: darkTheme.spacing[1.5],
+    paddingHorizontal: darkTheme.spacing[2],
+    marginHorizontal: darkTheme.spacing[2],
+    marginBottom: darkTheme.spacing[1],
+    borderRadius: darkTheme.layout.borderRadius.medium,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.secondary,
+  },
+  blockLabel: {
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+    color: darkTheme.colors.text.secondary,
+    marginBottom: darkTheme.spacing[0.5],
+  },
+  blockName: {
+    fontSize: darkTheme.typography.h6.fontSize,
+    fontWeight: darkTheme.typography.h6.fontWeight,
+    fontFamily: darkTheme.typography.h6.fontFamily,
+    color: darkTheme.colors.text.primary,
+  },
+  blockDesc: {
+    marginTop: darkTheme.spacing[0.5],
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+    color: darkTheme.colors.text.secondary,
   },
   messageGroup: {
     marginBottom: darkTheme.spacing.messageGap,
