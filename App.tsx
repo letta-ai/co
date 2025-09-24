@@ -928,7 +928,18 @@ function MainApp() {
                 </>
               )}
             </View>
-            {currentAgent && activeSidebarTab !== 'memory' && (
+            {currentAgent && (
+              <TouchableOpacity
+                onPress={() => setActiveSidebarTab(activeSidebarTab === 'memory' ? 'project' : 'memory')}
+                style={[styles.headerPill, activeSidebarTab === 'memory' && styles.headerPillActive]}
+                accessibilityLabel={activeSidebarTab === 'memory' ? 'Switch to Chat' : 'View memory blocks'}
+              >
+                <Text style={[styles.headerPillText, activeSidebarTab === 'memory' && styles.headerPillTextActive]}>
+                  {activeSidebarTab === 'memory' ? 'Chat' : 'Memory'}
+                </Text>
+              </TouchableOpacity>
+            )}
+            {currentAgent && (
               <TouchableOpacity
                 onPress={() => currentAgent && toggleFavorite(currentAgent.id)}
                 style={styles.headerIconButton}
@@ -941,7 +952,7 @@ function MainApp() {
                 />
               </TouchableOpacity>
             )}
-            {currentAgent && activeSidebarTab !== 'memory' && (
+            {currentAgent && (
               <TouchableOpacity
                 onPress={handleOpenAgentInDashboard}
                 style={styles.headerIconButton}
@@ -1491,6 +1502,28 @@ const styles = StyleSheet.create({
   headerIconButton: {
     marginLeft: darkTheme.spacing[1.5],
     padding: darkTheme.spacing[1],
+  },
+  headerPill: {
+    marginLeft: darkTheme.spacing[1.5],
+    paddingVertical: darkTheme.spacing[0.75] || 6,
+    paddingHorizontal: darkTheme.spacing[1.5] || 10,
+    borderRadius: darkTheme.layout.borderRadius.round,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.surface,
+  },
+  headerPillActive: {
+    backgroundColor: darkTheme.colors.interactive.secondary,
+    borderColor: darkTheme.colors.interactive.secondary,
+  },
+  headerPillText: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+  },
+  headerPillTextActive: {
+    color: darkTheme.colors.text.inverse,
+    fontWeight: '600',
   },
   // Approval message card (inline in the chat)
   approvalCardInline: {
