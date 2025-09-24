@@ -25,6 +25,7 @@ interface SidebarProps {
   onCreateAgent: () => void;
   onLogout: () => void;
   isVisible: boolean;
+  onTabChange?: (tab: 'project' | 'favorites' | 'memory') => void;
 }
 
 export default function Sidebar({
@@ -35,12 +36,13 @@ export default function Sidebar({
   onCreateAgent,
   onLogout,
   isVisible,
+  onTabChange,
 }: SidebarProps) {
   const colorScheme = useColorScheme();
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState<'project' | 'favorites'>('project');
+  const [activeTab, setActiveTab] = useState<'project' | 'favorites' | 'memory'>('project');
   const { favorites } = useAppStore();
   const [favoriteAgents, setFavoriteAgents] = useState<LettaAgent[]>([]);
   // Simple, minimal loading indicator (no animated logo)
@@ -85,6 +87,10 @@ export default function Sidebar({
       loadAgents();
     }
   }, [currentProject]);
+
+  useEffect(() => {
+    onTabChange && onTabChange(activeTab);
+  }, [activeTab]);
 
   // Load favorited agents across projects when switching to Favorites tab
   const loadFavoriteAgents = async (isRefresh = false) => {
@@ -144,6 +150,12 @@ export default function Sidebar({
           >
             <Text style={[styles.tabText, activeTab === 'favorites' && styles.tabTextActive]}>Favorites</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('memory')}
+            style={[styles.tabButton, activeTab === 'memory' && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, activeTab === 'memory' && styles.tabTextActive]}>Memory</Text>
+          </TouchableOpacity>
         </View>
         {isLoading ? (
           <View style={styles.loadingContainer}>
@@ -202,6 +214,10 @@ export default function Sidebar({
                   )
                 })
               )
+            ) : activeTab === 'memory' ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Viewing memory blocks</Text>
+              </View>
             ) : agents.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No agents found</Text>

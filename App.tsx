@@ -31,7 +31,7 @@ import Sidebar from './src/components/Sidebar';
 import MessageContent from './src/components/MessageContent';
 import ToolCallItem from './src/components/ToolCallItem';
 import { darkTheme } from './src/theme';
-import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
+import type { LettaAgent, LettaMessage, StreamingChunk, Project, MemoryBlock } from './src/types/letta';
 import useAppStore from './src/store/appStore';
 
 function MainApp() {
@@ -82,6 +82,11 @@ function MainApp() {
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const { favorites, toggleFavorite, isFavorite } = useAppStore();
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'project' | 'favorites' | 'memory'>('project');
+  const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
+  const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
+  const [blocksError, setBlocksError] = useState<string | null>(null);
+  const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
 
   const isDesktop = screenData.width >= 768;
 
@@ -267,6 +272,24 @@ function MainApp() {
     const subscription = Dimensions.addEventListener('change', onChange);
     return () => subscription?.remove();
   }, []);
+
+  // Load memory blocks when Memory tab is active
+  useEffect(() => {
+    const loadBlocks = async () => {
+      if (!currentAgent || activeSidebarTab !== 'memory') return;
+      setIsLoadingBlocks(true);
+      setBlocksError(null);
+      try {
+        const blocks = await lettaApi.listAgentBlocks(currentAgent.id);
+        setMemoryBlocks(blocks || []);
+      } catch (e: any) {
+        setBlocksError(e?.message || 'Failed to load memory blocks');
+      } finally {
+        setIsLoadingBlocks(false);
+      }
+    };
+    loadBlocks();
+  }, [activeSidebarTab, currentAgent?.id]);
 
   const handleConnect = async () => {
     const trimmedToken = apiToken.trim();
@@ -797,6 +820,12 @@ function MainApp() {
             onCreateAgent={() => setShowCreateAgentScreen(true)}
             onLogout={handleLogout}
             isVisible={true}
+            onTabChange={(tab) => {
+              setActiveSidebarTab(tab);
+              if (tab !== 'memory') {
+                setSelectedBlock(null);
+              }
+            }}
           />
         )}
 
@@ -831,6 +860,12 @@ function MainApp() {
                 }}
                 onLogout={handleLogout}
                 isVisible={true}
+                onTabChange={(tab) => {
+                  setActiveSidebarTab(tab);
+                  if (tab !== 'memory') {
+                    setSelectedBlock(null);
+                  }
+                }}
               />
             </SafeAreaView>
           </Modal>
@@ -854,17 +889,41 @@ function MainApp() {
                 <Text style={styles.menuIcon}>☰</Text>
               </TouchableOpacity>
             )}
+            {activeSidebarTab === 'memory' && selectedBlock && (
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={() => setSelectedBlock(null)}
+                accessibilityLabel="Back to memory list"
+              >
+                <Ionicons name="chevron-back" size={18} color={darkTheme.colors.text.secondary} />
+              </TouchableOpacity>
+            )}
             <View style={styles.headerContent}>
-              <Text style={styles.agentTitle}>
-                {currentAgent ? currentAgent.name : 'Select an agent'}
-              </Text>
-              {currentAgent && (
-                <Text style={styles.agentSubtitle}>
-                  {currentProject?.name}
-                </Text>
+              {activeSidebarTab === 'memory' ? (
+                <>
+                  <Text style={styles.agentTitle}>
+                    {selectedBlock ? (selectedBlock.name || selectedBlock.label || 'Memory') : 'Memory Blocks'}
+                  </Text>
+                  {currentAgent && (
+                    <Text style={styles.agentSubtitle}>
+                      {currentAgent.name}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.agentTitle}>
+                    {currentAgent ? currentAgent.name : 'Select an agent'}
+                  </Text>
+                  {currentAgent && (
+                    <Text style={styles.agentSubtitle}>
+                      {currentProject?.name}
+                    </Text>
+                  )}
+                </>
               )}
             </View>
-            {currentAgent && (
+            {currentAgent && activeSidebarTab !== 'memory' && (
               <TouchableOpacity
                 onPress={() => currentAgent && toggleFavorite(currentAgent.id)}
                 style={styles.headerIconButton}
@@ -877,7 +936,7 @@ function MainApp() {
                 />
               </TouchableOpacity>
             )}
-            {currentAgent && (
+            {currentAgent && activeSidebarTab !== 'memory' && (
               <TouchableOpacity
                 onPress={handleOpenAgentInDashboard}
                 style={styles.headerIconButton}
@@ -888,8 +947,54 @@ function MainApp() {
             )}
           </View>
 
-          {/* Messages */}
-          {isLoadingMessages ? (
+          {/* Memory view or Messages */}
+          {activeSidebarTab === 'memory' ? (
+            selectedBlock ? (
+              <ScrollView style={styles.messagesContainer}>
+                <View style={styles.messagesList}>
+                  <MessageContent content={selectedBlock.value || ''} isUser={false} />
+                </View>
+              </ScrollView>
+            ) : isLoadingBlocks ? (
+              <View style={styles.loadingContainer}>
+                <LogoLoader
+                  source={colorScheme === 'dark' 
+                    ? require('./assets/animations/Dark-sygnetrotate2.json') 
+                    : require('./assets/animations/Light-sygnetrotate2.json')}
+                  size={120}
+                />
+                <Text style={styles.loadingText}>Loading memory blocks...</Text>
+              </View>
+            ) : blocksError ? (
+              <View style={styles.loadingContainer}>
+                <Text style={styles.errorText}>{blocksError}</Text>
+              </View>
+            ) : (
+              <ScrollView style={styles.messagesContainer}>
+                <View style={styles.messagesList}>
+                  {memoryBlocks.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                      <Text style={styles.emptyText}>No memory blocks</Text>
+                    </View>
+                  ) : (
+                    memoryBlocks.map((b) => (
+                      <TouchableOpacity
+                        key={b.id}
+                        style={styles.agentItem}
+                        onPress={() => setSelectedBlock(b)}
+                      >
+                        {!!b.label && <Text style={styles.bottomProjectLabel}>{b.label}</Text>}
+                        <Text style={styles.agentName}>{b.name || 'Untitled'}</Text>
+                        {!!b.description && (
+                          <Text style={styles.agentMeta}>{b.description}</Text>
+                        )}
+                      </TouchableOpacity>
+                    ))
+                  )}
+                </View>
+              </ScrollView>
+            )
+          ) : isLoadingMessages ? (
             <View style={styles.loadingContainer}>
               <LogoLoader
                 source={colorScheme === 'dark' 
@@ -1166,30 +1271,32 @@ function MainApp() {
           )}
 
           {/* Input */}
-          <View style={styles.inputContainer}>
-            <View style={styles.inputWrapper}>
-              <TextInput
-                style={styles.messageInput}
-                value={inputText}
-                onChangeText={setInputText}
-                multiline
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendButton,
-                  (!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible) && styles.sendButtonDisabled
-                ]}
-                onPress={handleSendMessage}
-                disabled={!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible}
-              >
-                {isSendingMessage ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.sendButtonText}>Send</Text>
-                )}
-              </TouchableOpacity>
+          {activeSidebarTab !== 'memory' && (
+            <View style={styles.inputContainer}>
+              <View style={styles.inputWrapper}>
+                <TextInput
+                  style={styles.messageInput}
+                  value={inputText}
+                  onChangeText={setInputText}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.sendButton,
+                    (!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible) && styles.sendButtonDisabled
+                  ]}
+                  onPress={handleSendMessage}
+                  disabled={!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible}
+                >
+                  {isSendingMessage ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.sendButtonText}>Send</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          )}
         </View>
       </View>
 

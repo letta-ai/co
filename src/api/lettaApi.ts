@@ -11,7 +11,8 @@ import type {
   SendMessageRequest,
   SendMessageResponse,
   StreamingChunk,
-  ApiError 
+  ApiError, 
+  MemoryBlock
 } from '../types/letta';
 
 class LettaApiService {
@@ -21,6 +22,18 @@ class LettaApiService {
   constructor(token?: string) {
     if (token) {
       this.setAuthToken(token);
+    }
+  }
+
+  async listAgentBlocks(agentId: string): Promise<MemoryBlock[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      const blocks = await this.client.agents.blocks.list(agentId);
+      return blocks as unknown as MemoryBlock[];
+    } catch (error) {
+      throw this.handleError(error);
     }
   }
 
