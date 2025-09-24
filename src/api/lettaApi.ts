@@ -116,7 +116,8 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
       
-      const response = await this.client.agents.get(agentId);
+      // SDK uses `retrieve` for fetching a single agent
+      const response = await this.client.agents.retrieve(agentId);
       return response;
     } catch (error) {
       throw this.handleError(error);
