@@ -32,6 +32,7 @@ import MessageContent from './src/components/MessageContent';
 import ToolCallItem from './src/components/ToolCallItem';
 import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project } from './src/types/letta';
+import useAppStore from './src/store/appStore';
 
 function MainApp() {
   const insets = useSafeAreaInsets();
@@ -80,6 +81,7 @@ function MainApp() {
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
+  const { favorites, toggleFavorite, isFavorite } = useAppStore();
 
   const isDesktop = screenData.width >= 768;
 
@@ -862,6 +864,19 @@ function MainApp() {
                 </Text>
               )}
             </View>
+            {currentAgent && (
+              <TouchableOpacity
+                onPress={() => currentAgent && toggleFavorite(currentAgent.id)}
+                style={styles.headerIconButton}
+                accessibilityLabel={isFavorite(currentAgent.id) ? "Unfavorite agent" : "Favorite agent"}
+              >
+                <Ionicons
+                  name={isFavorite(currentAgent.id) ? 'star' : 'star-outline'}
+                  size={18}
+                  color={isFavorite(currentAgent.id) ? '#ffd166' : darkTheme.colors.text.secondary}
+                />
+              </TouchableOpacity>
+            )}
             {currentAgent && (
               <TouchableOpacity
                 onPress={handleOpenAgentInDashboard}

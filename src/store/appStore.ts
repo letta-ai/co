@@ -12,6 +12,7 @@ interface AppState {
   // Agents
   agents: LettaAgent[];
   currentAgentId: string | null;
+  favorites: string[]; // agent IDs favorited across projects
   
   // Messages
   messages: Record<string, LettaMessage[]>;
@@ -29,6 +30,8 @@ interface AppState {
   fetchAgents: () => Promise<void>;
   setCurrentAgent: (agentId: string) => void;
   createAgent: (name: string, description?: string) => Promise<LettaAgent>;
+  toggleFavorite: (agentId: string) => void;
+  isFavorite: (agentId: string) => boolean;
   
   // Message Actions
   fetchMessages: (agentId: string) => Promise<void>;
@@ -51,6 +54,7 @@ const useAppStore = create<AppState>()(
       isAuthenticated: false,
       agents: [],
       currentAgentId: null,
+      favorites: [],
       messages: {},
       isLoading: false,
       isDrawerOpen: false,
@@ -124,6 +128,15 @@ const useAppStore = create<AppState>()(
         // Fetch messages for the selected agent
         get().fetchMessages(agentId);
       },
+
+      toggleFavorite: (agentId: string) => {
+        const { favorites } = get();
+        const next = favorites.includes(agentId)
+          ? favorites.filter((id) => id !== agentId)
+          : [...favorites, agentId];
+        set({ favorites: next });
+      },
+      isFavorite: (agentId: string) => get().favorites.includes(agentId),
 
       createAgent: async (name: string, description?: string) => {
         if (!get().isAuthenticated) {
@@ -261,6 +274,7 @@ const useAppStore = create<AppState>()(
           isAuthenticated: false,
           agents: [],
           currentAgentId: null,
+          favorites: [],
           messages: {},
           isLoading: false,
           isDrawerOpen: false,
@@ -285,6 +299,7 @@ const useAppStore = create<AppState>()(
       partialize: (state) => ({
         apiToken: state.apiToken,
         currentAgentId: state.currentAgentId,
+        favorites: state.favorites,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.apiToken) {

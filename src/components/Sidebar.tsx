@@ -15,6 +15,7 @@ import { darkTheme } from '../theme';
 import Wordmark from './Wordmark';
 import { Ionicons } from '@expo/vector-icons';
 import type { LettaAgent, Project } from '../types/letta';
+import useAppStore from '../store/appStore';
 
 interface SidebarProps {
   currentProject: Project | null;
@@ -39,6 +40,9 @@ export default function Sidebar({
   const [agents, setAgents] = useState<LettaAgent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState<'project' | 'favorites'>('project');
+  const { favorites } = useAppStore();
+  const [favoriteAgents, setFavoriteAgents] = useState<LettaAgent[]>([]);
   // Simple, minimal loading indicator (no animated logo)
 
   const loadAgents = async (isRefresh = false) => {
@@ -69,7 +73,11 @@ export default function Sidebar({
 
   const handleRefresh = () => {
     setIsRefreshing(true);
-    loadAgents(true);
+    if (activeTab === 'favorites') {
+      loadFavoriteAgents(true);
+    } else {
+      loadAgents(true);
+    }
   };
 
   useEffect(() => {
@@ -77,6 +85,37 @@ export default function Sidebar({
       loadAgents();
     }
   }, [currentProject]);
+
+  // Load favorited agents across projects when switching to Favorites tab
+  const loadFavoriteAgents = async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setIsLoading(true);
+      const list: LettaAgent[] = [];
+      for (const id of favorites) {
+        try {
+          const agent = await lettaApi.getAgent(id);
+          list.push(agent);
+        } catch (e) {
+          // ignore missing/unauthorized agents
+          console.warn('Failed to fetch favorited agent', id, e);
+        }
+      }
+      // Keep same ordering as favorites list
+      const ordered = favorites
+        .map((id) => list.find((a) => a.id === id))
+        .filter((a): a is LettaAgent => !!a);
+      setFavoriteAgents(ordered);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'favorites') {
+      loadFavoriteAgents();
+    }
+  }, [activeTab, JSON.stringify(favorites)]);
 
   if (!isVisible) return null;
 
@@ -91,6 +130,20 @@ export default function Sidebar({
       {/* Agents List */}
       <View style={styles.agentListContainer}>
         <Text style={styles.sectionTitle}>Agents</Text>
+        <View style={styles.tabsRow}>
+          <TouchableOpacity
+            onPress={() => setActiveTab('project')}
+            style={[styles.tabButton, activeTab === 'project' && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, activeTab === 'project' && styles.tabTextActive]}>Project</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setActiveTab('favorites')}
+            style={[styles.tabButton, activeTab === 'favorites' && styles.tabButtonActive]}
+          >
+            <Text style={[styles.tabText, activeTab === 'favorites' && styles.tabTextActive]}>Favorites</Text>
+          </TouchableOpacity>
+        </View>
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={darkTheme.colors.text.secondary} />
@@ -103,7 +156,41 @@ export default function Sidebar({
               <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
             }
           >
-            {agents.length === 0 ? (
+            {activeTab === 'favorites' ? (
+              favorites.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>No favorited agents</Text>
+                </View>
+              ) : favoriteAgents.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>Loading favorites…</Text>
+                </View>
+              ) : (
+                favoriteAgents.map((agent) => (
+                  <TouchableOpacity
+                    key={agent.id}
+                    style={[
+                      styles.agentItem,
+                      currentAgent?.id === agent.id && styles.selectedAgentItem
+                    ]}
+                    onPress={() => onAgentSelect(agent)}
+                  >
+                    <Text style={[
+                      styles.agentName,
+                      currentAgent?.id === agent.id && styles.selectedAgentName
+                    ]}>
+                      {agent.name}
+                    </Text>
+                    <Text style={styles.agentMeta}>
+                      {agent.last_run_completion
+                        ? `Last run: ${new Date(agent.last_run_completion).toLocaleDateString()}`
+                        : 'Never run'
+                      }
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )
+            ) : agents.length === 0 ? (
               <View style={styles.emptyContainer}>
                 <Text style={styles.emptyText}>No agents found</Text>
                 <TouchableOpacity style={styles.createButton} onPress={onCreateAgent}>
@@ -221,6 +308,32 @@ const styles = StyleSheet.create({
     letterSpacing: darkTheme.typography.technical.letterSpacing,
     marginTop: darkTheme.spacing[2],
     marginBottom: darkTheme.spacing[1.5],
+  },
+  tabsRow: {
+    flexDirection: 'row',
+    gap: darkTheme.spacing[1],
+    marginBottom: darkTheme.spacing[1],
+  },
+  tabButton: {
+    paddingVertical: darkTheme.spacing[0.75] || 6,
+    paddingHorizontal: darkTheme.spacing[1.5] || 10,
+    borderRadius: darkTheme.layout.borderRadius.medium,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.surface,
+  },
+  tabButtonActive: {
+    backgroundColor: darkTheme.colors.interactive.secondary,
+    borderColor: darkTheme.colors.interactive.secondary,
+  },
+  tabText: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+  },
+  tabTextActive: {
+    color: darkTheme.colors.text.inverse,
+    fontWeight: '600',
   },
   loadingContainer: {
     flexDirection: 'row',
