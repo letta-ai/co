@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Alert,
   TextInput,
   ScrollView,
+  FlatList,
   SafeAreaView,
   ActivityIndicator,
   Modal,
@@ -98,7 +99,7 @@ function MainApp() {
   const isDesktop = screenData.width >= 768;
 
   // Ref for ScrollView to control scrolling
-  const scrollViewRef = useRef<ScrollView>(null);
+  const scrollViewRef = useRef<FlatList<any>>(null);
   // Reserve space and anchor positioning for streaming response
   const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
   const [hasPositionedForStream, setHasPositionedForStream] = useState(false);
@@ -125,7 +126,7 @@ function MainApp() {
       if (delta !== 0) {
         // Counteract layout shift by adjusting scroll position upward by the same delta
         const targetY = Math.max(0, scrollY - delta);
-        scrollViewRef.current?.scrollTo({ y: targetY, animated: false });
+        scrollViewRef.current?.scrollToOffset({ offset: targetY, animated: false });
         setScrollY(targetY);
         setBottomSpacerHeight(newH);
       }
@@ -169,6 +170,101 @@ function MainApp() {
   };
 
   // No-op: header segmented control switches between Memory and Chat views
+
+  // Group messages for efficient FlatList rendering (pairs tool call + result, attach reasoning)
+  type MessageGroup =
+    | { key: string; type: 'toolPair'; call: LettaMessage; ret?: LettaMessage; reasoning?: string }
+    | { key: string; type: 'message'; message: LettaMessage; reasoning?: string };
+
+  const messageGroups: MessageGroup[] = useMemo(() => {
+    const groups: MessageGroup[] = [];
+    const callTypes = new Set(['tool_call', 'tool_call_message', 'tool_message']);
+    const retTypes = new Set(['tool_response', 'tool_return_message']);
+    const shownReasoningForStep = new Set<string>();
+
+    const findReasoningForStep = (fromIndex: number, stepId?: string): string | undefined => {
+      if (!stepId) return undefined;
+      for (let j = fromIndex; j < messages.length; j++) {
+        const msgAny: any = messages[j];
+        if (msgAny.role === 'assistant' && msgAny.step_id && String(msgAny.step_id) === String(stepId) && msgAny.reasoning) {
+          return String(msgAny.reasoning);
+        }
+      }
+      return undefined;
+    };
+
+    for (let i = 0; i < messages.length; i++) {
+      const m: any = messages[i];
+      if (m.role === 'tool' && callTypes.has(m.message_type)) {
+        const next: any = messages[i + 1];
+        const paired = !!(next && next.role === 'tool' && retTypes.has(next.message_type) && (
+          (next.step_id && m.step_id && String(next.step_id) === String(m.step_id)) ||
+          (!m.step_id || m.step_id === 'no-step')
+        ));
+
+        let reasoningToShow: string | undefined = m.reasoning;
+        if (!reasoningToShow && m.step_id && !shownReasoningForStep.has(m.step_id)) {
+          reasoningToShow = findReasoningForStep(i + 1, m.step_id);
+        }
+
+        groups.push({
+          key: `${m.id}-grp-${i}`,
+          type: 'toolPair',
+          call: m,
+          ret: paired ? next : undefined,
+          reasoning: reasoningToShow,
+        });
+
+        if (m.step_id && reasoningToShow) shownReasoningForStep.add(m.step_id);
+        if (paired) { i++; }
+        continue;
+      }
+
+      const reasoning = (m.role === 'assistant' && (m as any).reasoning && (!m.step_id || !shownReasoningForStep.has(m.step_id)))
+        ? (m as any).reasoning
+        : undefined;
+
+      groups.push({ key: `${m.id || 'msg'}-${i}-${m.created_at}`, type: 'message', message: m, reasoning });
+      if (m.role === 'assistant' && (m as any).reasoning && m.step_id) shownReasoningForStep.add(m.step_id);
+    }
+    return groups;
+  }, [messages]);
+
+  const renderGroupItem = ({ item }: { item: MessageGroup }) => {
+    if (item.type === 'toolPair') {
+      return (
+        <View style={styles.messageGroup}>
+          {!!item.reasoning && (
+            <View style={styles.reasoningContainer}>
+              <Text style={styles.reasoningLabel}>Reasoning</Text>
+              <Text style={styles.reasoningText}>{item.reasoning}</Text>
+            </View>
+          )}
+          <View style={[styles.message, styles.assistantMessage]}>
+            <ToolCallItem callText={item.call.content} resultText={item.ret?.content} />
+          </View>
+        </View>
+      );
+    }
+    const m = item.message as any;
+    return (
+      <View style={styles.messageGroup}>
+        {!!item.reasoning && (
+          <View style={styles.reasoningContainer}>
+            <Text style={styles.reasoningLabel}>Reasoning</Text>
+            <Text style={styles.reasoningText}>{item.reasoning}</Text>
+          </View>
+        )}
+        <View style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
+          {m.role === 'tool' ? (
+            <Text style={styles.messageText}>{m.content}</Text>
+          ) : (
+            <MessageContent content={m.content} isUser={m.role === 'user'} />
+          )}
+        </View>
+      </View>
+    );
+  };
 
   // Format tool arguments in a compact Python-style signature
   const formatArgsPython = (raw: any): string => {
@@ -1147,6 +1243,192 @@ function MainApp() {
               <Text style={styles.loadingText}>Loading messages...</Text>
             </View>
           ) : (
+            <>
+              <FlatList
+                ref={scrollViewRef}
+                style={styles.messagesContainer}
+                contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}
+                data={messageGroups}
+                keyExtractor={(item) => item.key}
+                renderItem={renderGroupItem}
+                onScroll={handleScroll}
+                onContentSizeChange={handleContentSizeChange}
+                onLayout={handleMessagesLayout}
+                scrollEventThrottle={16}
+                maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+                ListHeaderComponent={hasMoreBefore ? (
+                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadOlderMessages} disabled={isLoadingMore}>
+                    <Text style={styles.loadMoreText}>{isLoadingMore ? 'Loading…' : 'Load earlier messages'}</Text>
+                  </TouchableOpacity>
+                ) : null}
+                ListEmptyComponent={currentAgent ? (
+                  <View style={styles.emptyContainer}>
+                    <Text style={styles.emptyText}>Start a conversation with {currentAgent.name}</Text>
+                  </View>
+                ) : null}
+                ListFooterComponent={
+                  <>
+                    {isStreaming && (
+                      <View
+                        style={styles.messageGroup}
+                        onLayout={(e) => {
+                          if (!hasPositionedForStream) {
+                            const y = e.nativeEvent.layout.y;
+                            scrollViewRef.current?.scrollToOffset({ offset: Math.max(0, y - 8), animated: false });
+                            setHasPositionedForStream(true);
+                          }
+                        }}
+                      >
+                        {streamingStep && streamingStep.trim().length > 0 && (
+                          <View style={styles.reasoningContainer}>
+                            <Text style={styles.reasoningLabel}>Reasoning</Text>
+                            <Text style={styles.reasoningText}>{streamingStep.trim()}</Text>
+                          </View>
+                        )}
+                        <View style={[styles.message, styles.assistantMessage, styles.streamingMessage]}>
+                          {streamingMessage && String(streamingMessage).trim().length > 0 ? (
+                            <>
+                              <MessageContent content={String(streamingMessage).trim()} isUser={false} />
+                              <Text style={styles.cursor}>|</Text>
+                            </>
+                          ) : (
+                            <View style={styles.thinkingIndicator}>
+                              <ActivityIndicator size="small" color="#666" />
+                              <Text style={styles.thinkingText}>Agent is thinking...</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                    )}
+
+                    {isSendingMessage && !isStreaming && (
+                      <View style={styles.messageGroup}>
+                        <View style={[styles.message, styles.assistantMessage]}>
+                          <ActivityIndicator size="small" color="#666" />
+                        </View>
+                      </View>
+                    )}
+
+                    {approvalVisible && (
+                      <View style={styles.messageGroup}>
+                        <View style={[styles.message, styles.assistantMessage]}>
+                          <View style={styles.approvalCardInline}>
+                            <Text style={styles.approvalTitle}>Approval Required</Text>
+                            {!!approvalData?.reasoning && (
+                              <View style={styles.reasoningContainer}>
+                                <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
+                                <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
+                              </View>
+                            )}
+                            <View style={styles.approvalBlock}>
+                              <Text style={styles.approvalLabel}>Proposed Tool</Text>
+                              <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
+                            </View>
+                            <View style={styles.approvalButtons}>
+                              <TouchableOpacity
+                                style={[styles.approvalBtn, styles.approve]}
+                                disabled={isApproving}
+                                onPress={async () => {
+                                  if (!currentAgent || !approvalData?.id) return;
+                                  try {
+                                    setIsApproving(true);
+                                    await lettaApi.approveToolRequestStream(
+                                      currentAgent.id,
+                                      { approval_request_id: approvalData.id, approve: true },
+                                      undefined,
+                                      async () => {
+                                        setApprovalVisible(false);
+                                        setApprovalData(null);
+                                        setApprovalReason('');
+                                        await loadMessagesForAgent(currentAgent.id);
+                                      },
+                                      (err) => {
+                                        Alert.alert('Error', err.message || 'Failed to approve');
+                                      }
+                                    );
+                                  } finally {
+                                    setIsApproving(false);
+                                  }
+                                }}
+                              >
+                                <Text style={styles.approvalBtnText}>Approve</Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={[styles.approvalBtn, styles.reject]}
+                                disabled={isApproving}
+                                onPress={async () => {
+                                  if (!currentAgent || !approvalData?.id) return;
+                                  try {
+                                    setIsApproving(true);
+                                    await lettaApi.approveToolRequestStream(
+                                      currentAgent.id,
+                                      { approval_request_id: approvalData.id, approve: false },
+                                      undefined,
+                                      async () => {
+                                        setApprovalVisible(false);
+                                        setApprovalData(null);
+                                        setApprovalReason('');
+                                        await loadMessagesForAgent(currentAgent.id);
+                                      },
+                                      (err) => {
+                                        Alert.alert('Error', err.message || 'Failed to deny');
+                                      }
+                                    );
+                                  } finally {
+                                    setIsApproving(false);
+                                  }
+                                }}
+                              >
+                                <Text style={styles.approvalBtnText}>Reject</Text>
+                              </TouchableOpacity>
+                            </View>
+                            <View style={styles.feedbackBlock}>
+                              <Text style={styles.approvalLabel}>Reject with feedback</Text>
+                              <TextInput
+                                style={styles.approvalInput}
+                                placeholder="Provide guidance for the agent"
+                                placeholderTextColor={darkTheme.colors.text.secondary}
+                                value={approvalReason}
+                                onChangeText={setApprovalReason}
+                                multiline
+                              />
+                              <TouchableOpacity
+                                style={[styles.approvalBtn, styles.reject]}
+                                disabled={isApproving || approvalReason.trim().length === 0}
+                                onPress={async () => {
+                                  if (!currentAgent || !approvalData?.id) return;
+                                  try {
+                                    setIsApproving(true);
+                                    await lettaApi.approveToolRequestStream(
+                                      currentAgent.id,
+                                      { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
+                                      undefined,
+                                      async () => {
+                                        setApprovalVisible(false);
+                                        setApprovalData(null);
+                                        setApprovalReason('');
+                                        await loadMessagesForAgent(currentAgent.id);
+                                      },
+                                      (err) => {
+                                        Alert.alert('Error', err.message || 'Failed to deny with feedback');
+                                      }
+                                    );
+                                  } finally {
+                                    setIsApproving(false);
+                                  }
+                                }}
+                              >
+                                <Text style={styles.approvalBtnText}>Send Feedback</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                }
+              />
+              {false && (
             <ScrollView
               ref={scrollViewRef}
               style={styles.messagesContainer}
@@ -1258,7 +1540,7 @@ function MainApp() {
                       if (!hasPositionedForStream) {
                         const y = e.nativeEvent.layout.y;
                         // Position so the streaming assistant message starts near the top
-                        scrollViewRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: false });
+                        scrollViewRef.current?.scrollToOffset({ offset: Math.max(0, y - 8), animated: false });
                         setHasPositionedForStream(true);
                       }
                     }}
@@ -1417,6 +1699,8 @@ function MainApp() {
                 {/* PaddingBottom above reserves vertical room while streaming */}
               </View>
             </ScrollView>
+              )}
+            </>
           )}
 
           {/* Scroll-to-bottom floating button */}
