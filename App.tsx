@@ -758,7 +758,18 @@ function MainApp() {
 
           if (mt === 'assistant_message' && chunk.content) {
             // Append new content with boundary coalescing
-            const piece = coalesceBoundary(accumulatedMessage, extractText(chunk.content));
+            let raw = extractText(chunk.content);
+            // Handle escape sequences split across chunk boundaries, e.g., "\\" + "n"
+            if (accumulatedMessage.endsWith('\\')) {
+              if (raw.startsWith('n')) {
+                accumulatedMessage = accumulatedMessage.slice(0, -1);
+                raw = '\n' + raw.slice(1);
+              } else if (raw.startsWith('t')) {
+                accumulatedMessage = accumulatedMessage.slice(0, -1);
+                raw = '\t' + raw.slice(1);
+              }
+            }
+            const piece = coalesceBoundary(accumulatedMessage, raw);
             accumulatedMessage += piece;
             setStreamingMessage(accumulatedMessage);
           } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {

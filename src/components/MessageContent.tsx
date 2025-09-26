@@ -24,11 +24,20 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
 
   const markdownStyles = createMarkdownStyles({ isUser });
 
-  return (
-    <Markdown style={markdownStyles}>
-      {content}
-    </Markdown>
-  );
+  // Normalize common escaped sequences that sometimes arrive double-escaped
+  const normalized = React.useMemo(() => {
+    if (!content) return '';
+    let s = content
+      .replace(/\r\n/g, '\n')   // windows newlines
+      .replace(/\\r\\n/g, '\n') // escaped CRLF
+      .replace(/\\n/g, '\n')     // escaped LF
+      .replace(/\\t/g, '\t');    // escaped tab
+    // Collapse excessive blank lines to reasonable spacing
+    s = s.replace(/\n{3,}/g, '\n\n');
+    return s;
+  }, [content]);
+
+  return <Markdown style={markdownStyles}>{normalized}</Markdown>;
 };
 
 export default MessageContent;
