@@ -13,7 +13,7 @@ import {
   Linking,
   Dimensions,
   useColorScheme,
-  Platform
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -56,6 +56,10 @@ function MainApp() {
   
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
+  const PAGE_SIZE = 50;
+  const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
+  const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
+  const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [inputText, setInputText] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
@@ -87,6 +91,9 @@ function MainApp() {
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
+  // Cache and derived name for the selected agent's project (favorites can cross projects)
+  const [projectNameCache, setProjectNameCache] = useState<Record<string, string>>({});
+  const [agentProjectName, setAgentProjectName] = useState<string | undefined>(undefined);
 
   const isDesktop = screenData.width >= 768;
 
@@ -97,6 +104,11 @@ function MainApp() {
   const [hasPositionedForStream, setHasPositionedForStream] = useState(false);
   // Track scroll position to counteract padding removal jump
   const [scrollY, setScrollY] = useState(0);
+  // Track sizes to show a quick "scroll to bottom" control
+  const [contentHeight, setContentHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [inputContainerHeight, setInputContainerHeight] = useState(0);
 
   // Smoothly shrink the bottom spacer and counter-scroll to avoid visual jumps
   const smoothRemoveSpacer = (durationMs: number = 220) => {
@@ -123,6 +135,40 @@ function MainApp() {
     };
     requestAnimationFrame(step);
   };
+
+  // Helper: update FAB visibility when user is not near bottom
+  const updateScrollButtonVisibility = (offsetY: number) => {
+    const threshold = 80; // px from bottom
+    const distanceFromBottom = Math.max(0, contentHeight - (offsetY + containerHeight));
+    setShowScrollToBottom(distanceFromBottom > threshold);
+  };
+
+  const handleScroll = (e: any) => {
+    const y = e.nativeEvent.contentOffset.y;
+    setScrollY(y);
+    updateScrollButtonVisibility(y);
+  };
+
+  const handleContentSizeChange = (_w: number, h: number) => {
+    setContentHeight(h);
+    updateScrollButtonVisibility(scrollY);
+  };
+
+  const handleMessagesLayout = (e: any) => {
+    setContainerHeight(e.nativeEvent.layout.height);
+    updateScrollButtonVisibility(scrollY);
+  };
+
+  const scrollToBottom = () => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+    setShowScrollToBottom(false);
+  };
+
+  const handleInputLayout = (e: any) => {
+    setInputContainerHeight(e.nativeEvent.layout.height || 0);
+  };
+
+  // No-op: header segmented control switches between Memory and Chat views
 
   // Format tool arguments in a compact Python-style signature
   const formatArgsPython = (raw: any): string => {
@@ -371,60 +417,97 @@ function MainApp() {
     setMessages([]);
   };
 
+  // Keep agentProjectName in sync with currentAgent / currentProject
+  useEffect(() => {
+    const resolveProjectName = async () => {
+      if (!currentAgent?.project_id) {
+        setAgentProjectName(undefined);
+        return;
+      }
+      const pid = currentAgent.project_id;
+      // If the global currentProject matches, use its name
+      if (currentProject && currentProject.id === pid) {
+        setAgentProjectName(currentProject.name);
+        return;
+      }
+      // Use cache when available
+      if (projectNameCache[pid]) {
+        setAgentProjectName(projectNameCache[pid]);
+        return;
+      }
+      // Otherwise, look it up via API (paginate list)
+      try {
+        const p = await lettaApi.getProjectById(pid);
+        if (p?.name) {
+          setProjectNameCache(prev => ({ ...prev, [pid]: p.name }));
+          setAgentProjectName(p.name);
+        } else {
+          setAgentProjectName(undefined);
+        }
+      } catch {
+        setAgentProjectName(undefined);
+      }
+    };
+    resolveProjectName();
+  }, [currentAgent?.project_id, currentProject?.id]);
+
+  const buildDisplayMessages = (messageHistory: any[]): LettaMessage[] => {
+    // Filter and transform messages for display (dedupe heartbeats, readable tool steps)
+    const displayMessages = messageHistory
+      .filter(msg => {
+        if (msg.role === 'system') return false;
+        if (msg.role === 'user' && typeof msg.content === 'string') {
+          try {
+            const parsed = JSON.parse(msg.content);
+            if (parsed?.type === 'heartbeat') return false;
+          } catch {}
+        }
+        return true;
+      })
+      .map(msg => {
+        const call = (msg as any).tool_call || (msg as any).tool_calls?.[0];
+        const ret = (msg as any).tool_response || (msg as any).tool_return;
+        let content = msg.content as any;
+        if ((!content || typeof content !== 'string') && (msg as any).message_type) {
+          const mt = (msg as any).message_type;
+          if (mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message') {
+            const callObj = call?.function ? call.function : call;
+            const name = callObj?.name || callObj?.tool_name || 'tool';
+            if (name) {
+              const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
+              content = `${name}(${args})`;
+            }
+          } else if (mt === 'tool_response' || mt === 'tool_return_message') {
+            if (ret != null) {
+              try { content = typeof ret === 'string' ? ret : JSON.stringify(ret); } catch { content = String(ret) }
+            }
+          }
+        }
+        if (content != null && typeof content !== 'string') content = String(content);
+        return {
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant' | 'tool',
+          content: content || '',
+          created_at: msg.created_at,
+          reasoning: (msg as any).reasoning,
+          message_type: (msg as any).message_type,
+          step_id: (msg as any).step_id != null ? String((msg as any).step_id) : undefined,
+        } as LettaMessage;
+      });
+    return displayMessages;
+  };
+
   const loadMessagesForAgent = async (agentId: string) => {
     setIsLoadingMessages(true);
     try {
-      const messageHistory = await lettaApi.listMessages(agentId, { limit: 50 });
+      const messageHistory = await lettaApi.listMessages(agentId, { limit: PAGE_SIZE });
       console.log('Loaded messages for agent:', messageHistory);
 
-      // Filter and transform messages for display
-      const displayMessages = messageHistory
-        .filter(msg => {
-          // Keep user, assistant, and tool messages; drop system
-          if (msg.role === 'system') return false;
-          // Filter out heartbeat user messages
-          if (msg.role === 'user' && typeof msg.content === 'string') {
-            try {
-              const parsed = JSON.parse(msg.content);
-              if (parsed?.type === 'heartbeat') return false;
-            } catch {}
-          }
-          return true;
-        })
-        .map(msg => {
-          // Preserve role; render readable content for tool steps if needed
-          const call = (msg as any).tool_call || (msg as any).tool_calls?.[0];
-          const ret = (msg as any).tool_response || (msg as any).tool_return;
-          let content = msg.content as any;
-          if ((!content || typeof content !== 'string') && (msg as any).message_type) {
-            const mt = (msg as any).message_type;
-            if (mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message') {
-              const callObj = call?.function ? call.function : call;
-              const name = callObj?.name || callObj?.tool_name || 'tool';
-              if (name) {
-                const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
-                content = `${name}(${args})`;
-              }
-            } else if (mt === 'tool_response' || mt === 'tool_return_message') {
-              if (ret != null) {
-                try { content = typeof ret === 'string' ? ret : JSON.stringify(ret); } catch { content = String(ret) }
-              }
-            }
-          }
-          if (content != null && typeof content !== 'string') content = String(content);
-          return {
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant' | 'tool',
-            content: content || '',
-            created_at: msg.created_at,
-            reasoning: (msg as any).reasoning,
-            // keep metadata for grouping tool call/return pairs
-            message_type: (msg as any).message_type,
-            step_id: (msg as any).step_id != null ? String((msg as any).step_id) : undefined,
-          };
-        });
+      const displayMessages = buildDisplayMessages(messageHistory);
 
       setMessages(displayMessages);
+      setEarliestCursor(displayMessages.length ? displayMessages[0].created_at : null);
+      setHasMoreBefore(displayMessages.length >= PAGE_SIZE);
 
       // If the latest message is an approval request, prompt for approval
       const lastRaw: any = messageHistory[messageHistory.length - 1];
@@ -449,6 +532,30 @@ function MainApp() {
       Alert.alert('Error', 'Failed to load messages: ' + error.message);
     } finally {
       setIsLoadingMessages(false);
+    }
+  };
+
+  const loadOlderMessages = async () => {
+    if (!currentAgent || isLoadingMore || !hasMoreBefore) return;
+    try {
+      setIsLoadingMore(true);
+      const history = await lettaApi.listMessages(currentAgent.id, {
+        limit: PAGE_SIZE,
+        before: earliestCursor || undefined,
+      });
+      const olderDisplay = buildDisplayMessages(history);
+      if (olderDisplay.length > 0) {
+        setMessages(prev => [...olderDisplay, ...prev]);
+        setEarliestCursor(olderDisplay[0].created_at);
+        setHasMoreBefore(olderDisplay.length >= PAGE_SIZE);
+      } else {
+        setHasMoreBefore(false);
+      }
+    } catch (e) {
+      console.error('Failed to load older messages', e);
+      setHasMoreBefore(false);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -922,22 +1029,34 @@ function MainApp() {
                   </Text>
                   {currentAgent && (
                     <Text style={styles.agentSubtitle}>
-                      {currentProject?.name}
+                      {agentProjectName || currentProject?.name || ''}
                     </Text>
                   )}
                 </>
               )}
             </View>
+            {/* Old single-pill toggle removed in favor of segmented control */}
             {currentAgent && (
-              <TouchableOpacity
-                onPress={() => setActiveSidebarTab(activeSidebarTab === 'memory' ? 'project' : 'memory')}
-                style={[styles.headerPill, activeSidebarTab === 'memory' && styles.headerPillActive]}
-                accessibilityLabel={activeSidebarTab === 'memory' ? 'Switch to Chat' : 'View memory blocks'}
-              >
-                <Text style={[styles.headerPillText, activeSidebarTab === 'memory' && styles.headerPillTextActive]}>
-                  {activeSidebarTab === 'memory' ? 'Chat' : 'Memory'}
-                </Text>
-              </TouchableOpacity>
+              <View style={styles.segmentedToggle} accessibilityRole="tablist">
+                <TouchableOpacity
+                  style={[styles.segmentButton, activeSidebarTab === 'memory' && styles.segmentButtonActive]}
+                  onPress={() => setActiveSidebarTab('memory')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeSidebarTab === 'memory' }}
+                  accessibilityLabel="Memory"
+                >
+                  <Text style={[styles.segmentText, activeSidebarTab === 'memory' && styles.segmentTextActive]}>Memory</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.segmentButton, styles.segmentRight, activeSidebarTab !== 'memory' && styles.segmentButtonActive]}
+                  onPress={() => setActiveSidebarTab('project')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: activeSidebarTab !== 'memory' }}
+                  accessibilityLabel="Chat"
+                >
+                  <Text style={[styles.segmentText, activeSidebarTab !== 'memory' && styles.segmentTextActive]}>Chat</Text>
+                </TouchableOpacity>
+              </View>
             )}
             {currentAgent && (
               <TouchableOpacity
@@ -1032,9 +1151,16 @@ function MainApp() {
               ref={scrollViewRef}
               style={styles.messagesContainer}
               contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}
-              onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+              onScroll={handleScroll}
+              onContentSizeChange={handleContentSizeChange}
+              onLayout={handleMessagesLayout}
               scrollEventThrottle={16}>
               <View style={styles.messagesList}>
+                {hasMoreBefore && (
+                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadOlderMessages} disabled={isLoadingMore}>
+                    <Text style={styles.loadMoreText}>{isLoadingMore ? 'Loading…' : 'Load earlier messages'}</Text>
+                  </TouchableOpacity>
+                )}
                 {messages.length === 0 && currentAgent && (
                   <View style={styles.emptyContainer}>
                     <Text style={styles.emptyText}>
@@ -1293,9 +1419,29 @@ function MainApp() {
             </ScrollView>
           )}
 
+          {/* Scroll-to-bottom floating button */}
+          {activeSidebarTab !== 'memory' && showScrollToBottom && (
+            <TouchableOpacity
+              style={[
+                styles.scrollToBottomBtn,
+                {
+                  bottom:
+                    Math.max(
+                      darkTheme.spacing[6],
+                      inputContainerHeight + (Platform.OS === 'ios' ? insets.bottom : 0) + darkTheme.spacing[2]
+                    ),
+                },
+              ]}
+              onPress={scrollToBottom}
+              accessibilityLabel="Scroll to latest messages"
+            >
+              <Ionicons name="chevron-down" size={18} color={darkTheme.colors.text.inverse} />
+            </TouchableOpacity>
+          )}
+
           {/* Input */}
           {activeSidebarTab !== 'memory' && (
-            <View style={styles.inputContainer}>
+            <View style={styles.inputContainer} onLayout={handleInputLayout}>
               <View style={styles.inputWrapper}>
                 <TextInput
                   style={styles.messageInput}
@@ -1522,6 +1668,35 @@ const styles = StyleSheet.create({
     fontFamily: darkTheme.typography.caption.fontFamily,
   },
   headerPillTextActive: {
+    color: darkTheme.colors.text.inverse,
+    fontWeight: '600',
+  },
+  segmentedToggle: {
+    flexDirection: 'row',
+    marginLeft: darkTheme.spacing[1.5],
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.surface,
+    borderRadius: darkTheme.layout.borderRadius.round,
+    overflow: 'hidden',
+  },
+  segmentButton: {
+    paddingVertical: darkTheme.spacing[0.75] || 6,
+    paddingHorizontal: darkTheme.spacing[1.5] || 10,
+  },
+  segmentRight: {
+    borderLeftWidth: 1,
+    borderLeftColor: darkTheme.colors.border.primary,
+  },
+  segmentButtonActive: {
+    backgroundColor: darkTheme.colors.interactive.secondary,
+  },
+  segmentText: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+  },
+  segmentTextActive: {
     color: darkTheme.colors.text.inverse,
     fontWeight: '600',
   },
@@ -1845,6 +2020,41 @@ const styles = StyleSheet.create({
     fontWeight: darkTheme.typography.buttonSmall.fontWeight,
     fontFamily: darkTheme.typography.buttonSmall.fontFamily,
     textAlign: 'center',
+  },
+  loadMoreBtn: {
+    alignSelf: 'center',
+    marginVertical: darkTheme.spacing[1],
+    paddingVertical: darkTheme.spacing[0.75] || 6,
+    paddingHorizontal: darkTheme.spacing[1.5] || 10,
+    borderRadius: darkTheme.layout.borderRadius.round,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: darkTheme.colors.background.surface,
+  },
+  loadMoreText: {
+    color: darkTheme.colors.text.secondary,
+    fontSize: darkTheme.typography.caption.fontSize,
+    fontFamily: darkTheme.typography.caption.fontFamily,
+  },
+
+  // Floating controls
+  scrollToBottomBtn: {
+    position: 'absolute',
+    right: darkTheme.spacing[2],
+    bottom: darkTheme.spacing[10],
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: darkTheme.colors.interactive.secondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
   },
 
   // Legacy modal styles (for project selector, etc.)

@@ -80,6 +80,28 @@ class LettaApiService {
     }
   }
 
+  // Utility to find a project by ID by paginating listProjects
+  async getProjectById(projectId: string): Promise<Project | null> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      let hasNext = true;
+      let offset = 0;
+      const limit = 50;
+      while (hasNext && offset < 2000) {
+        const res = await this.listProjects({ limit, offset });
+        const found = (res.projects || []).find(p => p.id === projectId) || null;
+        if (found) return found;
+        hasNext = !!res.hasNextPage;
+        offset += limit;
+      }
+      return null;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async listAgents(params?: ListAgentsParams): Promise<LettaAgent[]> {
     try {
       if (!this.client) {
