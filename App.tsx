@@ -1247,7 +1247,7 @@ function MainApp() {
               <FlatList
                 ref={scrollViewRef}
                 style={styles.messagesContainer}
-                contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}
+                contentContainerStyle={[styles.messagesList, { paddingBottom: bottomSpacerHeight }]}
                 data={messageGroups}
                 keyExtractor={(item) => item.key}
                 renderItem={renderGroupItem}
