@@ -40,10 +40,10 @@ const ChatScreen: React.FC = () => {
   );
 
   useEffect(() => {
-    // Scroll to bottom when new messages arrive
+    // Jump to bottom when new messages arrive
     if (currentMessages.length > 0) {
       setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
+        flatListRef.current?.scrollToEnd({ animated: false });
       }, 100);
     }
   }, [currentMessages.length]);

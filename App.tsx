@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import AgentSelectorScreen from './AgentSelectorScreen';
 import ProjectSelectorModal from './ProjectSelectorModal';
 import Sidebar from './src/components/Sidebar';
 import MessageContent from './src/components/MessageContent';
+import ExpandableMessageContent from './src/components/ExpandableMessageContent';
 import ToolCallItem from './src/components/ToolCallItem';
 import { darkTheme } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, Project, MemoryBlock } from './src/types/letta';
@@ -58,6 +59,7 @@ function MainApp() {
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
   const PAGE_SIZE = 50;
+  const INITIAL_LOAD_LIMIT = 20; // load only the last N messages initially
   const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
   const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
@@ -110,6 +112,9 @@ function MainApp() {
   const [containerHeight, setContainerHeight] = useState(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [inputContainerHeight, setInputContainerHeight] = useState(0);
+  // Track when we need to jump to the bottom after first load/render
+  const pendingJumpToBottomRef = useRef<boolean>(false);
+  const pendingJumpRetriesRef = useRef<number>(0);
 
   // Smoothly shrink the bottom spacer and counter-scroll to avoid visual jumps
   const smoothRemoveSpacer = (durationMs: number = 220) => {
@@ -153,11 +158,28 @@ function MainApp() {
   const handleContentSizeChange = (_w: number, h: number) => {
     setContentHeight(h);
     updateScrollButtonVisibility(scrollY);
+    // If a bottom jump is pending and we now know content height, jump precisely
+    if (pendingJumpToBottomRef.current && containerHeight > 0 && pendingJumpRetriesRef.current > 0) {
+      const offset = Math.max(0, h - containerHeight);
+      scrollViewRef.current?.scrollToOffset({ offset, animated: false });
+      setShowScrollToBottom(false);
+      pendingJumpRetriesRef.current -= 1;
+      if (pendingJumpRetriesRef.current <= 0) pendingJumpToBottomRef.current = false;
+    }
   };
 
   const handleMessagesLayout = (e: any) => {
-    setContainerHeight(e.nativeEvent.layout.height);
+    const h = e.nativeEvent.layout.height;
+    setContainerHeight(h);
     updateScrollButtonVisibility(scrollY);
+    // If a bottom jump is pending and we now know container height, jump precisely
+    if (pendingJumpToBottomRef.current && contentHeight > 0 && pendingJumpRetriesRef.current > 0) {
+      const offset = Math.max(0, contentHeight - h);
+      scrollViewRef.current?.scrollToOffset({ offset, animated: false });
+      setShowScrollToBottom(false);
+      pendingJumpRetriesRef.current -= 1;
+      if (pendingJumpRetriesRef.current <= 0) pendingJumpToBottomRef.current = false;
+    }
   };
 
   const scrollToBottom = () => {
@@ -230,6 +252,12 @@ function MainApp() {
     return groups;
   }, [messages]);
 
+  // Handle message expansion toggle (no forced scroll to avoid flicker)
+  const handleMessageToggle = useCallback((_expanding: boolean) => {
+    // Intentionally no-op; FlatList will handle re-layout.
+    // Keeping this hook to allow future tweaks without re-plumbing props.
+  }, []);
+
   const renderGroupItem = ({ item }: { item: MessageGroup }) => {
     if (item.type === 'toolPair') {
       return (
@@ -259,7 +287,11 @@ function MainApp() {
           {m.role === 'tool' ? (
             <Text style={styles.messageText}>{m.content}</Text>
           ) : (
-            <MessageContent content={m.content} isUser={m.role === 'user'} />
+            <ExpandableMessageContent
+              content={m.content}
+              isUser={m.role === 'user'}
+              onToggle={handleMessageToggle}
+            />
           )}
         </View>
       </View>
@@ -556,6 +588,7 @@ function MainApp() {
           try {
             const parsed = JSON.parse(msg.content);
             if (parsed?.type === 'heartbeat') return false;
+            if (parsed?.type === 'system_alert') return false;
           } catch {}
         }
         return true;
@@ -596,14 +629,18 @@ function MainApp() {
   const loadMessagesForAgent = async (agentId: string) => {
     setIsLoadingMessages(true);
     try {
-      const messageHistory = await lettaApi.listMessages(agentId, { limit: PAGE_SIZE });
+      const messageHistory = await lettaApi.listMessages(agentId, { limit: INITIAL_LOAD_LIMIT });
       console.log('Loaded messages for agent:', messageHistory);
 
-      const displayMessages = buildDisplayMessages(messageHistory);
+      let displayMessages = buildDisplayMessages(messageHistory);
+      // Safety: if SDK returns more than requested, keep only the newest N
+      if (displayMessages.length > INITIAL_LOAD_LIMIT) {
+        displayMessages = displayMessages.slice(-INITIAL_LOAD_LIMIT);
+      }
 
       setMessages(displayMessages);
       setEarliestCursor(displayMessages.length ? displayMessages[0].created_at : null);
-      setHasMoreBefore(displayMessages.length >= PAGE_SIZE);
+      setHasMoreBefore(displayMessages.length >= INITIAL_LOAD_LIMIT);
 
       // If the latest message is an approval request, prompt for approval
       const lastRaw: any = messageHistory[messageHistory.length - 1];
@@ -619,10 +656,9 @@ function MainApp() {
         setApprovalData(null);
       }
 
-      // Scroll to bottom after messages are loaded
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      // Defer precise jump until sizes are known via onLayout/onContentSizeChange
+      pendingJumpToBottomRef.current = true;
+      pendingJumpRetriesRef.current = 8; // retry across a few layout/size passes
     } catch (error: any) {
       console.error('Failed to load messages:', error);
       Alert.alert('Error', 'Failed to load messages: ' + error.message);
@@ -1266,7 +1302,7 @@ function MainApp() {
                 onContentSizeChange={handleContentSizeChange}
                 onLayout={handleMessagesLayout}
                 scrollEventThrottle={16}
-                maintainVisibleContentPosition={{ minIndexForVisible: 1 }}
+                maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 10 }}
                 ListHeaderComponent={hasMoreBefore ? (
                   <TouchableOpacity style={styles.loadMoreBtn} onPress={loadOlderMessages} disabled={isLoadingMore}>
                     <Text style={styles.loadMoreText}>{isLoadingMore ? 'Loading…' : 'Load earlier messages'}</Text>
