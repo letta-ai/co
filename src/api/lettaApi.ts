@@ -806,7 +806,7 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      
+
       // Note: SDK shapes can vary; apply same normalization basics
       const response = await this.client.models?.embedding?.list?.() || [];
       const normalized = Array.isArray(response)
@@ -823,6 +823,123 @@ class LettaApiService {
           }).filter((m: any) => !!m.model)
         : [];
       return normalized;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  // Folder management
+  async listFolders(): Promise<any[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      const folders = await this.client.folders.list();
+      return folders;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async createFolder(name: string, description?: string): Promise<any> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      // Get an available embedding config
+      const embeddingConfigs = await this.client.embeddingModels.list();
+      if (!embeddingConfigs || embeddingConfigs.length === 0) {
+        throw new Error('No embedding models available');
+      }
+
+      const folder = await this.client.folders.create({
+        name,
+        description,
+        embeddingConfig: embeddingConfigs[0]
+      });
+
+      return folder;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async uploadFileToFolder(folderId: string, file: File): Promise<any> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('uploadFileToFolder - folderId:', folderId, 'fileName:', file.name);
+
+      // Upload the file and get the job
+      const job = await this.client.folders.files.upload(file, folderId);
+      console.log('Upload job created:', job.id);
+
+      return job;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async getJobStatus(jobId: string): Promise<any> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const job = await this.client.jobs.retrieve(jobId);
+      return job;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async listFolderFiles(folderId: string): Promise<any[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const files = await this.client.folders.files.list(folderId);
+      return files;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async deleteFile(folderId: string, fileId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      await this.client.folders.files.delete(folderId, fileId);
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async attachFolderToAgent(agentId: string, folderId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      await this.client.agents.folders.attach(agentId, folderId);
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async detachFolderFromAgent(agentId: string, folderId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      await this.client.agents.folders.detach(agentId, folderId);
     } catch (error) {
       throw this.handleError(error);
     }

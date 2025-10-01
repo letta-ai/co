@@ -116,12 +116,19 @@ function CoApp() {
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'memory'>('memory');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'memory' | 'files'>('memory');
   const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
   const sidebarAnimRef = useRef(new Animated.Value(0)).current;
+
+  // File management state
+  const [coFolder, setCoFolder] = useState<any | null>(null);
+  const [folderFiles, setFolderFiles] = useState<any[]>([]);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [filesError, setFilesError] = useState<string | null>(null);
 
   const isDesktop = screenData.width >= 768;
 
@@ -711,11 +718,176 @@ function CoApp() {
     }
   };
 
+  const initializeCoFolder = async () => {
+    if (!coAgent) return;
+
+    try {
+      console.log('Initializing co folder...');
+
+      // Check if "co" folder already exists
+      const folders = await lettaApi.listFolders();
+      let folder = folders.find((f: any) => f.name === 'co');
+
+      if (!folder) {
+        // Create the folder
+        console.log('Creating co folder...');
+        folder = await lettaApi.createFolder('co', 'Files shared with co');
+      }
+
+      setCoFolder(folder);
+      console.log('Co folder ready:', folder.id);
+
+      // Attach folder to agent if not already attached
+      try {
+        await lettaApi.attachFolderToAgent(coAgent.id, folder.id);
+        console.log('Folder attached to agent');
+      } catch (error: any) {
+        // Might already be attached, ignore error
+        console.log('Folder attach info:', error.message);
+      }
+
+      // Load files
+      await loadFolderFiles(folder.id);
+    } catch (error: any) {
+      console.error('Failed to initialize co folder:', error);
+      setFilesError(error.message || 'Failed to initialize folder');
+    }
+  };
+
+  const loadFolderFiles = async (folderId?: string) => {
+    const id = folderId || coFolder?.id;
+    if (!id) return;
+
+    setIsLoadingFiles(true);
+    setFilesError(null);
+    try {
+      const files = await lettaApi.listFolderFiles(id);
+      setFolderFiles(files);
+    } catch (error: any) {
+      console.error('Failed to load files:', error);
+      setFilesError(error.message || 'Failed to load files');
+    } finally {
+      setIsLoadingFiles(false);
+    }
+  };
+
+  const pickAndUploadFile = async () => {
+    if (!coFolder) {
+      Alert.alert('Error', 'Folder not initialized');
+      return;
+    }
+
+    try {
+      // Create input element for file selection (web)
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.txt,.md,.json,.csv,.doc,.docx';
+
+      input.onchange = async (e: any) => {
+        const file = e.target?.files?.[0];
+        if (!file) return;
+
+        console.log('Selected file:', file.name, 'size:', file.size);
+
+        // Check file size (10MB limit)
+        const MAX_SIZE = 10 * 1024 * 1024;
+        if (file.size > MAX_SIZE) {
+          Alert.alert('File Too Large', 'Maximum file size is 10MB');
+          return;
+        }
+
+        setIsUploadingFile(true);
+        try {
+          // Upload file
+          const job = await lettaApi.uploadFileToFolder(coFolder.id, file);
+          console.log('Upload job:', job.id);
+
+          // Poll for job completion
+          let attempts = 0;
+          const maxAttempts = 60; // 60 seconds max
+          while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            const status = await lettaApi.getJobStatus(job.id);
+            console.log('Job status:', status.status);
+
+            if (status.status === 'completed') {
+              console.log('File uploaded successfully');
+              await loadFolderFiles();
+              Alert.alert('Success', `${file.name} uploaded successfully`);
+              break;
+            } else if (status.status === 'failed') {
+              throw new Error('Upload failed: ' + (status.metadata || 'Unknown error'));
+            }
+
+            attempts++;
+          }
+
+          if (attempts >= maxAttempts) {
+            throw new Error('Upload timed out');
+          }
+        } catch (error: any) {
+          console.error('Upload error:', error);
+          Alert.alert('Upload Failed', error.message || 'Failed to upload file');
+        } finally {
+          setIsUploadingFile(false);
+        }
+      };
+
+      input.click();
+    } catch (error: any) {
+      console.error('File picker error:', error);
+      Alert.alert('Error', 'Failed to open file picker');
+    }
+  };
+
+  const deleteFile = async (fileId: string, fileName: string) => {
+    if (!coFolder) return;
+
+    Alert.alert(
+      'Delete File',
+      `Are you sure you want to delete "${fileName}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await lettaApi.deleteFile(coFolder.id, fileId);
+              await loadFolderFiles();
+              Alert.alert('Success', 'File deleted');
+            } catch (error: any) {
+              console.error('Delete error:', error);
+              Alert.alert('Error', 'Failed to delete file: ' + (error.message || 'Unknown error'));
+            }
+          },
+        },
+      ]
+    );
+  };
+
   useEffect(() => {
     if (coAgent && sidebarVisible && activeSidebarTab === 'memory') {
       loadMemoryBlocks();
     }
   }, [coAgent, sidebarVisible, activeSidebarTab]);
+
+  useEffect(() => {
+    if (coAgent && sidebarVisible && activeSidebarTab === 'files') {
+      if (!coFolder) {
+        initializeCoFolder();
+      } else {
+        loadFolderFiles();
+      }
+    }
+  }, [coAgent, sidebarVisible, activeSidebarTab]);
+
+  // Initialize folder when agent is ready
+  useEffect(() => {
+    if (coAgent && !coFolder) {
+      initializeCoFolder();
+    }
+  }, [coAgent]);
 
   // Animate sidebar
   useEffect(() => {
@@ -1079,7 +1251,7 @@ function CoApp() {
     width: '100%',
     maxHeight: 120,
     paddingLeft: 18,
-    paddingRight: 94,
+    paddingRight: 130,
     paddingTop: 12,
     paddingBottom: 12,
     borderRadius: 28,
@@ -1172,6 +1344,16 @@ function CoApp() {
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
             onPress={() => {
+              setActiveSidebarTab('files');
+            }}
+          >
+            <Ionicons name="document-text-outline" size={24} color={theme.colors.text.primary} />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Files</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
               toggleColorScheme();
             }}
           >
@@ -1235,6 +1417,66 @@ function CoApp() {
                       {item.value}
                     </Text>
                   </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        )}
+
+        {/* Files section - only show when files tab is active */}
+        {activeSidebarTab === 'files' && (
+          <View style={styles.memorySection}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary, marginBottom: 0 }]}>Files</Text>
+              <TouchableOpacity
+                onPress={pickAndUploadFile}
+                disabled={isUploadingFile}
+                style={{ padding: 4 }}
+              >
+                {isUploadingFile ? (
+                  <ActivityIndicator size="small" color={theme.colors.text.secondary} />
+                ) : (
+                  <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+                )}
+              </TouchableOpacity>
+            </View>
+            {isLoadingFiles ? (
+              <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+            ) : filesError ? (
+              <Text style={styles.errorText}>{filesError}</Text>
+            ) : folderFiles.length === 0 ? (
+              <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary, textAlign: 'center', marginTop: 20 }]}>
+                No files uploaded yet
+              </Text>
+            ) : (
+              <FlatList
+                data={folderFiles}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <View
+                    style={[styles.memoryBlockItem, {
+                      backgroundColor: theme.colors.background.primary,
+                      borderColor: theme.colors.border.primary,
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.memoryBlockLabel, { color: theme.colors.text.primary }]} numberOfLines={1}>
+                        {item.fileName || item.name || 'Untitled'}
+                      </Text>
+                      <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary, fontSize: 12 }]}>
+                        {new Date(item.createdAt || item.created_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => deleteFile(item.id, item.fileName || item.name)}
+                      style={{ padding: 8 }}
+                    >
+                      <Ionicons name="trash-outline" size={20} color={theme.colors.status.error} />
+                    </TouchableOpacity>
+                  </View>
                 )}
               />
             )}
@@ -1390,6 +1632,13 @@ function CoApp() {
           )}
 
           <View style={styles.inputWrapper}>
+            <TouchableOpacity
+              onPress={pickAndUploadFile}
+              style={styles.fileButton}
+              disabled={isSendingMessage || isUploadingFile}
+            >
+              <Ionicons name="attach-outline" size={24} color="#888888" />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={pickImage}
               style={styles.imageButton}
@@ -1749,6 +1998,17 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'flex-end',
+  },
+  fileButton: {
+    position: 'absolute',
+    right: 88,
+    bottom: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
   },
   imageButton: {
     position: 'absolute',
