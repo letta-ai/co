@@ -1077,6 +1077,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 12,
     backgroundColor: darkTheme.colors.background.secondary,
     borderBottomWidth: 1,
