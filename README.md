@@ -1,33 +1,34 @@
-# Co - Knowledge Management Assistant
+# co
 
-Co is a single-agent knowledge management assistant built with Letta's memory framework. Each user gets their own persistent Co agent that learns and remembers across conversations.
+A minimalist chat interface for Letta AI agents. Each user gets their own persistent co agent that learns and remembers across conversations.
 
 ## Features
 
-- 🤖 **Single Agent Model**: One Co agent per user, tagged with `co-app`
+- 🤖 **Single Agent**: One co agent per user, automatically created on first login
 - 🧠 **Persistent Memory**: Advanced memory blocks that evolve over time
-- 💬 **Real-time Streaming**: Token-by-token message streaming
+- 💬 **Smooth Streaming**: Token-buffered streaming (50 FPS) for consistent text appearance
+- 🎨 **Polished UI**: Clean, minimal interface with animated message transitions
+- 🌓 **Theme Toggle**: Switch between light and dark modes
 - 🔧 **Tool Support**: Web search, archival memory, conversation search
 - 📱 **Cross-platform**: iOS, Android, and Web support via React Native + Expo
-- 🎨 **Modern UI**: Clean, intuitive interface with memory viewer
-- 🔒 **Secure**: API token storage with AsyncStorage
+- 🔒 **Secure**: API token storage with AsyncStorage/SecureStore
 
 ## Architecture
 
-Co uses a simplified single-agent architecture:
+co uses a simplified single-agent architecture:
 
 1. **Login**: User enters Letta API key
-2. **Agent Discovery**: App searches for agent with `co-app` tag using `client.agents.list(tags=["co-app"])`
-3. **Agent Creation**: If no Co agent exists, creates one with the `createCoAgent()` function
-4. **Chat**: User chats directly with their Co agent
+2. **Agent Discovery**: App searches for agent with `co-app` tag
+3. **Auto-creation**: If no co agent exists, creates one automatically
+4. **Chat**: User chats directly with their co agent
 
-### Co Agent Configuration
+### co Agent Configuration
 
-Co is created with:
+co is created with:
 - **Model**: `anthropic/claude-sonnet-4-5-20250929`
 - **Tools**: `send_message`, `archival_memory_insert`, `archival_memory_search`, `conversation_search`, `web_search`, `fetch_webpage`
 - **Memory Blocks**:
-  - `persona`: Co's adaptive personality
+  - `persona`: co's adaptive personality
   - `human`: User profile that evolves
   - `approach`: Conversation and memory approach
   - `working_theories`: Active theories about the user
@@ -52,6 +53,9 @@ npm install
 
 # Start development server
 npm start
+
+# For production performance (recommended)
+npm run web:prod
 ```
 
 ### Run Options
@@ -65,60 +69,66 @@ npm start
 
 1. Launch the app
 2. Enter your Letta API key
-3. Wait for Co to initialize (creates agent if needed)
+3. Wait for co to initialize (creates agent if needed)
 4. Start chatting!
 
 ## Project Structure
 
 ```
-ion/
-├── App.tsx                   # Main Co application
-├── CoLoginScreen.tsx        # Login/authentication screen
+co/
+├── App.tsx                   # Main application
+├── CoLoginScreen.tsx         # Login/authentication
+├── web-styles.css            # Web-specific CSS for focus states and themes
 ├── src/
 │   ├── api/
 │   │   └── lettaApi.ts       # Letta API client
 │   ├── components/
-│   │   ├── MessageContent.tsx
-│   │   ├── ExpandableMessageContent.tsx
-│   │   ├── ToolCallItem.tsx
-│   │   └── LogoLoader.tsx
+│   │   ├── MessageContent.tsx           # Markdown message rendering
+│   │   ├── ExpandableMessageContent.tsx # Collapsible long messages
+│   │   ├── ToolCallItem.tsx             # Tool execution display
+│   │   └── LogoLoader.tsx               # Loading animations
 │   ├── types/
 │   │   └── letta.ts          # TypeScript definitions
 │   ├── utils/
-│   │   ├── ionAgent.ts       # Co agent creation logic
+│   │   ├── coAgent.ts        # co agent creation logic
 │   │   └── storage.ts        # AsyncStorage wrapper
 │   └── theme/
-│       └── index.ts          # Design system
+│       ├── index.ts          # Theme system
+│       ├── colors.ts         # Color palette
+│       └── typography.ts     # Font definitions
 ```
 
-## Key Files
+## Key Features
 
-### `src/utils/ionAgent.ts`
+### Smooth Token Streaming
 
-Contains the `createCoAgent()` function that defines Co's system prompt, memory blocks, and configuration. This is where you can customize Co's personality and capabilities.
+Messages stream at 50 FPS with a token buffer that releases 1-3 characters at a time for consistent, natural text appearance. A hollow circle indicator (○) appears at the end of streaming text.
 
-### `src/api/lettaApi.ts`
+### Animated Message Layout
 
-Letta API client with:
-- `findAgentByTags()`: Find agent by tags
-- `findOrCreateCo()`: Get or create Co agent
-- `sendMessageStream()`: Stream messages from Co
-- `listAgentBlocks()`: View memory blocks
+When you send a message:
+1. Message appears at the bottom
+2. An animated spacer grows beneath it (400ms animation)
+3. Your message smoothly rises to the top of the viewport
+4. co's response fills the reserved space below
 
-### `App.tsx`
+This creates a clean reading experience where your message stays visible with room for the response.
 
-Main application with:
-- Authentication flow
-- Co initialization
-- Chat interface
-- Memory viewer sidebar
-- Tool approval modals
+### Theme Support
 
-## Customizing Co
+Toggle between light and dark modes with inverted text input styling:
+- **Dark mode**: White background input with black text
+- **Light mode**: Black background input with white text
+
+### Memory Viewer
+
+Access co's memory blocks through the sidebar to see what co has learned about you and how it's evolving its understanding over time.
+
+## Customizing co
 
 ### Modify Personality
 
-Edit `src/utils/ionAgent.ts` and update:
+Edit `src/utils/coAgent.ts` and update:
 - System prompt
 - Memory block initial values
 - Available tools
@@ -137,7 +147,7 @@ Add new blocks to the `memoryBlocks` array in `createCoAgent()`:
 
 ### Change Model
 
-Update the `model` field in `createCoAgent()`:
+Update the `model` field in `findOrCreateCo()`:
 
 ```typescript
 model: 'openai/gpt-4.1',  // or other supported models
@@ -149,33 +159,38 @@ model: 'openai/gpt-4.1',  // or other supported models
 
 - **React Native** + **Expo**: Cross-platform framework
 - **TypeScript**: Type safety
-- **Letta SDK**: AI agent framework
-- **AsyncStorage**: Persistent storage
+- **Letta SDK** (`@letta-ai/letta-client`): AI agent framework
+- **AsyncStorage/SecureStore**: Persistent storage
+- **React Native Markdown Display**: Markdown rendering
+- **Lexend Font**: Custom typography
 
 ### Available Scripts
 
 - `npm start` - Start Expo dev server
-- `npm run web` - Run in browser
+- `npm run web` - Run in browser (dev mode)
 - `npm run android` - Run on Android
 - `npm run ios` - Run on iOS
 - `npx expo start -c` - Clear cache and restart
 
-### Building for Production
+### Production Build
+
+For better performance:
 
 ```bash
-# Web build
-npm run build:web
+# Development with production optimizations
+npx expo start --web --no-dev --minify
 
-# Mobile builds (requires EAS CLI)
-npx eas build --platform all
+# Static production build
+npx expo export:web
+npx serve web-build
 ```
 
 ## API Integration
 
-Co connects to Letta's API:
+co connects to Letta's API:
 
-- `GET /agents?tags=co-app` - Find Co agent
-- `POST /agents` - Create Co agent
+- `GET /agents?tags=co-app` - Find co agent
+- `POST /agents` - Create co agent
 - `GET /agents/{id}/messages` - Load message history
 - `POST /agents/{id}/messages/streaming` - Stream messages
 - `GET /agents/{id}/blocks` - View memory blocks
@@ -184,10 +199,11 @@ Co connects to Letta's API:
 
 ### Agent Not Found
 
-If Co fails to initialize:
-1. Check API token validity
+If co fails to initialize:
+1. Check API token validity at letta.com
 2. Verify network connection
 3. Check console logs for errors
+4. Try logging out and back in
 
 ### Memory Blocks Not Loading
 
@@ -200,16 +216,14 @@ If Co fails to initialize:
 - Check network stability
 - Verify streaming endpoint support
 - Review console logs for chunk errors
+- Try clearing Expo cache: `npx expo start -c`
 
-## Contributing
+### Slow Performance
 
-Co is a reference implementation. To customize:
-
-1. Fork the repository
-2. Modify Co's configuration in `src/utils/ionAgent.ts`
-3. Update UI components as needed
-4. Test on multiple platforms
-5. Submit pull request with clear description
+Run the app with production optimizations:
+```bash
+npx expo start --web --no-dev --minify
+```
 
 ## License
 
@@ -218,5 +232,6 @@ MIT License
 ## Resources
 
 - [Letta Documentation](https://docs.letta.com)
+- [Letta LLMs.txt](https://docs.letta.com/llms.txt)
 - [React Native Docs](https://reactnative.dev)
 - [Expo Docs](https://docs.expo.dev)
