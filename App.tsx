@@ -19,7 +19,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFonts, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
+import { useFonts, Lexend_300Light, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import LogoLoader from './src/components/LogoLoader';
 import lettaApi from './src/api/lettaApi';
 import Storage, { STORAGE_KEYS } from './src/utils/storage';
@@ -43,6 +43,7 @@ function CoApp() {
   const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(systemColorScheme || 'dark');
 
   const [fontsLoaded] = useFonts({
+    Lexend_300Light,
     Lexend_400Regular,
     Lexend_500Medium,
     Lexend_600SemiBold,
@@ -472,17 +473,20 @@ function CoApp() {
     } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
       // Accumulate reasoning
       setStreamingReasoning(prev => prev + chunk.reasoning);
-    } else if (chunk.message_type === 'tool_call' && chunk.tool_call) {
-      const toolName = chunk.tool_call.function?.name || 'tool';
+    } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
+      // Handle both formats: with and without .function wrapper
+      const callObj = chunk.tool_call.function || chunk.tool_call;
+      const toolName = callObj?.name || callObj?.tool_name || 'tool';
       setStreamingStep(`Calling ${toolName}...`);
-    } else if (chunk.message_type === 'tool_response') {
+    } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
       setStreamingStep('Processing result...');
     } else if (chunk.message_type === 'approval_request_message') {
       // Handle approval request
+      const callObj = chunk.tool_call?.function || chunk.tool_call;
       setApprovalData({
         id: chunk.id,
-        toolName: chunk.tool_call?.function?.name,
-        toolArgs: chunk.tool_call?.function?.arguments,
+        toolName: callObj?.name || callObj?.tool_name,
+        toolArgs: callObj?.arguments || callObj?.args,
         reasoning: chunk.reasoning,
       });
       setApprovalVisible(true);
@@ -537,9 +541,22 @@ function CoApp() {
 
   // State for tracking expanded reasoning
   const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
+  const [expandedCompaction, setExpandedCompaction] = useState<Set<string>>(new Set());
 
   const toggleReasoning = (messageId: string) => {
     setExpandedReasoning(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
+  const toggleCompaction = (messageId: string) => {
+    setExpandedCompaction(prev => {
       const next = new Set(prev);
       if (next.has(messageId)) {
         next.delete(messageId);
@@ -614,7 +631,24 @@ function CoApp() {
 
   const renderMessageGroup = ({ item }: { item: MessageGroup }) => {
     if (item.type === 'toolPair') {
-      const callText = item.call.content || 'Tool call';
+      // Extract tool call information from the message
+      const toolCall = item.call.tool_call || item.call.tool_calls?.[0];
+      let callText = item.call.content || 'Tool call';
+
+      if (toolCall) {
+        // Handle both formats: with and without .function wrapper
+        const callObj = toolCall.function || toolCall;
+        const name = callObj.name || callObj.tool_name || 'tool';
+        const argsRaw = callObj.arguments ?? callObj.args ?? '{}';
+        let args = '';
+        try {
+          args = typeof argsRaw === 'string' ? argsRaw : JSON.stringify(argsRaw);
+        } catch {
+          args = String(argsRaw);
+        }
+        callText = `${name}(${args})`;
+      }
+
       const resultText = item.ret?.content || undefined;
 
       return (
@@ -633,6 +667,65 @@ function CoApp() {
       if (isSystem) return null;
 
       if (isUser) {
+        // Check if this is a system_alert compaction message
+        let isCompactionAlert = false;
+        let compactionMessage = '';
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed?.type === 'system_alert') {
+            isCompactionAlert = true;
+            // Extract the message field from the embedded JSON in the message text
+            const messageText = parsed.message || '';
+            // Try to extract JSON from the message (it's usually in a code block)
+            const jsonMatch = messageText.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+            if (jsonMatch) {
+              try {
+                const innerJson = JSON.parse(jsonMatch[1]);
+                compactionMessage = innerJson.message || messageText;
+              } catch {
+                compactionMessage = messageText;
+              }
+            } else {
+              compactionMessage = messageText;
+            }
+
+            // Strip out the "Note: prior messages..." preamble
+            compactionMessage = compactionMessage.replace(/^Note: prior messages have been hidden from view.*?The following is a summary of the previous messages:\s*/is, '');
+          }
+        } catch {
+          // Not JSON, treat as normal user message
+        }
+
+        if (isCompactionAlert) {
+          // Render compaction alert as thin grey expandable line
+          const isCompactionExpanded = expandedCompaction.has(msg.id);
+
+          return (
+            <View key={item.key} style={styles.compactionContainer}>
+              <TouchableOpacity
+                onPress={() => toggleCompaction(msg.id)}
+                style={styles.compactionLine}
+                activeOpacity={0.7}
+              >
+                <View style={styles.compactionDivider} />
+                <Text style={styles.compactionLabel}>compaction</Text>
+                <View style={styles.compactionDivider} />
+                <Ionicons
+                  name={isCompactionExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={theme.colors.text.tertiary}
+                  style={styles.compactionChevron}
+                />
+              </TouchableOpacity>
+              {isCompactionExpanded && (
+                <View style={styles.compactionMessageContainer}>
+                  <MessageContent content={compactionMessage} />
+                </View>
+              )}
+            </View>
+          );
+        }
+
         return (
           <View
             key={item.key}
@@ -728,7 +821,13 @@ function CoApp() {
   };
 
   const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    if (messageDirection === 'reversed') {
+      // When inverted, newest messages are at top (offset 0)
+      scrollViewRef.current?.scrollToOffset({ offset: 0, animated: true });
+    } else {
+      // Normal mode: scroll to end (newest at bottom)
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
     setShowScrollToBottom(false);
   };
 
@@ -874,10 +973,14 @@ function CoApp() {
           }
         />
 
-        {/* Scroll to bottom button */}
+        {/* Scroll to newest message button */}
         {showScrollToBottom && (
           <TouchableOpacity onPress={scrollToBottom} style={styles.scrollToBottomButton}>
-            <Ionicons name="arrow-down" size={24} color="#000" />
+            <Ionicons
+              name={messageDirection === 'reversed' ? 'arrow-up' : 'arrow-down'}
+              size={24}
+              color="#000"
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -1450,5 +1553,44 @@ const styles = StyleSheet.create({
     backgroundColor: darkTheme.colors.interactive.primary,
     marginLeft: 2,
     marginTop: 2,
+  },
+  compactionContainer: {
+    marginVertical: 16,
+    marginHorizontal: 20,
+  },
+  compactionLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  compactionDivider: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#3a3a3a',
+  },
+  compactionLabel: {
+    fontSize: 11,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
+    marginHorizontal: 12,
+    textTransform: 'lowercase',
+  },
+  compactionChevron: {
+    marginLeft: 4,
+  },
+  compactionMessageContainer: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: darkTheme.colors.background.surface,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: darkTheme.colors.border.secondary,
+  },
+  compactionMessageText: {
+    fontSize: 13,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.secondary,
+    lineHeight: 18,
   },
 });

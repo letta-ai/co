@@ -8,8 +8,59 @@ interface ToolCallItemProps {
   resultText?: string;
 }
 
+// Extract parameters for contextual display
+const extractParams = (callText: string): Record<string, any> => {
+  try {
+    const m = callText.match(/^\s*[\w.]+\s*\(([\s\S]*)\)\s*$/);
+    if (!m) return {};
+    const argsStr = m[1].trim();
+    return JSON.parse(argsStr.startsWith('{') ? argsStr : `{${argsStr}}`);
+  } catch {
+    return {};
+  }
+};
+
+// Map tool names to friendly display messages
+const getToolDisplayName = (toolName: string, callText: string): string => {
+  const params = extractParams(callText);
+
+  if (toolName === 'web_search' && params.query) {
+    return `Searching the web for "${params.query}"`;
+  }
+
+  if (toolName === 'conversation_search' && params.query) {
+    return `Searching conversation history for "${params.query}"`;
+  }
+
+  if (toolName === 'fetch_webpage' && params.url) {
+    const url = params.url.length > 50 ? params.url.substring(0, 50) + '...' : params.url;
+    return `Fetching ${url}`;
+  }
+
+  const displayNames: Record<string, string> = {
+    web_search: 'Searching the web',
+    fetch_webpage: 'Fetching webpage',
+    memory_insert: 'Inserting into memory',
+    memory_replace: 'Updating memory',
+    conversation_search: 'Searching conversation history',
+    send_message: 'Sending message',
+  };
+  return displayNames[toolName] || toolName;
+};
+
 const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText }) => {
   const [expanded, setExpanded] = useState(false);
+  const [resultExpanded, setResultExpanded] = useState(false);
+
+  // Extract the tool name from callText
+  const toolName = useMemo(() => {
+    const raw = callText?.trim() || '';
+    const m = raw.match(/^\s*([\w.]+)\s*\(/);
+    return m ? m[1] : '';
+  }, [callText]);
+
+  // Get friendly display name
+  const displayName = useMemo(() => getToolDisplayName(toolName, callText), [toolName, callText]);
 
   // Try to parse a "name({json})" or "name(k=v, ...)" shape into
   // a nicer multiline representation for readability.
@@ -55,10 +106,21 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText }) => 
     return `${fn}(\n${indented}\n)`;
   }, [callText]);
 
+  const formattedResult = useMemo(() => {
+    if (!resultText) return '';
+    const s = resultText.trim();
+    try {
+      if (s.startsWith('{') || s.startsWith('[')) {
+        return JSON.stringify(JSON.parse(s), null, 2);
+      }
+    } catch {}
+    return resultText;
+  }, [resultText]);
+
   return (
     <View style={styles.container}>
       <TouchableOpacity
-        style={[styles.header, expanded && styles.headerExpanded]}
+        style={[styles.header, expanded && !resultText && styles.headerExpanded, expanded && resultText && styles.headerExpandedWithResult]}
         onPress={() => setExpanded((e) => !e)}
         activeOpacity={0.7}
       >
@@ -68,24 +130,28 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText }) => 
           color={darkTheme.colors.text.secondary}
           style={styles.chevron}
         />
-        <Text style={styles.callText} numberOfLines={expanded ? 0 : 2}>
-          {expanded ? prettyCallText : callText}
+        <Text style={expanded ? styles.callText : styles.displayName} numberOfLines={expanded ? 0 : 1}>
+          {expanded ? prettyCallText : displayName}
         </Text>
       </TouchableOpacity>
       {expanded && !!resultText && (
-        <View style={styles.resultBox}>
+        <TouchableOpacity
+          style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded]}
+          onPress={() => setResultExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={resultExpanded ? 'chevron-down' : 'chevron-forward'}
+            size={12}
+            color={darkTheme.colors.text.tertiary}
+            style={styles.resultChevron}
+          />
           <Text style={styles.resultLabel}>Result</Text>
-          <Text style={styles.resultText}>
-            {(() => {
-              const s = (resultText || '').trim();
-              try {
-                if (s.startsWith('{') || s.startsWith('[')) {
-                  return JSON.stringify(JSON.parse(s), null, 2);
-                }
-              } catch {}
-              return resultText;
-            })()}
-          </Text>
+        </TouchableOpacity>
+      )}
+      {expanded && resultExpanded && !!resultText && (
+        <View style={styles.resultBox}>
+          <Text style={styles.resultText}>{formattedResult}</Text>
         </View>
       )}
     </View>
@@ -114,6 +180,16 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
   },
+  headerExpandedWithResult: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  displayName: {
+    color: darkTheme.colors.text.primary,
+    fontSize: 14,
+    lineHeight: 20,
+    flexShrink: 1,
+  },
   callText: {
     color: darkTheme.colors.text.primary,
     fontFamily: 'Menlo',
@@ -122,6 +198,27 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     // Preserve whitespace and newlines for pretty-printed JSON
     whiteSpace: 'pre-wrap' as any,
+  },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: darkTheme.colors.background.surface,
+    borderLeftWidth: StyleSheet.hairlineWidth,
+    borderRightWidth: StyleSheet.hairlineWidth,
+    borderColor: darkTheme.colors.border.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  resultHeaderExpanded: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  resultChevron: {
+    marginTop: 1,
+  },
+  resultLabel: {
+    color: darkTheme.colors.text.tertiary,
+    fontSize: 12,
   },
   resultBox: {
     backgroundColor: darkTheme.colors.background.tertiary,
@@ -133,11 +230,6 @@ const styles = StyleSheet.create({
     borderColor: darkTheme.colors.border.primary,
     paddingVertical: 10,
     paddingHorizontal: 12,
-  },
-  resultLabel: {
-    color: darkTheme.colors.text.secondary,
-    fontSize: 11,
-    marginBottom: 6,
   },
   resultText: {
     color: darkTheme.colors.text.primary,

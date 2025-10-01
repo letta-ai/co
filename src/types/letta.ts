@@ -252,9 +252,9 @@ export interface LettaEmbeddingModel {
 }
 
 export interface StreamingChunk {
-  message_type: 'ping' | 'assistant_message' | 'reasoning_message' | 'tool_call' | 'tool_response' | 'approval_request_message' | 'step_complete';
+  message_type: 'ping' | 'assistant_message' | 'reasoning_message' | 'tool_call' | 'tool_call_message' | 'tool_response' | 'tool_return_message' | 'approval_request_message' | 'step_complete';
   content?: string;
-  tool_call?: ToolCall;
+  tool_call?: ToolCall | any; // Allow both formats
   tool_response?: any;
   reasoning?: string;
   step?: number;

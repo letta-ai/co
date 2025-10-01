@@ -40,7 +40,10 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
       overflowWrap: 'anywhere' as any,
       whiteSpace: 'pre-wrap' as any,
     },
-    strong: { fontWeight: '700' },
+    strong: {
+      fontFamily: 'Lexend_700Bold',
+      fontWeight: '700',
+    },
     em: { fontStyle: 'italic' },
 
     code_inline: {
@@ -94,7 +97,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
     heading1: {
       fontSize: theme.typography.h1.fontSize,
       fontWeight: theme.typography.h1.fontWeight,
-      fontFamily: theme.typography.h1.fontFamily,
+      fontFamily: 'Lexend_700Bold',
       color: isUser ? userTextColor : assistantTextColor,
       lineHeight: theme.typography.h1.fontSize * theme.typography.h1.lineHeight,
       letterSpacing: theme.typography.h1.letterSpacing,
@@ -104,7 +107,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
     heading2: {
       fontSize: theme.typography.h2.fontSize,
       fontWeight: theme.typography.h2.fontWeight,
-      fontFamily: theme.typography.h2.fontFamily,
+      fontFamily: 'Lexend_500Medium',
       color: isUser ? userTextColor : assistantTextColor,
       lineHeight: theme.typography.h2.fontSize * theme.typography.h2.lineHeight,
       letterSpacing: theme.typography.h2.letterSpacing,
@@ -114,7 +117,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
     heading3: {
       fontSize: theme.typography.h3.fontSize,
       fontWeight: theme.typography.h3.fontWeight,
-      fontFamily: theme.typography.h3.fontFamily,
+      fontFamily: 'Lexend_500Medium',
       color: isUser ? userTextColor : assistantTextColor,
       lineHeight: theme.typography.h3.fontSize * theme.typography.h3.lineHeight,
       letterSpacing: theme.typography.h3.letterSpacing,
@@ -158,6 +161,35 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
       backgroundColor: isUser ? theme.colors.border.secondary : theme.colors.border.primary,
       height: 1,
       marginVertical: theme.spacing[1],
+    },
+    table: {
+      borderWidth: 1,
+      borderColor: theme.colors.border.primary,
+      borderRadius: 4,
+    },
+    thead: {},
+    tbody: {},
+    th: {
+      flex: 1,
+      padding: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border.primary,
+      fontFamily: 'Lexend_600SemiBold',
+      fontSize: theme.typography.bodySmall.fontSize,
+      color: isUser ? userTextColor : assistantTextColor,
+    },
+    tr: {
+      flexDirection: 'row',
+      borderBottomWidth: 1,
+      borderColor: theme.colors.border.primary,
+    },
+    td: {
+      flex: 1,
+      padding: 8,
+      borderWidth: 1,
+      borderColor: theme.colors.border.primary,
+      fontSize: theme.typography.body.fontSize,
+      color: isUser ? userTextColor : assistantTextColor,
     },
   });
 };
