@@ -1011,7 +1011,7 @@ function CoApp() {
               onPress={sendMessage}
               style={[
                 styles.sendButton,
-                { backgroundColor: colorScheme === 'dark' ? CoColors.deepBlack : CoColors.pureWhite },
+                { backgroundColor: theme.colors.background.primary },
                 (!inputText.trim() || isSendingMessage) && styles.sendButtonDisabled
               ]}
               disabled={!inputText.trim() || isSendingMessage}
@@ -1380,7 +1380,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: darkTheme.colors.interactive.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
