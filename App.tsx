@@ -1113,7 +1113,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Space for input at bottom
   },
   messageContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 40,
     paddingVertical: 8,
   },
   userMessageContainer: {
@@ -1123,7 +1123,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   assistantFullWidthContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 40,
     paddingVertical: 12,
     width: '100%',
   },
