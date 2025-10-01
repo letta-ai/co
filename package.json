@@ -21,6 +21,7 @@
     "axios": "^1.11.0",
     "expo": "^54.0.0",
     "expo-font": "~14.0.8",
+    "expo-image-picker": "~17.0.8",
     "expo-secure-store": "~15.0.7",
     "expo-status-bar": "~3.0.8",
     "lottie-react-native": "~7.3.1",

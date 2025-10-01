@@ -15,10 +15,12 @@ import {
   Platform,
   Linking,
   Animated,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Lexend_300Light, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import LogoLoader from './src/components/LogoLoader';
 import lettaApi from './src/api/lettaApi';
@@ -75,6 +77,7 @@ function CoApp() {
   const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [inputText, setInputText] = useState('');
+  const [selectedImages, setSelectedImages] = useState<Array<{ uri: string; base64: string; mediaType: string }>>([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
@@ -84,12 +87,15 @@ function CoApp() {
   const [streamingStep, setStreamingStep] = useState<string>('');
   const [streamingMessageId, setStreamingMessageId] = useState<string>('');
   const [streamingReasoning, setStreamingReasoning] = useState<string>('');
+  const [isReasoningStreaming, setIsReasoningStreaming] = useState(false);
   const [lastMessageNeedsSpace, setLastMessageNeedsSpace] = useState(false);
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
   const streamCompleteRef = useRef(false);
+  const rainbowAnimValue = useRef(new Animated.Value(0)).current;
 
   // Token buffering for smooth streaming
   const tokenBufferRef = useRef<string>('');
+  const streamingReasoningRef = useRef<string>('');
   const bufferIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -115,6 +121,7 @@ function CoApp() {
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
+  const sidebarAnimRef = useRef(new Animated.Value(0)).current;
 
   const isDesktop = screenData.width >= 768;
 
@@ -286,22 +293,129 @@ function CoApp() {
     }
   };
 
-  const sendMessage = async () => {
-    if (!inputText.trim() || !coAgent || isSendingMessage) return;
+  const pickImage = async () => {
+    try {
+      // Request permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Please allow access to your photo library to upload images.');
+        return;
+      }
 
-    const messageText = inputText.trim();
+      // Launch image picker
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: false,
+        quality: 0.8,
+        base64: true,
+      });
+
+      console.log('Image picker result:', { canceled: result.canceled, assetsCount: result.assets?.length });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        console.log('Asset info:', {
+          hasBase64: !!asset.base64,
+          base64Length: asset.base64?.length,
+          uri: asset.uri
+        });
+
+        if (asset.base64) {
+          // Check size: 5MB = 5 * 1024 * 1024 bytes
+          const MAX_SIZE = 5 * 1024 * 1024;
+          const sizeMB = (asset.base64.length / 1024 / 1024).toFixed(2);
+          console.log(`Image size: ${sizeMB}MB, max allowed: 5MB`);
+
+          if (asset.base64.length > MAX_SIZE) {
+            console.error(`IMAGE REJECTED: ${sizeMB}MB exceeds 5MB limit`);
+            Alert.alert(
+              'Image Too Large',
+              `This image is ${sizeMB}MB, but the maximum allowed size is 5MB. Please select a smaller image or compress it first.`
+            );
+            return;  // Discard the image
+          }
+
+          const mediaType = asset.uri.match(/\.(jpg|jpeg)$/i) ? 'image/jpeg' :
+                            asset.uri.match(/\.png$/i) ? 'image/png' :
+                            asset.uri.match(/\.gif$/i) ? 'image/gif' :
+                            asset.uri.match(/\.webp$/i) ? 'image/webp' : 'image/jpeg';
+
+          console.log('Adding image with mediaType:', mediaType);
+          setSelectedImages(prev => [...prev, {
+            uri: asset.uri,
+            base64: asset.base64,
+            mediaType,
+          }]);
+        } else {
+          console.error('No base64 data in asset');
+          Alert.alert('Error', 'Failed to read image data');
+        }
+      } else {
+        console.log('Image picker canceled or no assets');
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setSelectedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const sendMessage = async () => {
+    if ((!inputText.trim() && selectedImages.length === 0) || !coAgent || isSendingMessage) return;
+
+    const messageText = String(inputText || '').trim();
+    const imagesToSend = [...selectedImages];
+
+    console.log('sendMessage called - messageText:', messageText, 'type:', typeof messageText, 'imagesToSend length:', imagesToSend.length);
+
     setInputText('');
+    setSelectedImages([]);
     setIsSendingMessage(true);
 
     // Remove space from previous message before adding new user message
     setLastMessageNeedsSpace(false);
     spacerHeightAnim.setValue(0);
 
-    // Immediately add user message to UI
+    // Immediately add user message to UI (with images if any)
+    let tempMessageContent: any;
+    if (imagesToSend.length > 0) {
+      const contentParts = [];
+
+      // Add images using base64 (SDK expects camelCase, converts to snake_case for HTTP)
+      for (const img of imagesToSend) {
+        contentParts.push({
+          type: 'image',
+          source: {
+            type: 'base64',
+            mediaType: img.mediaType,
+            data: img.base64,
+          },
+        });
+      }
+
+      // Add text if present
+      console.log('[TEMP] About to check text - messageText:', JSON.stringify(messageText), 'type:', typeof messageText, 'length:', messageText?.length);
+      if (messageText && typeof messageText === 'string' && messageText.length > 0) {
+        console.log('[TEMP] Adding text to contentParts');
+        contentParts.push({
+          type: 'text',
+          text: messageText,
+        });
+      }
+
+      console.log('[TEMP] Final contentParts:', JSON.stringify(contentParts));
+      tempMessageContent = contentParts;
+    } else {
+      tempMessageContent = messageText;
+    }
+
     const tempUserMessage: LettaMessage = {
       id: `temp-${Date.now()}`,
       role: 'user',
-      content: messageText,
+      content: tempMessageContent,
       date: new Date().toISOString(),
     } as LettaMessage;
 
@@ -319,7 +433,9 @@ function CoApp() {
       setStreamingStep('');
       setStreamingMessageId('');
       setStreamingReasoning('');
+      setIsReasoningStreaming(true);
       tokenBufferRef.current = '';
+      streamingReasoningRef.current = '';
       streamCompleteRef.current = false;
 
       // Animate spacer growing to push user message up (push previous content out of view)
@@ -367,19 +483,25 @@ function CoApp() {
 
           setStreamingMessage(currentContent => {
             setIsStreaming(false);
+            setIsReasoningStreaming(false);
             setStreamingStep('');
+
+            const finalReasoning = streamingReasoningRef.current || '';
+            console.log('Finalizing message with reasoning:', finalReasoning);
 
             const finalMessage: LettaMessage = {
               id: streamingMessageId || `msg_${Date.now()}`,
               role: 'assistant',
               content: currentContent,
               created_at: new Date().toISOString(),
-              reasoning: streamingReasoning || undefined,
+              reasoning: finalReasoning || undefined,
             };
 
+            console.log('Final message object:', finalMessage);
             setMessages(prev => [...prev, finalMessage]);
             setStreamingMessageId('');
             setStreamingReasoning('');
+            streamingReasoningRef.current = '';
 
             return '';
           });
@@ -389,13 +511,63 @@ function CoApp() {
       toolCallMsgIdsRef.current.clear();
       toolReturnMsgIdsRef.current.clear();
 
+      // Build message content based on whether we have images
+      let messageContent: any;
+      if (imagesToSend.length > 0) {
+        // Multi-part content with images
+        const contentParts = [];
+
+        // Add images using base64 (SDK expects camelCase, converts to snake_case for HTTP)
+        for (const img of imagesToSend) {
+          console.log('Adding image - mediaType:', img.mediaType, 'base64 length:', img.base64?.length);
+
+          contentParts.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              mediaType: img.mediaType,
+              data: img.base64,
+            },
+          });
+        }
+
+        // Add text if present
+        console.log('[API] About to check text - messageText:', JSON.stringify(messageText), 'type:', typeof messageText);
+        if (messageText && typeof messageText === 'string' && messageText.length > 0) {
+          console.log('[API] Adding text to contentParts - text value:', messageText);
+          const textItem = {
+            type: 'text' as const,
+            text: String(messageText), // Explicitly convert to string as safeguard
+          };
+          console.log('[API] Text item to push:', JSON.stringify(textItem));
+          contentParts.push(textItem);
+        }
+
+        messageContent = contentParts;
+        console.log('Built contentParts:', contentParts.length, 'items');
+        console.log('Full message structure:', JSON.stringify({role: 'user', content: messageContent}, null, 2).substring(0, 1000));
+      } else {
+        // Text-only message
+        messageContent = messageText;
+        console.log('Sending text-only message:', messageText);
+      }
+
+      console.log('=== ABOUT TO SEND TO API ===');
+      console.log('messageContent type:', typeof messageContent);
+      console.log('messageContent is array?', Array.isArray(messageContent));
+      console.log('messageContent:', JSON.stringify(messageContent, null, 2));
+
+      const payload = {
+        messages: [{ role: 'user', content: messageContent }],
+        use_assistant_message: true,
+        stream_tokens: true,
+      };
+
+      console.log('Full payload being sent:', JSON.stringify(payload, null, 2).substring(0, 2000));
+
       await lettaApi.sendMessageStream(
         coAgent.id,
-        {
-          messages: [{ role: 'user', content: messageText }],
-          use_assistant_message: true,
-          stream_tokens: true,
-        },
+        payload,
         (chunk: StreamingChunk) => {
           handleStreamingChunk(chunk);
         },
@@ -422,11 +594,13 @@ function CoApp() {
           streamCompleteRef.current = false;
 
           setIsStreaming(false);
+          setIsReasoningStreaming(false);
           setStreamingMessage('');
           setStreamingStep('');
           setStreamingMessageId('');
           setStreamingReasoning('');
           tokenBufferRef.current = '';
+          streamingReasoningRef.current = '';
           Alert.alert('Error', 'Failed to send message: ' + (error.message || 'Unknown error'));
         }
       );
@@ -441,7 +615,7 @@ function CoApp() {
   };
 
   const handleStreamingChunk = (chunk: StreamingChunk) => {
-    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content);
+    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content, 'reasoning:', chunk.reasoning);
 
     // Capture message ID if present
     if (chunk.id && !streamingMessageId) {
@@ -449,6 +623,9 @@ function CoApp() {
     }
 
     if (chunk.message_type === 'assistant_message' && chunk.content) {
+      // Reasoning is complete, assistant message has started
+      setIsReasoningStreaming(false);
+
       // Extract text from content if it's an object
       let contentText = '';
       if (typeof chunk.content === 'string') {
@@ -471,7 +648,8 @@ function CoApp() {
         setStreamingStep('');
       }
     } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Accumulate reasoning
+      // Accumulate reasoning in both ref and state
+      streamingReasoningRef.current += chunk.reasoning;
       setStreamingReasoning(prev => prev + chunk.reasoning);
     } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
       // Handle both formats: with and without .function wrapper
@@ -538,6 +716,31 @@ function CoApp() {
       loadMemoryBlocks();
     }
   }, [coAgent, sidebarVisible, activeSidebarTab]);
+
+  // Animate sidebar
+  useEffect(() => {
+    Animated.timing(sidebarAnimRef, {
+      toValue: sidebarVisible ? 1 : 0,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [sidebarVisible]);
+
+  // Animate rainbow gradient for "co is thinking"
+  useEffect(() => {
+    if (isReasoningStreaming) {
+      rainbowAnimValue.setValue(0);
+      Animated.loop(
+        Animated.timing(rainbowAnimValue, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      rainbowAnimValue.stopAnimation();
+    }
+  }, [isReasoningStreaming]);
 
   // State for tracking expanded reasoning
   const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
@@ -726,6 +929,27 @@ function CoApp() {
           );
         }
 
+        // Parse message content to check for multipart (images)
+        let textContent: string = '';
+        let imageContent: Array<{type: string, source: {type: string, data: string, mediaType: string}}> = [];
+
+        if (typeof msg.content === 'object' && Array.isArray(msg.content)) {
+          // Multipart message with images
+          imageContent = msg.content.filter((item: any) => item.type === 'image');
+          const textParts = msg.content.filter((item: any) => item.type === 'text');
+          textContent = textParts.map((item: any) => item.text || '').filter(t => t).join('\n');
+        } else if (typeof msg.content === 'string') {
+          textContent = msg.content;
+        } else {
+          // Fallback: convert to string
+          textContent = String(msg.content || '');
+        }
+
+        // Skip rendering if no content at all
+        if (!textContent.trim() && imageContent.length === 0) {
+          return null;
+        }
+
         return (
           <View
             key={item.key}
@@ -740,12 +964,34 @@ function CoApp() {
               // @ts-ignore - web-only data attribute for CSS targeting
               dataSet={{ userMessage: 'true' }}
             >
-              <ExpandableMessageContent
-                content={msg.content}
-                isUser={isUser}
-                isDark={colorScheme === 'dark'}
-                lineLimit={3}
-              />
+              {/* Display images */}
+              {imageContent.length > 0 && (
+                <View style={styles.messageImagesContainer}>
+                  {imageContent.map((img: any, idx: number) => {
+                    const uri = img.source.type === 'url'
+                      ? img.source.url
+                      : `data:${img.source.media_type || img.source.mediaType};base64,${img.source.data}`;
+
+                    return (
+                      <Image
+                        key={idx}
+                        source={{ uri }}
+                        style={styles.messageImage}
+                      />
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Display text content */}
+              {textContent.trim().length > 0 && (
+                <ExpandableMessageContent
+                  content={textContent}
+                  isUser={isUser}
+                  isDark={colorScheme === 'dark'}
+                  lineLimit={3}
+                />
+              )}
             </View>
           </View>
         );
@@ -821,13 +1067,7 @@ function CoApp() {
   };
 
   const scrollToBottom = () => {
-    if (messageDirection === 'reversed') {
-      // When inverted, newest messages are at top (offset 0)
-      scrollViewRef.current?.scrollToOffset({ offset: 0, animated: true });
-    } else {
-      // Normal mode: scroll to end (newest at bottom)
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }
+    scrollViewRef.current?.scrollToEnd({ animated: true });
     setShowScrollToBottom(false);
   };
 
@@ -836,13 +1076,12 @@ function CoApp() {
   };
 
   const inputStyles = {
-    flex: 1,
-    maxHeight: 100,
-    height: 48,
+    width: '100%',
+    maxHeight: 120,
     paddingLeft: 18,
-    paddingRight: 54,
-    paddingTop: 14,
-    paddingBottom: 14,
+    paddingRight: 94,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderRadius: 28,
     color: colorScheme === 'dark' ? '#000000' : '#FFFFFF', // Inverted: black text in dark mode
     fontFamily: 'Lexend_400Regular',
@@ -895,31 +1134,128 @@ function CoApp() {
       // @ts-ignore - web-only data attribute
       dataSet={{ theme: colorScheme }}
     >
-      {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
-        <TouchableOpacity onPress={() => setSidebarVisible(true)} style={styles.menuButton}>
-          <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
-        </TouchableOpacity>
-
-        <View style={styles.headerCenter}>
-          <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+      {/* Sidebar */}
+      <Animated.View
+        style={[
+          styles.sidebarContainer,
+          {
+            paddingTop: insets.top,
+            backgroundColor: theme.colors.background.secondary,
+            borderRightColor: theme.colors.border.primary,
+            width: sidebarAnimRef.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 280],
+            }),
+          },
+        ]}
+      >
+        <View style={styles.sidebarHeader}>
+          <Text style={[styles.sidebarTitle, { color: theme.colors.text.primary }]}>Menu</Text>
+          <TouchableOpacity onPress={() => setSidebarVisible(false)} style={styles.closeSidebar}>
+            <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          onPress={toggleColorScheme}
-          style={styles.headerButton}
-        >
-          <Ionicons
-            name={colorScheme === 'dark' ? 'sunny-outline' : 'moon-outline'}
-            size={24}
-            color={theme.colors.text.primary}
-          />
-        </TouchableOpacity>
+        {/* Menu Items */}
+        <View style={styles.menuItems}>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
+              setActiveSidebarTab('memory');
+              loadMemoryBlocks();
+            }}
+          >
+            <Ionicons name="library-outline" size={24} color={theme.colors.text.primary} />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Memory</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
-          <Ionicons name="log-out-outline" size={24} color={theme.colors.text.primary} />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
+              toggleColorScheme();
+            }}
+          >
+            <Ionicons
+              name={colorScheme === 'dark' ? 'sunny-outline' : 'moon-outline'}
+              size={24}
+              color={theme.colors.text.primary}
+            />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>
+              {colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
+              if (coAgent) {
+                Linking.openURL(`https://app.letta.com/agents/${coAgent.id}`);
+              }
+            }}
+            disabled={!coAgent}
+          >
+            <Ionicons name="open-outline" size={24} color={theme.colors.text.primary} />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Open in Browser</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
+              setSidebarVisible(false);
+              handleLogout();
+            }}
+          >
+            <Ionicons name="log-out-outline" size={24} color={theme.colors.text.primary} />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Memory blocks section - only show when memory tab is active */}
+        {activeSidebarTab === 'memory' && (
+          <View style={styles.memorySection}>
+            <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary }]}>Memory Blocks</Text>
+            {isLoadingBlocks ? (
+              <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+            ) : blocksError ? (
+              <Text style={styles.errorText}>{blocksError}</Text>
+            ) : (
+              <FlatList
+                data={memoryBlocks}
+                keyExtractor={(item) => item.id || item.label}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.memoryBlockItem, {
+                      backgroundColor: theme.colors.background.primary,
+                      borderColor: theme.colors.border.primary
+                    }]}
+                    onPress={() => setSelectedBlock(item)}
+                  >
+                    <Text style={[styles.memoryBlockLabel, { color: theme.colors.text.primary }]}>{item.label}</Text>
+                    <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary }]} numberOfLines={2}>
+                      {item.value}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        )}
+      </Animated.View>
+
+      {/* Main content area */}
+      <View style={styles.mainContent}>
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: insets.top, backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+          <TouchableOpacity onPress={() => setSidebarVisible(!sidebarVisible)} style={styles.menuButton}>
+            <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
+          </TouchableOpacity>
+
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+          </View>
+
+          <View style={styles.headerSpacer} />
+        </View>
 
       {/* Messages */}
       <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
@@ -946,6 +1282,45 @@ function CoApp() {
             <>
               {isStreaming && (
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
+                  {/* Always show reasoning section when streaming */}
+                  <TouchableOpacity
+                    onPress={() => toggleReasoning('streaming')}
+                    style={styles.reasoningToggle}
+                  >
+                    {isReasoningStreaming ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                        <Animated.Text
+                          style={{
+                            fontSize: 24,
+                            fontFamily: 'Lexend_700Bold',
+                            color: rainbowAnimValue.interpolate({
+                              inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                              outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+                            })
+                          }}
+                        >
+                          co
+                        </Animated.Text>
+                        <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.tertiary }}> is thinking</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.reasoningToggleText}>Reasoning</Text>
+                    )}
+                    {!isReasoningStreaming && (
+                      <Ionicons
+                        name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color={darkTheme.colors.text.tertiary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                  {expandedReasoning.has('streaming') && (
+                    <View style={styles.reasoningExpandedContainer}>
+                      <Text style={styles.reasoningExpandedText}>
+                        {streamingReasoning || ''}
+                      </Text>
+                    </View>
+                  )}
                   {streamingStep && (
                     <Text style={styles.streamingStep}>{streamingStep}</Text>
                   )}
@@ -977,7 +1352,7 @@ function CoApp() {
         {showScrollToBottom && (
           <TouchableOpacity onPress={scrollToBottom} style={styles.scrollToBottomButton}>
             <Ionicons
-              name={messageDirection === 'reversed' ? 'arrow-up' : 'arrow-down'}
+              name="arrow-down"
               size={24}
               color="#000"
             />
@@ -996,7 +1371,32 @@ function CoApp() {
               borderWidth: 0,
             }
           ]} />
+
+          {/* Image preview section */}
+          {selectedImages.length > 0 && (
+            <View style={styles.imagePreviewContainer}>
+              {selectedImages.map((img, index) => (
+                <View key={index} style={styles.imagePreviewWrapper}>
+                  <Image source={{ uri: img.uri }} style={styles.imagePreview} />
+                  <TouchableOpacity
+                    onPress={() => removeImage(index)}
+                    style={styles.removeImageButton}
+                  >
+                    <Ionicons name="close-circle" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
           <View style={styles.inputWrapper}>
+            <TouchableOpacity
+              onPress={pickImage}
+              style={styles.imageButton}
+              disabled={isSendingMessage}
+            >
+              <Ionicons name="image-outline" size={24} color="#888888" />
+            </TouchableOpacity>
             <TextInput
               style={inputStyles}
               placeholder=""
@@ -1006,15 +1406,16 @@ function CoApp() {
               multiline
               maxLength={4000}
               editable={!isSendingMessage}
+              autoFocus
             />
             <TouchableOpacity
               onPress={sendMessage}
               style={[
                 styles.sendButton,
                 { backgroundColor: theme.colors.background.primary },
-                (!inputText.trim() || isSendingMessage) && styles.sendButtonDisabled
+                ((!inputText.trim() && selectedImages.length === 0) || isSendingMessage) && styles.sendButtonDisabled
               ]}
-              disabled={!inputText.trim() || isSendingMessage}
+              disabled={(!inputText.trim() && selectedImages.length === 0) || isSendingMessage}
             >
               {isSendingMessage ? (
                 <ActivityIndicator size="small" color={colorScheme === 'dark' ? '#fff' : '#000'} />
@@ -1025,50 +1426,7 @@ function CoApp() {
           </View>
         </View>
       </View>
-
-      {/* Sidebar */}
-      <Modal
-        visible={sidebarVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setSidebarVisible(false)}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setSidebarVisible(false)}
-        >
-          <View style={[styles.sidebarContainer, { paddingTop: insets.top }]}>
-            <TouchableOpacity onPress={() => setSidebarVisible(false)} style={styles.closeSidebar}>
-              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-            </TouchableOpacity>
-
-            <Text style={styles.sidebarTitle}>co Memory</Text>
-
-            {isLoadingBlocks ? (
-              <ActivityIndicator size="large" color={darkTheme.colors.text.secondary} />
-            ) : blocksError ? (
-              <Text style={styles.errorText}>{blocksError}</Text>
-            ) : (
-              <FlatList
-                data={memoryBlocks}
-                keyExtractor={(item) => item.id || item.label}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.memoryBlockItem}
-                    onPress={() => setSelectedBlock(item)}
-                  >
-                    <Text style={styles.memoryBlockLabel}>{item.label}</Text>
-                    <Text style={styles.memoryBlockPreview} numberOfLines={2}>
-                      {item.value}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      </View>
 
       {/* Memory block detail modal */}
       <Modal
@@ -1162,7 +1520,12 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    flexDirection: 'row',
     backgroundColor: darkTheme.colors.background.primary,
+  },
+  mainContent: {
+    flex: 1,
+    flexDirection: 'column',
   },
   loadingContainer: {
     flex: 1,
@@ -1204,6 +1567,9 @@ const styles = StyleSheet.create({
   headerButtonDisabled: {
     opacity: 0.3,
   },
+  headerSpacer: {
+    width: 40,
+  },
   logoutButton: {
     padding: 8,
   },
@@ -1239,6 +1605,18 @@ const styles = StyleSheet.create({
   userBubble: {
     // Background color set dynamically per theme in render
   },
+  messageImagesContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+    resizeMode: 'cover',
+  },
   assistantBubble: {
     backgroundColor: darkTheme.colors.background.secondary,
     borderWidth: 1,
@@ -1257,11 +1635,11 @@ const styles = StyleSheet.create({
   reasoningToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    marginBottom: 8,
+    paddingVertical: 8,
+    marginBottom: 12,
   },
   reasoningToggleText: {
-    fontSize: 13,
+    fontSize: 16,
     fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.tertiary,
     marginRight: 4,
@@ -1372,11 +1750,45 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
   },
+  imageButton: {
+    position: 'absolute',
+    right: 52,
+    bottom: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  imagePreviewContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    padding: 12,
+    gap: 8,
+  },
+  imagePreviewWrapper: {
+    position: 'relative',
+    width: 80,
+    height: 80,
+  },
+  imagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    resizeMode: 'cover',
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 12,
+  },
   sendButton: {
     position: 'absolute',
     right: 10,
-    top: '50%',
-    transform: [{ translateY: -18 }],
+    bottom: 6,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -1399,22 +1811,58 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sidebarContainer: {
-    width: '100%',
-    maxHeight: '80%',
-    backgroundColor: darkTheme.colors.background.primary,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 16,
+    height: '100%',
+    backgroundColor: darkTheme.colors.background.secondary,
+    borderRightWidth: 1,
+    borderRightColor: darkTheme.colors.border.primary,
+    overflow: 'hidden',
+  },
+  sidebarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: darkTheme.colors.border.primary,
   },
   closeSidebar: {
-    alignSelf: 'flex-end',
     padding: 8,
   },
   sidebarTitle: {
     fontSize: 24,
     fontFamily: 'Lexend_700Bold',
     color: darkTheme.colors.text.primary,
-    marginBottom: 16,
+  },
+  menuItems: {
+    paddingTop: 8,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: darkTheme.colors.border.primary,
+  },
+  menuItemText: {
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
+    marginLeft: 16,
+  },
+  memorySection: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  memorySectionTitle: {
+    fontSize: 14,
+    fontFamily: 'Lexend_600SemiBold',
+    color: darkTheme.colors.text.secondary,
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   memoryBlockItem: {
     padding: 16,

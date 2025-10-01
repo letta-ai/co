@@ -212,21 +212,30 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      
+
       console.log('sendMessage - agentId:', agentId);
       console.log('sendMessage - messageData:', messageData);
-      
+
       const lettaRequest = {
-        messages: messageData.messages.map(msg => ({
-          type: "message" as const,
-          role: msg.role,
-          content: msg.content  // Use string directly instead of array
-        })),
+        messages: messageData.messages.map(msg => {
+          // If content is already an array (multimodal), use it as-is
+          // Otherwise wrap text content in the standard format
+          const content = Array.isArray(msg.content)
+            ? msg.content
+            : [{ type: "text", text: msg.content }];
+
+          return {
+            role: msg.role,
+            content: content
+          };
+        }),
         maxSteps: messageData.max_steps,
         useAssistantMessage: messageData.use_assistant_message,
         enableThinking: messageData.enable_thinking ? 'true' : undefined
       };
-      
+
+      console.log('sendMessage - lettaRequest:', JSON.stringify(lettaRequest, null, 2).substring(0, 2000));
+
       const response = await this.client.agents.messages.create(agentId, lettaRequest);
       
       // Transform messages to match our interface, preserving tool step types
@@ -295,12 +304,20 @@ class LettaApiService {
       console.log('sendMessageStream - messageData:', messageData);
       console.log('Client initialized:', !!this.client);
       
-      // Build streaming request. Enable token streaming by default
+      // Build streaming request following docs format exactly
       const lettaStreamingRequest: any = {
-        messages: messageData.messages.map(msg => ({
-          role: msg.role,
-          content: [{ type: "text", text: msg.content }]
-        })),
+        messages: messageData.messages.map(msg => {
+          // If content is already an array (multimodal), use it as-is
+          // Otherwise wrap text content in the standard format
+          const content = Array.isArray(msg.content)
+            ? msg.content
+            : [{ type: "text", text: msg.content }];
+
+          return {
+            role: msg.role,
+            content: content
+          };
+        }),
         // Token streaming provides partial chunks for real-time UX
         streamTokens: messageData.stream_tokens !== false,
       };
@@ -312,7 +329,26 @@ class LettaApiService {
       console.log('=== SIMPLIFIED REQUEST ===');
       console.log('Request:', JSON.stringify(lettaStreamingRequest, null, 2));
       console.log('Messages count:', lettaStreamingRequest.messages.length);
-      
+
+      // Detailed logging of message structure
+      lettaStreamingRequest.messages.forEach((msg: any, idx: number) => {
+        console.log(`Message ${idx}:`, JSON.stringify(msg, null, 2));
+        if (Array.isArray(msg.content)) {
+          msg.content.forEach((item: any, itemIdx: number) => {
+            console.log(`  Content item ${itemIdx}:`, JSON.stringify(item, null, 2));
+            if (item.type === 'image' && item.source) {
+              console.log(`    Image source keys:`, Object.keys(item.source));
+              console.log(`    Image source type:`, item.source.type);
+              console.log(`    Image source has media_type:`, 'media_type' in item.source);
+              console.log(`    Image source has mediaType:`, 'mediaType' in item.source);
+              console.log(`    Image source has data:`, 'data' in item.source);
+              console.log(`    Image data length:`, item.source.data?.length);
+              console.log(`    Image mediaType value:`, item.source.mediaType || item.source.media_type);
+            }
+          });
+        }
+      });
+
       const stream = await this.client.agents.messages.createStream(agentId, lettaStreamingRequest);
 
       // Handle the stream response using async iteration
