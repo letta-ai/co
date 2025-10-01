@@ -847,16 +847,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      // Get an available embedding config
-      const embeddingConfigs = await this.client.embeddingModels.list();
-      if (!embeddingConfigs || embeddingConfigs.length === 0) {
-        throw new Error('No embedding models available');
-      }
-
+      // Cloud API doesn't allow embedding config
       const folder = await this.client.folders.create({
         name,
-        description,
-        embeddingConfig: embeddingConfigs[0]
+        description
       });
 
       return folder;
