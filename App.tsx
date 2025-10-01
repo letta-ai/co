@@ -1090,7 +1090,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 62,
     fontFamily: 'Lexend_700Bold',
     color: darkTheme.colors.text.primary,
   },
