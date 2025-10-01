@@ -1249,6 +1249,7 @@ function CoApp() {
 
   const inputStyles = {
     width: '100%',
+    minHeight: 44,
     maxHeight: 120,
     paddingLeft: 18,
     paddingRight: 130,
