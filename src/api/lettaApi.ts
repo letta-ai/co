@@ -218,11 +218,9 @@ class LettaApiService {
 
       const lettaRequest = {
         messages: messageData.messages.map(msg => {
-          // If content is already an array (multimodal), use it as-is
-          // Otherwise wrap text content in the standard format
-          const content = Array.isArray(msg.content)
-            ? msg.content
-            : [{ type: "text", text: msg.content }];
+          // Only use array format for multimodal content (images)
+          // Use string format for text-only messages
+          const content = Array.isArray(msg.content) ? msg.content : msg.content;
 
           return {
             role: msg.role,
@@ -307,11 +305,9 @@ class LettaApiService {
       // Build streaming request following docs format exactly
       const lettaStreamingRequest: any = {
         messages: messageData.messages.map(msg => {
-          // If content is already an array (multimodal), use it as-is
-          // Otherwise wrap text content in the standard format
-          const content = Array.isArray(msg.content)
-            ? msg.content
-            : [{ type: "text", text: msg.content }];
+          // Only use array format for multimodal content (images)
+          // Use string format for text-only messages
+          const content = Array.isArray(msg.content) ? msg.content : msg.content;
 
           return {
             role: msg.role,
