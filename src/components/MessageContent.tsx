@@ -7,22 +7,11 @@ import createMarkdownStyles from './markdownStyles';
 interface MessageContentProps {
   content: string;
   isUser: boolean;
+  isDark?: boolean;
 }
 
-const MessageContent: React.FC<MessageContentProps> = ({ content, isUser }) => {
-  // Define colors based on Letta theme
-  const userTextColor = darkTheme.colors.text.inverse; // Inverse (light) text on brand-blue bubble
-  const assistantTextColor = darkTheme.colors.text.primary; // White for assistant messages on dark background
-  const userAccentColor = darkTheme.colors.text.inverse; // Dark for user message accents
-  const assistantAccentColor = darkTheme.colors.text.secondary; // Gray for assistant message accents
-
-  const codeFontFamily = Platform.select({
-    ios: 'Menlo',
-    android: 'monospace',
-    default: 'SFMono-Regular',
-  });
-
-  const markdownStyles = createMarkdownStyles({ isUser });
+const MessageContent: React.FC<MessageContentProps> = ({ content, isUser, isDark = true }) => {
+  const markdownStyles = createMarkdownStyles({ isUser, isDark });
 
   // Normalize common escaped sequences that sometimes arrive double-escaped
   const normalized = React.useMemo(() => {

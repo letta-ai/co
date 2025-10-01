@@ -6,71 +6,92 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
-  ScrollView,
   FlatList,
   SafeAreaView,
   ActivityIndicator,
   Modal,
-  Linking,
   Dimensions,
   useColorScheme,
   Platform,
+  Linking,
+  Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { useFonts } from 'expo-font';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFonts, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import LogoLoader from './src/components/LogoLoader';
-import Wordmark from './src/components/Wordmark';
-// Wordmark is used in the sidebar, not in the chat header
 import lettaApi from './src/api/lettaApi';
 import Storage, { STORAGE_KEYS } from './src/utils/storage';
-import CreateAgentScreen from './CreateAgentScreen';
-import AgentSelectorScreen from './AgentSelectorScreen';
-import ProjectSelectorModal from './ProjectSelectorModal';
-import Sidebar from './src/components/Sidebar';
+import { findOrCreateCo } from './src/utils/coAgent';
+import CoLoginScreen from './CoLoginScreen';
 import MessageContent from './src/components/MessageContent';
 import ExpandableMessageContent from './src/components/ExpandableMessageContent';
+import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
-import { darkTheme } from './src/theme';
-import type { LettaAgent, LettaMessage, StreamingChunk, Project, MemoryBlock } from './src/types/letta';
-import useAppStore from './src/store/appStore';
+import { darkTheme, lightTheme, CoColors } from './src/theme';
+import type { LettaAgent, LettaMessage, StreamingChunk, MemoryBlock } from './src/types/letta';
 
-function MainApp() {
+// Import web styles for transparent input
+if (Platform.OS === 'web') {
+  require('./web-styles.css');
+}
+
+function CoApp() {
   const insets = useSafeAreaInsets();
-  const colorScheme = useColorScheme();
+  const systemColorScheme = useColorScheme();
+  const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(systemColorScheme || 'dark');
+
+  const [fontsLoaded] = useFonts({
+    Lexend_400Regular,
+    Lexend_500Medium,
+    Lexend_600SemiBold,
+    Lexend_700Bold,
+  });
+
+  const toggleColorScheme = () => {
+    setColorScheme(prev => prev === 'dark' ? 'light' : 'dark');
+  };
+
+  const theme = colorScheme === 'dark' ? darkTheme : lightTheme;
+
   // Authentication state
   const [apiToken, setApiToken] = useState('');
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isLoadingToken, setIsLoadingToken] = useState(true);
-  
-  // Project state
-  const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [showProjectSelector, setShowProjectSelector] = useState(false);
-  
-  // Agent state
-  const [agents, setAgents] = useState<LettaAgent[]>([]);
-  const [currentAgent, setCurrentAgent] = useState<LettaAgent | null>(null);
-  const [showAgentSelector, setShowAgentSelector] = useState(true); // Start with agent selector
-  const [showCreateAgentScreen, setShowCreateAgentScreen] = useState(false);
-  const [showChatView, setShowChatView] = useState(false);
-  
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+
+  // Co agent state
+  const [coAgent, setCoAgent] = useState<LettaAgent | null>(null);
+  const [isInitializingCo, setIsInitializingCo] = useState(false);
+
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
   const PAGE_SIZE = 50;
-  const INITIAL_LOAD_LIMIT = 20; // load only the last N messages initially
+  const INITIAL_LOAD_LIMIT = 20;
   const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
   const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [inputText, setInputText] = useState('');
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  
+
   // Streaming state
   const [streamingMessage, setStreamingMessage] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingStep, setStreamingStep] = useState<string>('');
+  const [streamingMessageId, setStreamingMessageId] = useState<string>('');
+  const [streamingReasoning, setStreamingReasoning] = useState<string>('');
+  const [lastMessageNeedsSpace, setLastMessageNeedsSpace] = useState(false);
+  const spacerHeightAnim = useRef(new Animated.Value(0)).current;
+  const streamCompleteRef = useRef(false);
+
+  // Token buffering for smooth streaming
+  const tokenBufferRef = useRef<string>('');
+  const bufferIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   // HITL approval state
   const [approvalVisible, setApprovalVisible] = useState(false);
   const [approvalData, setApprovalData] = useState<{
@@ -81,84 +102,610 @@ function MainApp() {
   } | null>(null);
   const [approvalReason, setApprovalReason] = useState('');
   const [isApproving, setIsApproving] = useState(false);
-  // Track in-progress tool messages per step so we can accumulate
+
   const toolCallMsgIdsRef = useRef<Map<string, string>>(new Map());
   const toolReturnMsgIdsRef = useRef<Map<string, string>>(new Map());
 
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const { favorites, toggleFavorite, isFavorite } = useAppStore();
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'project' | 'favorites' | 'memory'>('project');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'memory'>('memory');
   const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
-  // Cache and derived name for the selected agent's project (favorites can cross projects)
-  const [projectNameCache, setProjectNameCache] = useState<Record<string, string>>({});
-  const [agentProjectName, setAgentProjectName] = useState<string | undefined>(undefined);
 
   const isDesktop = screenData.width >= 768;
 
   // Ref for ScrollView to control scrolling
   const scrollViewRef = useRef<FlatList<any>>(null);
-  // Reserve space and anchor positioning for streaming response
-  const [bottomSpacerHeight, setBottomSpacerHeight] = useState(0);
-  const [hasPositionedForStream, setHasPositionedForStream] = useState(false);
-  // Track scroll position to counteract padding removal jump
   const [scrollY, setScrollY] = useState(0);
-  // Track sizes to show a quick "scroll to bottom" control
   const [contentHeight, setContentHeight] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [inputContainerHeight, setInputContainerHeight] = useState(0);
-  // Track when we need to jump to the bottom after first load/render
   const pendingJumpToBottomRef = useRef<boolean>(false);
   const pendingJumpRetriesRef = useRef<number>(0);
 
-  // Smoothly shrink the bottom spacer and counter-scroll to avoid visual jumps
-  const smoothRemoveSpacer = (durationMs: number = 220) => {
-    const start = Date.now();
-    const initial = bottomSpacerHeight;
-    if (initial <= 0) return;
-    const step = () => {
-      const elapsed = Date.now() - start;
-      const t = Math.min(1, elapsed / durationMs);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - t, 3);
-      const newH = Math.round(initial * (1 - eased));
-      const delta = bottomSpacerHeight - newH; // amount removed this frame
-      if (delta !== 0) {
-        // Counteract layout shift by adjusting scroll position upward by the same delta
-        const targetY = Math.max(0, scrollY - delta);
-        scrollViewRef.current?.scrollToOffset({ offset: targetY, animated: false });
-        setScrollY(targetY);
-        setBottomSpacerHeight(newH);
+  // Load stored API token on mount
+  useEffect(() => {
+    loadStoredToken();
+  }, []);
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      if (bufferIntervalRef.current) {
+        clearInterval(bufferIntervalRef.current);
       }
-      if (t < 1) {
-        requestAnimationFrame(step);
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
       }
     };
-    requestAnimationFrame(step);
+  }, []);
+
+  // Initialize Co when connected
+  useEffect(() => {
+    if (isConnected && !coAgent && !isInitializingCo) {
+      initializeCo();
+    }
+  }, [isConnected, coAgent, isInitializingCo]);
+
+  // Load messages when Co agent is ready
+  useEffect(() => {
+    if (coAgent) {
+      loadMessages();
+    }
+  }, [coAgent]);
+
+  const loadStoredToken = async () => {
+    try {
+      const stored = await Storage.getItem(STORAGE_KEYS.API_TOKEN);
+      if (stored) {
+        setApiToken(stored);
+        await connectWithToken(stored);
+      }
+    } catch (error) {
+      console.error('Failed to load stored token:', error);
+    } finally {
+      setIsLoadingToken(false);
+    }
   };
 
-  // Helper: update FAB visibility when user is not near bottom
-  const updateScrollButtonVisibility = (offsetY: number) => {
-    const threshold = 80; // px from bottom
-    const distanceFromBottom = Math.max(0, contentHeight - (offsetY + containerHeight));
-    setShowScrollToBottom(distanceFromBottom > threshold);
+  const connectWithToken = async (token: string) => {
+    setIsConnecting(true);
+    setConnectionError(null);
+    try {
+      lettaApi.setAuthToken(token);
+      const isValid = await lettaApi.testConnection();
+
+      if (isValid) {
+        setIsConnected(true);
+        await Storage.setItem(STORAGE_KEYS.API_TOKEN, token);
+      } else {
+        throw new Error('Invalid API token');
+      }
+    } catch (error: any) {
+      console.error('Connection failed:', error);
+      setConnectionError(error.message || 'Failed to connect');
+      lettaApi.removeAuthToken();
+      setIsConnected(false);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleLogin = async (token: string) => {
+    setApiToken(token);
+    await connectWithToken(token);
+  };
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await Storage.removeItem(STORAGE_KEYS.API_TOKEN);
+            lettaApi.removeAuthToken();
+            setApiToken('');
+            setIsConnected(false);
+            setCoAgent(null);
+            setMessages([]);
+            setConnectionError(null);
+          },
+        },
+      ]
+    );
+  };
+
+  const initializeCo = async () => {
+    setIsInitializingCo(true);
+    try {
+      console.log('Initializing Co agent...');
+      const agent = await findOrCreateCo('User');
+      setCoAgent(agent);
+      console.log('Co agent ready:', agent.id);
+    } catch (error: any) {
+      console.error('Failed to initialize Co:', error);
+      Alert.alert('Error', 'Failed to initialize Co: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsInitializingCo(false);
+    }
+  };
+
+  const loadMessages = async (before?: string) => {
+    if (!coAgent) return;
+
+    try {
+      if (!before) {
+        setIsLoadingMessages(true);
+      } else {
+        setIsLoadingMore(true);
+      }
+
+      const loadedMessages = await lettaApi.listMessages(coAgent.id, {
+        before: before || undefined,
+        limit: before ? PAGE_SIZE : INITIAL_LOAD_LIMIT,
+        use_assistant_message: true,
+      });
+
+      if (loadedMessages.length > 0) {
+        if (before) {
+          setMessages(prev => [...loadedMessages, ...prev]);
+          setEarliestCursor(loadedMessages[0].id);
+        } else {
+          setMessages(loadedMessages);
+          if (loadedMessages.length > 0) {
+            setEarliestCursor(loadedMessages[0].id);
+            pendingJumpToBottomRef.current = true;
+            pendingJumpRetriesRef.current = 3;
+          }
+        }
+        setHasMoreBefore(loadedMessages.length === (before ? PAGE_SIZE : INITIAL_LOAD_LIMIT));
+      } else {
+        setHasMoreBefore(false);
+      }
+    } catch (error: any) {
+      console.error('Failed to load messages:', error);
+      Alert.alert('Error', 'Failed to load messages: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsLoadingMessages(false);
+      setIsLoadingMore(false);
+    }
+  };
+
+  const loadMoreMessages = () => {
+    if (hasMoreBefore && !isLoadingMore && earliestCursor) {
+      loadMessages(earliestCursor);
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!inputText.trim() || !coAgent || isSendingMessage) return;
+
+    const messageText = inputText.trim();
+    setInputText('');
+    setIsSendingMessage(true);
+
+    // Remove space from previous message before adding new user message
+    setLastMessageNeedsSpace(false);
+    spacerHeightAnim.setValue(0);
+
+    // Immediately add user message to UI
+    const tempUserMessage: LettaMessage = {
+      id: `temp-${Date.now()}`,
+      role: 'user',
+      content: messageText,
+      date: new Date().toISOString(),
+    } as LettaMessage;
+
+    setMessages(prev => [...prev, tempUserMessage]);
+
+    // Scroll to bottom immediately to show user message
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: false });
+    }, 50);
+
+    try {
+      setIsStreaming(true);
+      setLastMessageNeedsSpace(true);
+      setStreamingMessage('');
+      setStreamingStep('');
+      setStreamingMessageId('');
+      setStreamingReasoning('');
+      tokenBufferRef.current = '';
+      streamCompleteRef.current = false;
+
+      // Animate spacer growing to push user message up (push previous content out of view)
+      const targetHeight = Math.max(containerHeight * 0.9, 450);
+      spacerHeightAnim.setValue(0);
+
+      Animated.timing(spacerHeightAnim, {
+        toValue: targetHeight,
+        duration: 400,
+        useNativeDriver: false, // height animation can't use native driver
+      }).start();
+
+      // During animation, keep scroll at bottom
+      if (scrollIntervalRef.current) {
+        clearInterval(scrollIntervalRef.current);
+      }
+      scrollIntervalRef.current = setInterval(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: false });
+      }, 16); // ~60fps
+
+      setTimeout(() => {
+        if (scrollIntervalRef.current) {
+          clearInterval(scrollIntervalRef.current);
+          scrollIntervalRef.current = null;
+        }
+      }, 400);
+
+      // Start smooth token release interval
+      if (bufferIntervalRef.current) {
+        clearInterval(bufferIntervalRef.current);
+      }
+      bufferIntervalRef.current = setInterval(() => {
+        if (tokenBufferRef.current.length > 0) {
+          // Release 1-3 characters at a time for smooth effect
+          const chunkSize = Math.min(3, tokenBufferRef.current.length);
+          const chunk = tokenBufferRef.current.slice(0, chunkSize);
+          tokenBufferRef.current = tokenBufferRef.current.slice(chunkSize);
+          setStreamingMessage(prev => prev + chunk);
+        } else if (streamCompleteRef.current) {
+          // Buffer is empty and streaming is done - finalize
+          if (bufferIntervalRef.current) {
+            clearInterval(bufferIntervalRef.current);
+            bufferIntervalRef.current = null;
+          }
+
+          setStreamingMessage(currentContent => {
+            setIsStreaming(false);
+            setStreamingStep('');
+
+            const finalMessage: LettaMessage = {
+              id: streamingMessageId || `msg_${Date.now()}`,
+              role: 'assistant',
+              content: currentContent,
+              created_at: new Date().toISOString(),
+              reasoning: streamingReasoning || undefined,
+            };
+
+            setMessages(prev => [...prev, finalMessage]);
+            setStreamingMessageId('');
+            setStreamingReasoning('');
+
+            return '';
+          });
+        }
+      }, 20); // 50 FPS
+
+      toolCallMsgIdsRef.current.clear();
+      toolReturnMsgIdsRef.current.clear();
+
+      await lettaApi.sendMessageStream(
+        coAgent.id,
+        {
+          messages: [{ role: 'user', content: messageText }],
+          use_assistant_message: true,
+          stream_tokens: true,
+        },
+        (chunk: StreamingChunk) => {
+          handleStreamingChunk(chunk);
+        },
+        async (response) => {
+          console.log('Stream complete');
+          // Signal that streaming is done - buffer interval will finalize when empty
+          streamCompleteRef.current = true;
+        },
+        (error) => {
+          console.error('Streaming error:', error);
+
+          // Clear intervals on error
+          if (bufferIntervalRef.current) {
+            clearInterval(bufferIntervalRef.current);
+            bufferIntervalRef.current = null;
+          }
+          if (scrollIntervalRef.current) {
+            clearInterval(scrollIntervalRef.current);
+            scrollIntervalRef.current = null;
+          }
+
+          // Reset spacer animation
+          spacerHeightAnim.setValue(0);
+          streamCompleteRef.current = false;
+
+          setIsStreaming(false);
+          setStreamingMessage('');
+          setStreamingStep('');
+          setStreamingMessageId('');
+          setStreamingReasoning('');
+          tokenBufferRef.current = '';
+          Alert.alert('Error', 'Failed to send message: ' + (error.message || 'Unknown error'));
+        }
+      );
+    } catch (error: any) {
+      console.error('Failed to send message:', error);
+      Alert.alert('Error', 'Failed to send message: ' + (error.message || 'Unknown error'));
+      setIsStreaming(false);
+      spacerHeightAnim.setValue(0);
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+  const handleStreamingChunk = (chunk: StreamingChunk) => {
+    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content);
+
+    // Capture message ID if present
+    if (chunk.id && !streamingMessageId) {
+      setStreamingMessageId(chunk.id);
+    }
+
+    if (chunk.message_type === 'assistant_message' && chunk.content) {
+      // Extract text from content if it's an object
+      let contentText = '';
+      if (typeof chunk.content === 'string') {
+        contentText = chunk.content;
+      } else if (typeof chunk.content === 'object' && chunk.content !== null) {
+        // Handle content array from Letta SDK
+        if (Array.isArray(chunk.content)) {
+          contentText = chunk.content
+            .filter((item: any) => item.type === 'text')
+            .map((item: any) => item.text || '')
+            .join('');
+        } else if (chunk.content.text) {
+          contentText = chunk.content.text;
+        }
+      }
+
+      if (contentText) {
+        // Add to buffer instead of directly to state for smooth streaming
+        tokenBufferRef.current += contentText;
+        setStreamingStep('');
+      }
+    } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
+      // Accumulate reasoning
+      setStreamingReasoning(prev => prev + chunk.reasoning);
+    } else if (chunk.message_type === 'tool_call' && chunk.tool_call) {
+      const toolName = chunk.tool_call.function?.name || 'tool';
+      setStreamingStep(`Calling ${toolName}...`);
+    } else if (chunk.message_type === 'tool_response') {
+      setStreamingStep('Processing result...');
+    } else if (chunk.message_type === 'approval_request_message') {
+      // Handle approval request
+      setApprovalData({
+        id: chunk.id,
+        toolName: chunk.tool_call?.function?.name,
+        toolArgs: chunk.tool_call?.function?.arguments,
+        reasoning: chunk.reasoning,
+      });
+      setApprovalVisible(true);
+    }
+  };
+
+  const handleApproval = async (approve: boolean) => {
+    if (!approvalData?.id || !coAgent) return;
+
+    setIsApproving(true);
+    try {
+      await lettaApi.approveToolRequest(coAgent.id, {
+        approval_request_id: approvalData.id,
+        approve,
+        reason: approvalReason || undefined,
+      });
+
+      setApprovalVisible(false);
+      setApprovalData(null);
+      setApprovalReason('');
+
+      // Continue streaming after approval
+    } catch (error: any) {
+      console.error('Approval error:', error);
+      Alert.alert('Error', 'Failed to process approval: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const loadMemoryBlocks = async () => {
+    if (!coAgent) return;
+
+    setIsLoadingBlocks(true);
+    setBlocksError(null);
+    try {
+      const blocks = await lettaApi.listAgentBlocks(coAgent.id);
+      setMemoryBlocks(blocks);
+    } catch (error: any) {
+      console.error('Failed to load memory blocks:', error);
+      setBlocksError(error.message || 'Failed to load memory blocks');
+    } finally {
+      setIsLoadingBlocks(false);
+    }
+  };
+
+  useEffect(() => {
+    if (coAgent && sidebarVisible && activeSidebarTab === 'memory') {
+      loadMemoryBlocks();
+    }
+  }, [coAgent, sidebarVisible, activeSidebarTab]);
+
+  // State for tracking expanded reasoning
+  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
+
+  const toggleReasoning = (messageId: string) => {
+    setExpandedReasoning(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
+  // Group messages for efficient FlatList rendering
+  type MessageGroup =
+    | { key: string; type: 'toolPair'; call: LettaMessage; ret?: LettaMessage; reasoning?: string }
+    | { key: string; type: 'message'; message: LettaMessage; reasoning?: string };
+
+  const groupedMessages = useMemo(() => {
+    const groups: MessageGroup[] = [];
+    const toolCallsMap = new Map<string, LettaMessage>();
+    const processedIds = new Set<string>();
+
+    messages.forEach(msg => {
+      if (msg.message_type?.includes('tool_call') && msg.step_id) {
+        toolCallsMap.set(msg.step_id, msg);
+      }
+    });
+
+    messages.forEach(msg => {
+      if (processedIds.has(msg.id)) return;
+
+      // Filter out login/heartbeat messages
+      if (msg.role === 'user' && msg.content) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          if (parsed?.type === 'login' || parsed?.type === 'heartbeat') {
+            processedIds.add(msg.id);
+            return;
+          }
+        } catch {
+          // Not JSON, keep the message
+        }
+      }
+
+      if (msg.message_type?.includes('tool_return') && msg.step_id) {
+        const toolCall = toolCallsMap.get(msg.step_id);
+        if (toolCall) {
+          groups.push({
+            key: toolCall.id,
+            type: 'toolPair',
+            call: toolCall,
+            ret: msg,
+            reasoning: toolCall.reasoning || msg.reasoning,
+          });
+          processedIds.add(toolCall.id);
+          processedIds.add(msg.id);
+          return;
+        }
+      }
+
+      if (!msg.message_type?.includes('tool_call') && !msg.message_type?.includes('tool_return')) {
+        groups.push({
+          key: msg.id,
+          type: 'message',
+          message: msg,
+          reasoning: msg.reasoning,
+        });
+        processedIds.add(msg.id);
+      }
+    });
+
+    return groups;
+  }, [messages]);
+
+  const renderMessageGroup = ({ item }: { item: MessageGroup }) => {
+    if (item.type === 'toolPair') {
+      const callText = item.call.content || 'Tool call';
+      const resultText = item.ret?.content || undefined;
+
+      return (
+        <View key={item.key} style={styles.messageContainer}>
+          <ToolCallItem
+            callText={callText}
+            resultText={resultText}
+          />
+        </View>
+      );
+    } else {
+      const msg = item.message;
+      const isUser = msg.role === 'user';
+      const isSystem = msg.role === 'system';
+
+      if (isSystem) return null;
+
+      if (isUser) {
+        return (
+          <View
+            key={item.key}
+            style={[styles.messageContainer, styles.userMessageContainer]}
+          >
+            <View
+              style={[
+                styles.messageBubble,
+                styles.userBubble,
+                { backgroundColor: colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack }
+              ]}
+              // @ts-ignore - web-only data attribute for CSS targeting
+              dataSet={{ userMessage: 'true' }}
+            >
+              <ExpandableMessageContent
+                content={msg.content}
+                isUser={isUser}
+                isDark={colorScheme === 'dark'}
+                lineLimit={3}
+              />
+            </View>
+          </View>
+        );
+      } else {
+        const isReasoningExpanded = expandedReasoning.has(msg.id);
+        const isLastMessage = groupedMessages[groupedMessages.length - 1]?.key === item.key;
+        const shouldHaveMinHeight = isLastMessage && lastMessageNeedsSpace;
+
+        return (
+          <View key={item.key} style={[
+            styles.assistantFullWidthContainer,
+            shouldHaveMinHeight && { minHeight: Math.max(containerHeight * 0.9, 450) }
+          ]}>
+            {item.reasoning && (
+              <TouchableOpacity
+                onPress={() => toggleReasoning(msg.id)}
+                style={styles.reasoningToggle}
+              >
+                <Text style={styles.reasoningToggleText}>Reasoning</Text>
+                <Ionicons
+                  name={isReasoningExpanded ? "chevron-up" : "chevron-down"}
+                  size={16}
+                  color={darkTheme.colors.text.tertiary}
+                />
+              </TouchableOpacity>
+            )}
+            {item.reasoning && isReasoningExpanded && (
+              <View style={styles.reasoningExpandedContainer}>
+                <Text style={styles.reasoningExpandedText}>{item.reasoning}</Text>
+              </View>
+            )}
+            <ExpandableMessageContent
+              content={msg.content}
+              isUser={isUser}
+              isDark={colorScheme === 'dark'}
+              lineLimit={20}
+            />
+          </View>
+        );
+      }
+    }
   };
 
   const handleScroll = (e: any) => {
     const y = e.nativeEvent.contentOffset.y;
     setScrollY(y);
-    updateScrollButtonVisibility(y);
+    const threshold = 80;
+    const distanceFromBottom = Math.max(0, contentHeight - (y + containerHeight));
+    setShowScrollToBottom(distanceFromBottom > threshold);
   };
 
   const handleContentSizeChange = (_w: number, h: number) => {
     setContentHeight(h);
-    updateScrollButtonVisibility(scrollY);
-    // If a bottom jump is pending and we now know content height, jump precisely
     if (pendingJumpToBottomRef.current && containerHeight > 0 && pendingJumpRetriesRef.current > 0) {
       const offset = Math.max(0, h - containerHeight);
       scrollViewRef.current?.scrollToOffset({ offset, animated: false });
@@ -171,8 +718,6 @@ function MainApp() {
   const handleMessagesLayout = (e: any) => {
     const h = e.nativeEvent.layout.height;
     setContainerHeight(h);
-    updateScrollButtonVisibility(scrollY);
-    // If a bottom jump is pending and we now know container height, jump precisely
     if (pendingJumpToBottomRef.current && contentHeight > 0 && pendingJumpRetriesRef.current > 0) {
       const offset = Math.max(0, contentHeight - h);
       scrollViewRef.current?.scrollToOffset({ offset, animated: false });
@@ -191,1629 +736,323 @@ function MainApp() {
     setInputContainerHeight(e.nativeEvent.layout.height || 0);
   };
 
-  // No-op: header segmented control switches between Memory and Chat views
+  const inputStyles = {
+    flex: 1,
+    maxHeight: 100,
+    height: 48,
+    paddingLeft: 18,
+    paddingRight: 54,
+    paddingTop: 14,
+    paddingBottom: 14,
+    borderRadius: 28,
+    color: colorScheme === 'dark' ? '#000000' : '#FFFFFF', // Inverted: black text in dark mode
+    fontFamily: 'Lexend_400Regular',
+    fontSize: 16,
+    lineHeight: 20,
+    borderWidth: 0,
+    backgroundColor: 'transparent',
+    ...(Platform.OS === 'web' && {
+      // @ts-ignore
+      background: 'transparent',
+      backgroundImage: 'none',
+      WebkitAppearance: 'none',
+      MozAppearance: 'none',
+    }),
+  } as const;
 
-  // Group messages for efficient FlatList rendering (pairs tool call + result, attach reasoning)
-  type MessageGroup =
-    | { key: string; type: 'toolPair'; call: LettaMessage; ret?: LettaMessage; reasoning?: string }
-    | { key: string; type: 'message'; message: LettaMessage; reasoning?: string };
-
-  const messageGroups: MessageGroup[] = useMemo(() => {
-    const groups: MessageGroup[] = [];
-    const callTypes = new Set(['tool_call', 'tool_call_message', 'tool_message']);
-    const retTypes = new Set(['tool_response', 'tool_return_message']);
-    const shownReasoningForStep = new Set<string>();
-
-    const findReasoningForStep = (fromIndex: number, stepId?: string): string | undefined => {
-      if (!stepId) return undefined;
-      for (let j = fromIndex; j < messages.length; j++) {
-        const msgAny: any = messages[j];
-        if (msgAny.role === 'assistant' && msgAny.step_id && String(msgAny.step_id) === String(stepId) && msgAny.reasoning) {
-          return String(msgAny.reasoning);
-        }
-      }
-      return undefined;
-    };
-
-    for (let i = 0; i < messages.length; i++) {
-      const m: any = messages[i];
-      if (m.role === 'tool' && callTypes.has(m.message_type)) {
-        const next: any = messages[i + 1];
-        const paired = !!(next && next.role === 'tool' && retTypes.has(next.message_type) && (
-          (next.step_id && m.step_id && String(next.step_id) === String(m.step_id)) ||
-          (!m.step_id || m.step_id === 'no-step')
-        ));
-
-        let reasoningToShow: string | undefined = m.reasoning;
-        if (!reasoningToShow && m.step_id && !shownReasoningForStep.has(m.step_id)) {
-          reasoningToShow = findReasoningForStep(i + 1, m.step_id);
-        }
-
-        groups.push({
-          key: `${m.id}-grp-${i}`,
-          type: 'toolPair',
-          call: m,
-          ret: paired ? next : undefined,
-          reasoning: reasoningToShow,
-        });
-
-        if (m.step_id && reasoningToShow) shownReasoningForStep.add(m.step_id);
-        if (paired) { i++; }
-        continue;
-      }
-
-      const reasoning = (m.role === 'assistant' && (m as any).reasoning && (!m.step_id || !shownReasoningForStep.has(m.step_id)))
-        ? (m as any).reasoning
-        : undefined;
-
-      groups.push({ key: `${m.id || 'msg'}-${i}-${m.created_at}`, type: 'message', message: m, reasoning });
-      if (m.role === 'assistant' && (m as any).reasoning && m.step_id) shownReasoningForStep.add(m.step_id);
-    }
-    return groups;
-  }, [messages]);
-
-  // Handle message expansion toggle (no forced scroll to avoid flicker)
-  const handleMessageToggle = useCallback((_expanding: boolean) => {
-    // Intentionally no-op; FlatList will handle re-layout.
-    // Keeping this hook to allow future tweaks without re-plumbing props.
-  }, []);
-
-  const renderGroupItem = ({ item }: { item: MessageGroup }) => {
-    if (item.type === 'toolPair') {
-      return (
-        <View style={styles.messageGroup}>
-          {!!item.reasoning && (
-            <View style={styles.reasoningContainer}>
-              <Text style={styles.reasoningLabel}>Reasoning</Text>
-              <Text style={styles.reasoningText}>{item.reasoning}</Text>
-            </View>
-          )}
-          <View style={[styles.message, styles.assistantMessage]}>
-            <ToolCallItem callText={item.call.content} resultText={item.ret?.content} />
-          </View>
-        </View>
-      );
-    }
-    const m = item.message as any;
+  if (isLoadingToken || !fontsLoaded) {
     return (
-      <View style={styles.messageGroup}>
-        {!!item.reasoning && (
-          <View style={styles.reasoningContainer}>
-            <Text style={styles.reasoningLabel}>Reasoning</Text>
-            <Text style={styles.reasoningText}>{item.reasoning}</Text>
-          </View>
-        )}
-        <View style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
-          {m.role === 'tool' ? (
-            <Text style={styles.messageText}>{m.content}</Text>
-          ) : (
-            <ExpandableMessageContent
-              content={m.content}
-              isUser={m.role === 'user'}
-              onToggle={handleMessageToggle}
-            />
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  // Format tool arguments in a compact Python-style signature
-  const formatArgsPython = (raw: any): string => {
-    try {
-      if (!raw) return '';
-      const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
-      if (Array.isArray(obj)) {
-        return obj.map(v => JSON.stringify(v)).join(', ');
-      }
-      if (typeof obj === 'object') {
-        return Object.entries(obj)
-          .map(([k, v]) => `${k}=${typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v)}`)
-          .join(', ');
-      }
-      return String(raw);
-    } catch {
-      // Fallback to raw string (truncated)
-      return typeof raw === 'string' ? raw : JSON.stringify(raw);
-    }
-  };
-
-  // Load saved token on app startup
-  useEffect(() => {
-    const loadSavedToken = async () => {
-      try {
-        console.log(`Using storage type: ${Storage.getStorageType()}`);
-        const savedToken = await Storage.getItem(STORAGE_KEYS.TOKEN);
-        if (savedToken) {
-          console.log('Found saved token, attempting auto-login');
-          lettaApi.setAuthToken(savedToken);
-          const isValid = await lettaApi.testConnection();
-          
-          if (isValid) {
-            setApiToken(savedToken);
-            setIsConnected(true);
-            const project = await loadSavedProject();
-            if (project) {
-              await loadSavedAgent(project);
-            }
-            console.log('Auto-login successful');
-          } else {
-            console.log('Saved token is invalid, clearing it');
-            await Storage.removeItem(STORAGE_KEYS.TOKEN);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading saved token:', error);
-      } finally {
-        setIsLoadingToken(false);
-      }
-    };
-
-    const loadSavedProject = async () => {
-      try {
-        const savedProjectId = await Storage.getItem(STORAGE_KEYS.PROJECT_ID);
-        const savedProjectName = await Storage.getItem(STORAGE_KEYS.PROJECT_NAME);
-
-        if (savedProjectId && savedProjectName) {
-          console.log(`Restoring project: ${savedProjectName} (ID: ${savedProjectId})`);
-
-          // Use name query parameter for direct lookup
-          const response = await lettaApi.listProjects({ name: savedProjectName });
-          const foundProject = response.projects.find(p => p.id === savedProjectId);
-
-          if (foundProject) {
-            setCurrentProject(foundProject);
-            console.log('Restored saved project:', foundProject.name);
-            return foundProject;
-          } else {
-            console.log('Saved project not found by name query, clearing cached data');
-            await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
-            await Storage.removeItem(STORAGE_KEYS.PROJECT_NAME);
-          }
-        } else if (savedProjectId && !savedProjectName) {
-          // Legacy case: we have ID but no name - fall back to pagination search once
-          console.log('Legacy project ID found without name, doing one-time migration');
-
-          let foundProject = null;
-          let limit = 100;
-          let hasNextPage = true;
-          let offset = 0;
-
-          while (!foundProject && hasNextPage && offset < 500) {
-            const response = await lettaApi.listProjects({ limit, offset });
-            foundProject = response.projects.find(p => p.id === savedProjectId);
-
-            if (foundProject) {
-              // Migrate to new storage format with both ID and name
-              await Storage.setItem(STORAGE_KEYS.PROJECT_NAME, foundProject.name);
-              setCurrentProject(foundProject);
-              console.log('Migrated and restored project:', foundProject.name);
-              return foundProject;
-            }
-
-            hasNextPage = response.hasNextPage;
-            offset += limit;
-          }
-
-          // Clean up if not found
-          if (!foundProject) {
-            console.log('Legacy project not found, clearing it');
-            await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading saved project:', error);
-      }
-      return null;
-    };
-
-    const loadSavedAgent = async (project: Project) => {
-      try {
-        const savedAgentId = await Storage.getItem(STORAGE_KEYS.AGENT_ID);
-        if (savedAgentId && project) {
-          const agentList = await lettaApi.listAgentsForProject(project.id, {
-            limit: 50,
-          });
-          const foundAgent = agentList.find(a => a.id === savedAgentId);
-          if (foundAgent) {
-            setCurrentAgent(foundAgent);
-            setShowAgentSelector(false);
-            setShowChatView(true);
-            await loadMessagesForAgent(foundAgent.id);
-            console.log('Restored saved agent:', foundAgent.name);
-            return foundAgent;
-          } else {
-            console.log('Saved agent not found, clearing it');
-            await Storage.removeItem(STORAGE_KEYS.AGENT_ID);
-          }
-        }
-      } catch (error) {
-        console.error('Error loading saved agent:', error);
-      }
-      return null;
-    };
-
-
-    loadSavedToken();
-  }, []);
-
-  // Listen for orientation/screen size changes
-  useEffect(() => {
-    const onChange = (result: any) => {
-      setScreenData(result.window);
-    };
-
-    const subscription = Dimensions.addEventListener('change', onChange);
-    return () => subscription?.remove();
-  }, []);
-
-  // Load memory blocks when Memory tab is active
-  useEffect(() => {
-    const loadBlocks = async () => {
-      if (!currentAgent || activeSidebarTab !== 'memory') return;
-      setIsLoadingBlocks(true);
-      setBlocksError(null);
-      try {
-        const blocks = await lettaApi.listAgentBlocks(currentAgent.id);
-        const sorted = (blocks || []).slice().sort((a, b) => {
-          const la = (a.label || a.name || '').toLowerCase();
-          const lb = (b.label || b.name || '').toLowerCase();
-          return la.localeCompare(lb);
-        });
-        setMemoryBlocks(sorted);
-      } catch (e: any) {
-        setBlocksError(e?.message || 'Failed to load memory blocks');
-      } finally {
-        setIsLoadingBlocks(false);
-      }
-    };
-    loadBlocks();
-  }, [activeSidebarTab, currentAgent?.id]);
-
-  const handleConnect = async () => {
-    const trimmedToken = apiToken.trim();
-    if (!trimmedToken) {
-      Alert.alert('Error', 'Please enter your API token');
-      return;
-    }
-
-    setIsConnecting(true);
-    try {
-      lettaApi.setAuthToken(trimmedToken);
-      const isValid = await lettaApi.testConnection();
-      
-      if (isValid) {
-        // Save token securely
-        await Storage.setItem(STORAGE_KEYS.TOKEN, trimmedToken);
-        console.log(`Token saved securely using ${Storage.getStorageType()}`);
-        
-        setIsConnected(true);
-        Alert.alert('Connected', 'Successfully connected to Letta API!');
-      } else {
-        Alert.alert('Error', 'Invalid API token. Please check your credentials.');
-      }
-    } catch (error: any) {
-      console.error('Connection error:', error);
-      Alert.alert('Error', error.message || 'Failed to connect to Letta API');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleProjectSelect = async (project: Project) => {
-    try {
-      await Storage.setItem(STORAGE_KEYS.PROJECT_ID, project.id);
-      await Storage.setItem(STORAGE_KEYS.PROJECT_NAME, project.name);
-      setCurrentProject(project);
-      console.log('Selected project:', project.name);
-    } catch (error) {
-      console.error('Error saving selected project:', error);
-    }
-  };
-
-  const handleAgentSelect = async (agent: LettaAgent) => {
-    try {
-      await Storage.setItem(STORAGE_KEYS.AGENT_ID, agent.id);
-      // Reset any pending approvals when switching agents
-      setApprovalVisible(false);
-      setApprovalData(null);
-      setApprovalReason('');
-      setCurrentAgent(agent);
-      setShowAgentSelector(false);
-      setShowChatView(true);
-      await loadMessagesForAgent(agent.id);
-      console.log('Selected agent:', agent.name);
-    } catch (error) {
-      console.error('Error selecting agent:', error);
-    }
-  };
-
-  const handleOpenAgentInDashboard = () => {
-    if (!currentAgent) return;
-    const url = `https://app.letta.com/agents/${encodeURIComponent(currentAgent.id)}`;
-    Linking.openURL(url);
-  };
-
-  const handleBackToAgentSelector = () => {
-    // Clear any pending approval UI when leaving chat
-    setApprovalVisible(false);
-    setApprovalData(null);
-    setApprovalReason('');
-    setShowChatView(false);
-    setShowAgentSelector(true);
-    setCurrentAgent(null);
-    setMessages([]);
-  };
-
-  // Keep agentProjectName in sync with currentAgent / currentProject
-  useEffect(() => {
-    const resolveProjectName = async () => {
-      if (!currentAgent?.project_id) {
-        setAgentProjectName(undefined);
-        return;
-      }
-      const pid = currentAgent.project_id;
-      // If the global currentProject matches, use its name
-      if (currentProject && currentProject.id === pid) {
-        setAgentProjectName(currentProject.name);
-        return;
-      }
-      // Use cache when available
-      if (projectNameCache[pid]) {
-        setAgentProjectName(projectNameCache[pid]);
-        return;
-      }
-      // Otherwise, look it up via API (paginate list)
-      try {
-        const p = await lettaApi.getProjectById(pid);
-        if (p?.name) {
-          setProjectNameCache(prev => ({ ...prev, [pid]: p.name }));
-          setAgentProjectName(p.name);
-        } else {
-          setAgentProjectName(undefined);
-        }
-      } catch {
-        setAgentProjectName(undefined);
-      }
-    };
-    resolveProjectName();
-  }, [currentAgent?.project_id, currentProject?.id]);
-
-  const buildDisplayMessages = (messageHistory: any[]): LettaMessage[] => {
-    // Filter and transform messages for display (dedupe heartbeats, readable tool steps)
-    const displayMessages = messageHistory
-      .filter(msg => {
-        if (msg.role === 'system') return false;
-        if (msg.role === 'user' && typeof msg.content === 'string') {
-          try {
-            const parsed = JSON.parse(msg.content);
-            if (parsed?.type === 'heartbeat') return false;
-            if (parsed?.type === 'system_alert') return false;
-          } catch {}
-        }
-        return true;
-      })
-      .map(msg => {
-        const call = (msg as any).tool_call || (msg as any).tool_calls?.[0];
-        const ret = (msg as any).tool_response || (msg as any).tool_return;
-        let content = msg.content as any;
-        if ((!content || typeof content !== 'string') && (msg as any).message_type) {
-          const mt = (msg as any).message_type;
-          if (mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message') {
-            const callObj = call?.function ? call.function : call;
-            const name = callObj?.name || callObj?.tool_name || 'tool';
-            if (name) {
-              const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
-              content = `${name}(${args})`;
-            }
-          } else if (mt === 'tool_response' || mt === 'tool_return_message') {
-            if (ret != null) {
-              try { content = typeof ret === 'string' ? ret : JSON.stringify(ret); } catch { content = String(ret) }
-            }
-          }
-        }
-        if (content != null && typeof content !== 'string') content = String(content);
-        return {
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant' | 'tool',
-          content: content || '',
-          created_at: msg.created_at,
-          reasoning: (msg as any).reasoning,
-          message_type: (msg as any).message_type,
-          step_id: (msg as any).step_id != null ? String((msg as any).step_id) : undefined,
-        } as LettaMessage;
-      });
-    return displayMessages;
-  };
-
-  const loadMessagesForAgent = async (agentId: string) => {
-    setIsLoadingMessages(true);
-    try {
-      const messageHistory = await lettaApi.listMessages(agentId, { limit: INITIAL_LOAD_LIMIT });
-      console.log('Loaded messages for agent:', messageHistory);
-
-      let displayMessages = buildDisplayMessages(messageHistory);
-      // Safety: if SDK returns more than requested, keep only the newest N
-      if (displayMessages.length > INITIAL_LOAD_LIMIT) {
-        displayMessages = displayMessages.slice(-INITIAL_LOAD_LIMIT);
-      }
-
-      setMessages(displayMessages);
-      setEarliestCursor(displayMessages.length ? displayMessages[0].created_at : null);
-      setHasMoreBefore(displayMessages.length >= INITIAL_LOAD_LIMIT);
-
-      // If the latest message is an approval request, prompt for approval
-      const lastRaw: any = messageHistory[messageHistory.length - 1];
-      if (lastRaw && lastRaw.message_type === 'approval_request_message' && lastRaw.tool_call) {
-        try {
-          const raw = lastRaw.tool_call?.function ? lastRaw.tool_call.function : lastRaw.tool_call;
-          const args = formatArgsPython(raw?.arguments ?? raw?.args ?? {});
-          setApprovalData({ id: lastRaw.id, toolName: raw?.name || raw?.tool_name, toolArgs: args, reasoning: lastRaw.reasoning });
-          setApprovalVisible(true);
-        } catch {}
-      } else {
-        setApprovalVisible(false);
-        setApprovalData(null);
-      }
-
-      // Defer precise jump until sizes are known via onLayout/onContentSizeChange
-      pendingJumpToBottomRef.current = true;
-      pendingJumpRetriesRef.current = 8; // retry across a few layout/size passes
-    } catch (error: any) {
-      console.error('Failed to load messages:', error);
-      Alert.alert('Error', 'Failed to load messages: ' + error.message);
-    } finally {
-      setIsLoadingMessages(false);
-    }
-  };
-
-  const loadOlderMessages = async () => {
-    if (!currentAgent || isLoadingMore || !hasMoreBefore) return;
-    try {
-      setIsLoadingMore(true);
-      const history = await lettaApi.listMessages(currentAgent.id, {
-        limit: PAGE_SIZE,
-        before: earliestCursor || undefined,
-      });
-      const olderDisplay = buildDisplayMessages(history);
-      if (olderDisplay.length > 0) {
-        setMessages(prev => [...olderDisplay, ...prev]);
-        setEarliestCursor(olderDisplay[0].created_at);
-        setHasMoreBefore(olderDisplay.length >= PAGE_SIZE);
-      } else {
-        setHasMoreBefore(false);
-      }
-    } catch (e) {
-      console.error('Failed to load older messages', e);
-      setHasMoreBefore(false);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
-
-  const handleSendMessage = async () => {
-    if (!inputText.trim() || !currentAgent || isSendingMessage) return;
-
-    const userMessage: LettaMessage = {
-      id: `temp-${Date.now()}`,
-      role: 'user',
-      content: inputText.trim(),
-      created_at: new Date().toISOString(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setIsSendingMessage(true);
-    setIsStreaming(true);
-
-    // Reserve space at bottom so streamed content can expand without pushing user to scroll
-    const vh = Dimensions.get('window').height;
-    setBottomSpacerHeight(Math.floor(vh * 0.9));
-    setHasPositionedForStream(false);
-    // Clear any previous streaming content when starting a new message
-    setStreamingMessage('');
-    setStreamingStep('');
-    // Reset tool accumulation maps at the start of a new stream
-    toolCallMsgIdsRef.current.clear();
-    toolReturnMsgIdsRef.current.clear();
-    
-    const messageToSend = inputText.trim();
-    setInputText('');
-
-    // Local accumulator to preserve content through callback closures
-    // Accumulators for streaming assembly with light whitespace coalescing at chunk boundaries
-    let accumulatedMessage = '';
-    let accumulatedStep = '';
-    let accumulatedReasoningText = '';
-
-    // Normalize streamed text and coalesce boundary spacing to avoid duplicated spaces
-    const normalizeStreamText = (s: string) => {
-      if (!s) return '';
-      // Convert escaped sequences to real characters when server/SDK double-escapes
-      return s
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '\t');
-    };
-
-    // Safely extract text from various SDK/object shapes to avoid "[object Object]"
-    const extractText = (val: any): string => {
-      if (val == null) return '';
-      if (typeof val === 'string') return val;
-      if (Array.isArray(val)) return val.map(extractText).join('');
-      if (typeof val === 'object') {
-        // Common fields that may hold text
-        if (typeof (val as any).text === 'string') return (val as any).text as string;
-        if (typeof (val as any).content === 'string') return (val as any).content as string;
-        if (typeof (val as any).message === 'string') return (val as any).message as string;
-        // Some SDKs wrap parts under choices[0].delta/content
-        const choices = (val as any).choices;
-        if (choices && Array.isArray(choices) && choices.length) {
-          const c = choices[0];
-          return extractText(c?.delta?.content ?? c?.message?.content ?? c?.content);
-        }
-        // Fallback: do not stringify raw objects into [object Object]
-        return '';
-      }
-      return '';
-    };
-
-    // Coalesce boundary spacing to avoid duplicates like "word ." or double spaces
-    const coalesceBoundary = (prev: string, next: string) => {
-      if (!next) return '';
-      let piece = normalizeStreamText(next);
-      const prevLast = prev.slice(-1);
-      // If previous ends with whitespace and next begins with whitespace, drop leading whitespace
-      if (/\s/.test(prevLast) && /^\s/.test(piece)) {
-        piece = piece.replace(/^\s+/, '');
-      }
-      // If previous ends with space and next begins with punctuation that shouldn't be preceded by a space, drop that leading space
-      if (prevLast === ' ' && /^\s*[\.,;:!\?\)\]\}]/.test(piece)) {
-        piece = piece.replace(/^\s+/, '');
-      }
-      // If previous ends with an opening bracket and next starts with space, drop the leading space
-      if (/[\(\[\{]$/.test(prev) && /^\s+/.test(piece)) {
-        piece = piece.replace(/^\s+/, '');
-      }
-      return piece;
-    };
-
-    try {
-      await lettaApi.sendMessageStream(
-        currentAgent.id,
-        {
-          messages: [{ role: 'user', content: messageToSend }],
-        },
-        // onChunk callback - handle streaming tokens
-        (chunk) => {
-          console.log('Stream chunk:', chunk);
-          console.log('Chunk keys:', Object.keys(chunk));
-
-          const mt = (chunk as any).message_type as string | undefined;
-          const isCallType = mt === 'tool_call' || mt === 'tool_call_message' || mt === 'tool_message' || (!!(chunk as any).tool_call && !(chunk as any).tool_response);
-          const isReturnType = mt === 'tool_response' || mt === 'tool_return_message' || (!!(chunk as any).tool_response);
-
-          if (mt === 'assistant_message' && chunk.content) {
-            // Append new content with boundary coalescing
-            let raw = extractText(chunk.content);
-            // Handle escape sequences split across chunk boundaries, e.g., "\\" + "n"
-            if (accumulatedMessage.endsWith('\\')) {
-              if (raw.startsWith('n')) {
-                accumulatedMessage = accumulatedMessage.slice(0, -1);
-                raw = '\n' + raw.slice(1);
-              } else if (raw.startsWith('t')) {
-                accumulatedMessage = accumulatedMessage.slice(0, -1);
-                raw = '\t' + raw.slice(1);
-              }
-            }
-            const piece = coalesceBoundary(accumulatedMessage, raw);
-            accumulatedMessage += piece;
-            setStreamingMessage(accumulatedMessage);
-          } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-            // Show reasoning/thinking process (accumulate) with boundary coalescing
-            const piece = coalesceBoundary(accumulatedReasoningText, extractText(chunk.reasoning));
-            accumulatedReasoningText += piece;
-            accumulatedStep = `Thinking: ${accumulatedReasoningText}`;
-            setStreamingStep(accumulatedStep);
-          } else if (isCallType) {
-            // Accumulate tool call text by step instead of creating new entries
-            const callRaw: any = (chunk as any).tool_call ?? (chunk as any).toolCall ?? {};
-            const callObj: any = (callRaw as any).function ? (callRaw as any).function : callRaw;
-            const name = callObj?.name || callObj?.tool_name || 'tool';
-            const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
-            const toolLine = `${name}(${args})`;
-            const stepId = chunk.step ? String(chunk.step) : 'no-step';
-
-            console.log('[UI] tool_call update', { stepId, toolLine });
-            setMessages(prev => {
-              const idFromMap = toolCallMsgIdsRef.current.get(stepId);
-              if (idFromMap) {
-                console.log('[UI] updating existing tool_call message', idFromMap);
-                // Update existing message content for this step
-                return prev.map(m => m.id === idFromMap ? { ...m, content: toolLine } : m);
-              }
-              // Insert a new message and remember its id for subsequent updates
-              const newId = `toolcall-${stepId}-${Date.now()}`;
-              toolCallMsgIdsRef.current.set(stepId, newId);
-              console.log('[UI] inserting new tool_call message', newId);
-              return [
-                ...prev,
-                {
-                  id: newId,
-                  role: 'tool',
-                  content: toolLine,
-                  created_at: new Date().toISOString(),
-                  message_type: mt || 'tool_message',
-                  step_id: stepId,
-                  reasoning: accumulatedReasoningText ? accumulatedReasoningText : undefined,
-                }
-              ];
-            });
-          } else if (isReturnType) {
-            // Accumulate tool return text by step
-            const r = (chunk as any).tool_response ?? (chunk as any).toolReturn ?? (chunk as any).result;
-            let resultStr = '';
-            try { resultStr = typeof r === 'string' ? r : JSON.stringify(r); } catch {}
-            const stepId = chunk.step ? String(chunk.step) : 'no-step';
-            const line = resultStr;
-            console.log('[UI] tool_return update', { stepId, line });
-            setMessages(prev => {
-              const idFromMap = toolReturnMsgIdsRef.current.get(stepId);
-              if (idFromMap) {
-                console.log('[UI] updating existing tool_return message', idFromMap);
-                return prev.map(m => m.id === idFromMap ? { ...m, content: line } : m);
-              }
-              const newId = `toolret-${stepId}-${Date.now()}`;
-              toolReturnMsgIdsRef.current.set(stepId, newId);
-              console.log('[UI] inserting new tool_return message', newId);
-              return [
-                ...prev,
-                { id: newId, role: 'tool', content: line, created_at: new Date().toISOString(), message_type: mt || 'tool_return_message', step_id: stepId }
-              ];
-            });
-          } else if (mt === 'approval_request_message') {
-            const callRaw: any = (chunk as any).tool_call ?? (chunk as any).toolCall ?? {};
-            const callObj: any = (callRaw as any).function ? (callRaw as any).function : callRaw;
-            const name = callObj?.name || callObj?.tool_name || 'tool';
-            const args = formatArgsPython(callObj?.arguments ?? callObj?.args ?? {});
-            setApprovalData({ id: (chunk as any).id, toolName: name, toolArgs: args, reasoning: (chunk as any).reasoning });
-            setApprovalVisible(true);
-          }
-        },
-        // onComplete callback
-        (response) => {
-          console.log('Stream complete:', response);
-
-          // Add the completed assistant message to permanent messages if we have content
-          if (accumulatedMessage.trim()) {
-            const assistantMessage: LettaMessage = {
-              id: `assistant-${Date.now()}`,
-              role: 'assistant',
-              content: accumulatedMessage.trim(),
-              created_at: new Date().toISOString(),
-              reasoning: accumulatedReasoningText ? accumulatedReasoningText : undefined,
-            };
-
-            setMessages(prev => [...prev, assistantMessage]);
-            console.log('Added completed assistant message to chat history');
-          }
-
-          // Clear streaming state
-          setIsStreaming(false);
-          setStreamingMessage('');
-          setStreamingStep('');
-          // Reset tool accumulation maps for next message
-          toolCallMsgIdsRef.current.clear();
-          toolReturnMsgIdsRef.current.clear();
-          // Smoothly remove reserved space and counter-scroll to avoid jump
-          smoothRemoveSpacer(240);
-        },
-        // onError callback
-        (error) => {
-          console.error('Stream error:', error);
-          Alert.alert('Error', 'Failed to send message: ' + error.message);
-          
-          // Keep the user message visible, just restore input for retry
-          setInputText(messageToSend);
-          
-          // Clear streaming state
-          setIsStreaming(false);
-          setStreamingMessage('');
-          setStreamingStep('');
-          toolCallMsgIdsRef.current.clear();
-          toolReturnMsgIdsRef.current.clear();
-          // Smoothly remove reserved space and counter-scroll to avoid jump
-          smoothRemoveSpacer(240);
-        }
-      );
-    } catch (error: any) {
-      console.error('Failed to send message:', error);
-      Alert.alert('Error', 'Failed to send message: ' + error.message);
-      
-      // Keep the user message visible, just restore input for retry
-      setInputText(messageToSend);
-      
-      // Clear streaming state
-      setIsStreaming(false);
-      setStreamingMessage('');
-      setStreamingStep('');
-    } finally {
-      setIsSendingMessage(false);
-    }
-  };
-
-  const handleAgentCreated = async (agent: LettaAgent) => {
-    setShowCreateAgentScreen(false);
-    
-    // Auto-select the newly created agent and go to chat
-    await handleAgentSelect(agent);
-    
-    Alert.alert('Success', `Agent "${agent.name}" created successfully!`);
-  };
-
-  const handleCreateAgentCancel = () => {
-    setShowCreateAgentScreen(false);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await Storage.removeItem(STORAGE_KEYS.TOKEN);
-      await Storage.removeItem(STORAGE_KEYS.AGENT_ID);
-      await Storage.removeItem(STORAGE_KEYS.PROJECT_ID);
-      lettaApi.removeAuthToken();
-      setApiToken('');
-      setIsConnected(false);
-      setCurrentProject(null);
-      setCurrentAgent(null);
-      setAgents([]);
-      setMessages([]);
-      setShowChatView(false);
-      setShowAgentSelector(true);
-      console.log('Logged out successfully');
-    } catch (error) {
-      console.error('Error during logout:', error);
-    }
-  };
-
-  if (isLoadingToken) {
-    return (
-      <View style={styles.container}>
-        <View style={[styles.setupContainer, { paddingTop: insets.top }]}>
-          <Wordmark width={320} height={60} />
-          <Text style={styles.subtitle}>Loading...</Text>
-        </View>
-        <StatusBar style="auto" />
-      </View>
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.colors.background.primary }]}>
+        <ActivityIndicator size="large" color={theme.colors.interactive.primary} />
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      </SafeAreaView>
     );
   }
 
   if (!isConnected) {
     return (
-      <View style={styles.container}>
-        <View style={[styles.setupContainer, { paddingTop: insets.top }]}>
-          <Wordmark width={320} height={60} />
-          <Text style={styles.subtitle}>Enter your Letta API token to get started</Text>
-          
-          <TextInput
-            style={styles.input}
-            placeholder="Letta API Token"
-            value={apiToken}
-            onChangeText={setApiToken}
-            secureTextEntry
-          />
-          
-          <TouchableOpacity 
-            style={[styles.button, isConnecting && styles.buttonDisabled]} 
-            onPress={handleConnect}
-            disabled={isConnecting}
-          >
-            {isConnecting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Connect</Text>
-            )}
-          </TouchableOpacity>
-          
-          <Text style={styles.instructions}>
-            Get an API key from{' '}
-            <Text 
-              style={styles.link}
-              onPress={() => Linking.openURL('https://app.letta.com/api-keys')}
-            >
-              https://app.letta.com/api-keys
-            </Text>
-          </Text>
-        </View>
-        <StatusBar style="auto" />
-      </View>
-    );
-  }
-
-  if (showCreateAgentScreen) {
-    return (
-      <CreateAgentScreen
-        onAgentCreated={handleAgentCreated}
-        onCancel={handleCreateAgentCancel}
+      <CoLoginScreen
+        onLogin={handleLogin}
+        isLoading={isConnecting}
+        error={connectionError}
       />
     );
   }
 
-  // Show agent selector after login (main screen) - only when we have a project
-  if (showAgentSelector && !showChatView) {
+  if (isInitializingCo || !coAgent) {
     return (
-      <>
-        {currentProject ? (
-          <AgentSelectorScreen
-            currentProject={currentProject}
-            onAgentSelect={handleAgentSelect}
-            onProjectPress={() => setShowProjectSelector(true)}
-            onCreateAgent={() => setShowCreateAgentScreen(true)}
-            onLogout={handleLogout}
-          />
-        ) : null}
-        
-        <ProjectSelectorModal
-          visible={showProjectSelector || !currentProject}
-          currentProject={currentProject}
-          onProjectSelect={handleProjectSelect}
-          onClose={() => setShowProjectSelector(false)}
-        />
-      </>
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.colors.background.primary }]}>
+        <ActivityIndicator size="large" color={theme.colors.interactive.primary} />
+        <Text style={[styles.loadingText, { color: theme.colors.text.secondary }]}>Initializing co...</Text>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      </SafeAreaView>
     );
   }
 
-  // Show chat view when agent is selected
+  // Main chat view
   return (
-    <View style={styles.container}>
-      <View style={[styles.mainLayout, isDesktop && styles.desktopLayout]}>
-        {/* Sidebar for desktop */}
-        {isDesktop && (
-          <Sidebar
-            currentProject={currentProject}
-            currentAgent={currentAgent}
-            onAgentSelect={handleAgentSelect}
-            onProjectPress={() => setShowProjectSelector(true)}
-            onCreateAgent={() => setShowCreateAgentScreen(true)}
-            onLogout={handleLogout}
-            isVisible={true}
-            onTabChange={(tab) => {
-              setActiveSidebarTab(tab);
-              if (tab !== 'memory') {
-                setSelectedBlock(null);
-              }
-            }}
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background.primary }]}
+      // @ts-ignore - web-only data attribute
+      dataSet={{ theme: colorScheme }}
+    >
+      {/* Header */}
+      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+        <TouchableOpacity onPress={() => setSidebarVisible(true)} style={styles.menuButton}>
+          <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+        </View>
+
+        <TouchableOpacity
+          onPress={toggleColorScheme}
+          style={styles.headerButton}
+        >
+          <Ionicons
+            name={colorScheme === 'dark' ? 'sunny-outline' : 'moon-outline'}
+            size={24}
+            color={theme.colors.text.primary}
           />
-        )}
+        </TouchableOpacity>
 
-        {/* Mobile sidebar modal */}
-        {!isDesktop && (
-          <Modal
-            visible={sidebarVisible}
-            animationType="slide"
-            presentationStyle="overFullScreen"
-            onRequestClose={() => setSidebarVisible(false)}
-          >
-            <SafeAreaView style={styles.mobileModal}>
-              <View style={styles.modalHeader}>
-                <TouchableOpacity onPress={() => setSidebarVisible(false)}>
-                  <Text style={styles.modalCloseText}>✕</Text>
-                </TouchableOpacity>
-              </View>
-              <Sidebar
-                currentProject={currentProject}
-                currentAgent={currentAgent}
-                onAgentSelect={(agent) => {
-                  handleAgentSelect(agent);
-                  setSidebarVisible(false);
-                }}
-                onProjectPress={() => {
-                  setSidebarVisible(false);
-                  setShowProjectSelector(true);
-                }}
-                onCreateAgent={() => {
-                  setSidebarVisible(false);
-                  setShowCreateAgentScreen(true);
-                }}
-                onLogout={handleLogout}
-                isVisible={true}
-                onTabChange={(tab) => {
-                  setActiveSidebarTab(tab);
-                  if (tab !== 'memory') {
-                    setSelectedBlock(null);
-                  }
-                }}
-              />
-            </SafeAreaView>
-          </Modal>
-        )}
+        <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+          <Ionicons name="log-out-outline" size={24} color={theme.colors.text.primary} />
+        </TouchableOpacity>
+      </View>
 
-        {/* Chat Area */}
-        <View style={styles.chatArea}>
-          {/* Header */}
-          <View style={[
-            styles.chatHeader,
-            {
-              paddingTop: Platform.OS === 'android' ? insets.top : 0,
-              height: darkTheme.layout.headerHeight + (Platform.OS === 'android' ? insets.top : 0)
-            }
-          ]}>
-            {!isDesktop && (
-              <TouchableOpacity
-                style={styles.menuButton}
-                onPress={() => setSidebarVisible(true)}
-              >
-                <Text style={styles.menuIcon}>☰</Text>
+      {/* Messages */}
+      <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
+        <FlatList
+          ref={scrollViewRef}
+          data={groupedMessages}
+          renderItem={renderMessageGroup}
+          keyExtractor={(item) => item.key}
+          onScroll={handleScroll}
+          onContentSizeChange={handleContentSizeChange}
+          contentContainerStyle={styles.messagesList}
+          ListHeaderComponent={
+            hasMoreBefore ? (
+              <TouchableOpacity onPress={loadMoreMessages} style={styles.loadMoreButton}>
+                {isLoadingMore ? (
+                  <ActivityIndicator size="small" color={theme.colors.text.secondary} />
+                ) : (
+                  <Text style={styles.loadMoreText}>Load more messages</Text>
+                )}
               </TouchableOpacity>
-            )}
-            {activeSidebarTab === 'memory' && selectedBlock && (
-              <TouchableOpacity
-                style={styles.menuButton}
-                onPress={() => setSelectedBlock(null)}
-                accessibilityLabel="Back to memory list"
-              >
-                <Ionicons name="chevron-back" size={18} color={darkTheme.colors.text.secondary} />
-              </TouchableOpacity>
-            )}
-            <View style={styles.headerContent}>
-              {activeSidebarTab === 'memory' ? (
-                <>
-                  <Text style={styles.agentTitle}>
-                    {selectedBlock ? (selectedBlock.name || selectedBlock.label || 'Memory') : 'Memory Blocks'}
-                  </Text>
-                  {currentAgent && (
-                    <Text style={styles.agentSubtitle}>
-                      {currentAgent.name}
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.agentTitle}>
-                    {currentAgent ? currentAgent.name : 'Select an agent'}
-                  </Text>
-                  {currentAgent && (
-                    <Text style={styles.agentSubtitle}>
-                      {agentProjectName || currentProject?.name || ''}
-                    </Text>
-                  )}
-                </>
-              )}
-            </View>
-            {/* Old single-pill toggle removed in favor of segmented control */}
-            {currentAgent && (
-              <View style={styles.segmentedToggle} accessibilityRole="tablist">
-                <TouchableOpacity
-                  style={[styles.segmentButton, activeSidebarTab === 'memory' && styles.segmentButtonActive]}
-                  onPress={() => setActiveSidebarTab('memory')}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: activeSidebarTab === 'memory' }}
-                  accessibilityLabel="Memory"
-                >
-                  <Text style={[styles.segmentText, activeSidebarTab === 'memory' && styles.segmentTextActive]}>Memory</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.segmentButton, styles.segmentRight, activeSidebarTab !== 'memory' && styles.segmentButtonActive]}
-                  onPress={() => setActiveSidebarTab('project')}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: activeSidebarTab !== 'memory' }}
-                  accessibilityLabel="Chat"
-                >
-                  <Text style={[styles.segmentText, activeSidebarTab !== 'memory' && styles.segmentTextActive]}>Chat</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {currentAgent && (
-              <TouchableOpacity
-                onPress={() => currentAgent && toggleFavorite(currentAgent.id)}
-                style={styles.headerIconButton}
-                accessibilityLabel={isFavorite(currentAgent.id) ? "Unfavorite agent" : "Favorite agent"}
-              >
-                <Ionicons
-                  name={isFavorite(currentAgent.id) ? 'star' : 'star-outline'}
-                  size={18}
-                  color={isFavorite(currentAgent.id) ? '#ffd166' : darkTheme.colors.text.secondary}
-                />
-              </TouchableOpacity>
-            )}
-            {currentAgent && (
-              <TouchableOpacity
-                onPress={handleOpenAgentInDashboard}
-                style={styles.headerIconButton}
-                accessibilityLabel="Open in Letta agent editor"
-              >
-                <Ionicons name="open-outline" size={18} color={darkTheme.colors.text.secondary} />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Memory view or Messages */}
-          {activeSidebarTab === 'memory' ? (
-            selectedBlock ? (
-              <ScrollView style={styles.messagesContainer}>
-                <View style={styles.messagesList}>
-                  <MessageContent content={selectedBlock.value || ''} isUser={false} />
-                </View>
-              </ScrollView>
-            ) : isLoadingBlocks ? (
-              <View style={styles.loadingContainer}>
-                <LogoLoader
-                  source={colorScheme === 'dark' 
-                    ? require('./assets/animations/Dark-sygnetrotate2.json') 
-                    : require('./assets/animations/Light-sygnetrotate2.json')}
-                  size={120}
-                />
-                <Text style={styles.loadingText}>Loading memory blocks...</Text>
-              </View>
-            ) : blocksError ? (
-              <View style={styles.loadingContainer}>
-                <Text style={styles.errorText}>{blocksError}</Text>
-              </View>
-            ) : (
-              <ScrollView style={styles.messagesContainer}>
-                <View style={styles.messagesList}>
-                  {memoryBlocks.length === 0 ? (
-                    <View style={styles.emptyContainer}>
-                      <Text style={styles.emptyText}>No memory blocks</Text>
-                    </View>
-                  ) : (
-                    memoryBlocks.map((b) => {
-                      const derivedName = (b.name && b.name.trim())
-                        ? b.name.trim()
-                        : (b.label ? b.label.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Untitled')
-                      return (
-                        <TouchableOpacity
-                          key={b.id}
-                          style={styles.blockItem}
-                          onPress={() => setSelectedBlock(b)}
-                        >
-                          {!!b.label && (
-                            <Text numberOfLines={1} style={styles.blockLabel}>{b.label}</Text>
-                          )}
-                          <Text numberOfLines={1} style={styles.blockName}>{derivedName}</Text>
-                          {!!b.description && (
-                            <Text numberOfLines={2} style={styles.blockDesc}>{b.description}</Text>
-                          )}
-                        </TouchableOpacity>
-                      )
-                    })
-                  )}
-                </View>
-              </ScrollView>
-            )
-          ) : isLoadingMessages ? (
-            <View style={styles.loadingContainer}>
-              <LogoLoader
-                source={colorScheme === 'dark' 
-                  ? require('./assets/animations/Dark-sygnetrotate2.json') 
-                  : require('./assets/animations/Light-sygnetrotate2.json')}
-                size={120}
-              />
-              <Text style={styles.loadingText}>Loading messages...</Text>
-            </View>
-          ) : (
+            ) : null
+          }
+          ListFooterComponent={
             <>
-              <FlatList
-                ref={scrollViewRef}
-                style={styles.messagesContainer}
-                contentContainerStyle={[styles.messagesList, { paddingBottom: bottomSpacerHeight }]}
-                data={messageGroups}
-                keyExtractor={(item) => item.key}
-                renderItem={renderGroupItem}
-                onScroll={handleScroll}
-                onContentSizeChange={handleContentSizeChange}
-                onLayout={handleMessagesLayout}
-                scrollEventThrottle={16}
-                maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 10 }}
-                ListHeaderComponent={hasMoreBefore ? (
-                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadOlderMessages} disabled={isLoadingMore}>
-                    <Text style={styles.loadMoreText}>{isLoadingMore ? 'Loading…' : 'Load earlier messages'}</Text>
-                  </TouchableOpacity>
-                ) : null}
-                ListEmptyComponent={currentAgent ? (
-                  <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>Start a conversation with {currentAgent.name}</Text>
-                  </View>
-                ) : null}
-                ListFooterComponent={
-                  <>
-                    {isStreaming && (
-                      <View
-                        style={styles.messageGroup}
-                        onLayout={(e) => {
-                          if (!hasPositionedForStream) {
-                            const y = e.nativeEvent.layout.y;
-                            scrollViewRef.current?.scrollToOffset({ offset: Math.max(0, y - 8), animated: false });
-                            setHasPositionedForStream(true);
-                          }
-                        }}
-                      >
-                        {streamingStep && streamingStep.trim().length > 0 && (
-                          <View style={styles.reasoningContainer}>
-                            <Text style={styles.reasoningLabel}>Reasoning</Text>
-                            <Text style={styles.reasoningText}>{streamingStep.trim()}</Text>
-                          </View>
-                        )}
-                        <View style={[styles.message, styles.assistantMessage, styles.streamingMessage]}>
-                          {streamingMessage && String(streamingMessage).trim().length > 0 ? (
-                            <>
-                              <MessageContent content={String(streamingMessage).trim()} isUser={false} />
-                              <Text style={styles.cursor}>|</Text>
-                            </>
-                          ) : (
-                            <View style={styles.thinkingIndicator}>
-                              <ActivityIndicator size="small" color="#666" />
-                              <Text style={styles.thinkingText}>Agent is thinking...</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    )}
-
-                    {isSendingMessage && !isStreaming && (
-                      <View style={styles.messageGroup}>
-                        <View style={[styles.message, styles.assistantMessage]}>
-                          <ActivityIndicator size="small" color="#666" />
-                        </View>
-                      </View>
-                    )}
-
-                    {approvalVisible && (
-                      <View style={styles.messageGroup}>
-                        <View style={[styles.message, styles.assistantMessage]}>
-                          <View style={styles.approvalCardInline}>
-                            <Text style={styles.approvalTitle}>Approval Required</Text>
-                            {!!approvalData?.reasoning && (
-                              <View style={styles.reasoningContainer}>
-                                <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
-                                <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
-                              </View>
-                            )}
-                            <View style={styles.approvalBlock}>
-                              <Text style={styles.approvalLabel}>Proposed Tool</Text>
-                              <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
-                            </View>
-                            <View style={styles.approvalButtons}>
-                              <TouchableOpacity
-                                style={[styles.approvalBtn, styles.approve]}
-                                disabled={isApproving}
-                                onPress={async () => {
-                                  if (!currentAgent || !approvalData?.id) return;
-                                  try {
-                                    setIsApproving(true);
-                                    await lettaApi.approveToolRequestStream(
-                                      currentAgent.id,
-                                      { approval_request_id: approvalData.id, approve: true },
-                                      undefined,
-                                      async () => {
-                                        setApprovalVisible(false);
-                                        setApprovalData(null);
-                                        setApprovalReason('');
-                                        await loadMessagesForAgent(currentAgent.id);
-                                      },
-                                      (err) => {
-                                        Alert.alert('Error', err.message || 'Failed to approve');
-                                      }
-                                    );
-                                  } finally {
-                                    setIsApproving(false);
-                                  }
-                                }}
-                              >
-                                <Text style={styles.approvalBtnText}>Approve</Text>
-                              </TouchableOpacity>
-                              <TouchableOpacity
-                                style={[styles.approvalBtn, styles.reject]}
-                                disabled={isApproving}
-                                onPress={async () => {
-                                  if (!currentAgent || !approvalData?.id) return;
-                                  try {
-                                    setIsApproving(true);
-                                    await lettaApi.approveToolRequestStream(
-                                      currentAgent.id,
-                                      { approval_request_id: approvalData.id, approve: false },
-                                      undefined,
-                                      async () => {
-                                        setApprovalVisible(false);
-                                        setApprovalData(null);
-                                        setApprovalReason('');
-                                        await loadMessagesForAgent(currentAgent.id);
-                                      },
-                                      (err) => {
-                                        Alert.alert('Error', err.message || 'Failed to deny');
-                                      }
-                                    );
-                                  } finally {
-                                    setIsApproving(false);
-                                  }
-                                }}
-                              >
-                                <Text style={styles.approvalBtnText}>Reject</Text>
-                              </TouchableOpacity>
-                            </View>
-                            <View style={styles.feedbackBlock}>
-                              <Text style={styles.approvalLabel}>Reject with feedback</Text>
-                              <TextInput
-                                style={styles.approvalInput}
-                                placeholder="Provide guidance for the agent"
-                                placeholderTextColor={darkTheme.colors.text.secondary}
-                                value={approvalReason}
-                                onChangeText={setApprovalReason}
-                                multiline
-                              />
-                              <TouchableOpacity
-                                style={[styles.approvalBtn, styles.reject]}
-                                disabled={isApproving || approvalReason.trim().length === 0}
-                                onPress={async () => {
-                                  if (!currentAgent || !approvalData?.id) return;
-                                  try {
-                                    setIsApproving(true);
-                                    await lettaApi.approveToolRequestStream(
-                                      currentAgent.id,
-                                      { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
-                                      undefined,
-                                      async () => {
-                                        setApprovalVisible(false);
-                                        setApprovalData(null);
-                                        setApprovalReason('');
-                                        await loadMessagesForAgent(currentAgent.id);
-                                      },
-                                      (err) => {
-                                        Alert.alert('Error', err.message || 'Failed to deny with feedback');
-                                      }
-                                    );
-                                  } finally {
-                                    setIsApproving(false);
-                                  }
-                                }}
-                              >
-                                <Text style={styles.approvalBtnText}>Send Feedback</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        </View>
-                      </View>
-                    )}
-                  </>
-                }
-              />
-              {false && (
-            <ScrollView
-              ref={scrollViewRef}
-              style={styles.messagesContainer}
-              contentContainerStyle={{ paddingBottom: bottomSpacerHeight }}
-              onScroll={handleScroll}
-              onContentSizeChange={handleContentSizeChange}
-              onLayout={handleMessagesLayout}
-              scrollEventThrottle={16}>
-              <View style={styles.messagesList}>
-                {hasMoreBefore && (
-                  <TouchableOpacity style={styles.loadMoreBtn} onPress={loadOlderMessages} disabled={isLoadingMore}>
-                    <Text style={styles.loadMoreText}>{isLoadingMore ? 'Loading…' : 'Load earlier messages'}</Text>
-                  </TouchableOpacity>
-                )}
-                {messages.length === 0 && currentAgent && (
-                  <View style={styles.emptyContainer}>
-                    <Text style={styles.emptyText}>
-                      Start a conversation with {currentAgent.name}
-                    </Text>
-                  </View>
-                )}
-                {(() => {
-                  const items: any[] = [];
-                  const callTypes = new Set(['tool_call', 'tool_call_message', 'tool_message']);
-                  const retTypes = new Set(['tool_response', 'tool_return_message']);
-                  // Track which step_id has already shown reasoning to avoid duplicates
-                  const shownReasoningForStep = new Set<string>();
-
-                  // Helper: find reasoning text for a given step by scanning ahead
-                  const findReasoningForStep = (fromIndex: number, stepId?: string): string | undefined => {
-                    if (!stepId) return undefined;
-                    for (let j = fromIndex; j < messages.length; j++) {
-                      const msgAny: any = messages[j];
-                      if (msgAny.role === 'assistant' && msgAny.step_id && String(msgAny.step_id) === String(stepId) && msgAny.reasoning) {
-                        return String(msgAny.reasoning);
-                      }
-                    }
-                    return undefined;
-                  };
-
-                  for (let i = 0; i < messages.length; i++) {
-                    const m: any = messages[i];
-
-                    if (m.role === 'tool' && callTypes.has(m.message_type)) {
-                      const next: any = messages[i + 1];
-                      const paired = !!(next && next.role === 'tool' && retTypes.has(next.message_type) && (
-                        (next.step_id && m.step_id && String(next.step_id) === String(m.step_id)) ||
-                        (!m.step_id || m.step_id === 'no-step')
-                      ));
-
-                      // Resolve reasoning to show above this tool-call group
-                      let reasoningToShow: string | undefined = m.reasoning;
-                      if (!reasoningToShow && m.step_id && !shownReasoningForStep.has(m.step_id)) {
-                        reasoningToShow = findReasoningForStep(i + 1, m.step_id);
-                      }
-
-                      items.push(
-                        <View key={`${m.id}-grp-${i}`} style={styles.messageGroup}>
-                          {reasoningToShow && (
-                            <View style={styles.reasoningContainer}>
-                              <Text style={styles.reasoningLabel}>Reasoning</Text>
-                              <Text style={styles.reasoningText}>{reasoningToShow}</Text>
-                            </View>
-                          )}
-                          <View style={[styles.message, styles.assistantMessage]}>
-                            <ToolCallItem callText={m.content} resultText={paired ? next.content : undefined} />
-                          </View>
-                        </View>
-                      );
-
-                      if (m.step_id && reasoningToShow) {
-                        shownReasoningForStep.add(m.step_id);
-                      }
-                      if (paired) { i++; }
-                      continue;
-                    }
-
-                    // Default rendering for non-tool or unpaired tool messages
-                    items.push(
-                      <View key={`${m.id || 'msg'}-${i}-${m.created_at}`} style={styles.messageGroup}>
-                        {m.role === 'assistant' && (m as any).reasoning && (!m.step_id || !shownReasoningForStep.has(m.step_id)) && (
-                          <View style={styles.reasoningContainer}>
-                            <Text style={styles.reasoningLabel}>Reasoning</Text>
-                            <Text style={styles.reasoningText}>{(m as any).reasoning}</Text>
-                          </View>
-                        )}
-                        <View style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
-                          {m.role === 'tool' ? (
-                            <Text style={styles.messageText}>{m.content}</Text>
-                          ) : (
-                            <MessageContent content={m.content} isUser={m.role === 'user'} />
-                          )}
-                        </View>
-                      </View>
-                    );
-
-                    if (m.role === 'assistant' && (m as any).reasoning && m.step_id) {
-                      shownReasoningForStep.add(m.step_id);
-                    }
-                  }
-                  return items;
-                })()}
-
-                {/* Streaming message display */}
-                {isStreaming && (
-                  <View
-                    style={styles.messageGroup}
-                    onLayout={(e) => {
-                      if (!hasPositionedForStream) {
-                        const y = e.nativeEvent.layout.y;
-                        // Position so the streaming assistant message starts near the top
-                        scrollViewRef.current?.scrollToOffset({ offset: Math.max(0, y - 8), animated: false });
-                        setHasPositionedForStream(true);
-                      }
-                    }}
-                  >
-                    {streamingStep && streamingStep.trim().length > 0 && (
-                      <View style={styles.reasoningContainer}>
-                        <Text style={styles.reasoningLabel}>Reasoning</Text>
-                        <Text style={styles.reasoningText}>{streamingStep.trim()}</Text>
-                      </View>
-                    )}
-                    <View style={[styles.message, styles.assistantMessage, styles.streamingMessage]}>
-                      {streamingMessage && String(streamingMessage).trim().length > 0 ? (
-                        <>
-                          <MessageContent
-                            content={String(streamingMessage).trim()}
-                            isUser={false}
-                          />
-                          <Text style={styles.cursor}>|</Text>
-                        </>
-                      ) : (
-                        <View style={styles.thinkingIndicator}>
-                          <ActivityIndicator size="small" color="#666" />
-                          <Text style={styles.thinkingText}>Agent is thinking...</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
-
-                {isSendingMessage && !isStreaming && (
-                  <View style={styles.messageGroup}>
-                    <View style={[styles.message, styles.assistantMessage]}>
-                      <ActivityIndicator size="small" color="#666" />
-                    </View>
-                  </View>
-                )}
-
-                {/* Inline Approval Request (scrolls with history) */}
-                {approvalVisible && (
-                  <View style={styles.messageGroup}>
-                    <View style={[styles.message, styles.assistantMessage]}>
-                      <View style={styles.approvalCardInline}>
-                        <Text style={styles.approvalTitle}>Approval Required</Text>
-                        {!!approvalData?.reasoning && (
-                          <View style={styles.reasoningContainer}>
-                            <Text style={styles.reasoningLabel}>Agent's Reasoning</Text>
-                            <Text style={styles.reasoningText}>{approvalData?.reasoning}</Text>
-                          </View>
-                        )}
-                        <View style={styles.approvalBlock}>
-                          <Text style={styles.approvalLabel}>Proposed Tool</Text>
-                          <Text style={styles.approvalCode}>{approvalData?.toolName}({approvalData?.toolArgs})</Text>
-                        </View>
-                        <View style={styles.approvalButtons}>
-                          <TouchableOpacity
-                            style={[styles.approvalBtn, styles.approve]}
-                            disabled={isApproving}
-                            onPress={async () => {
-                              if (!currentAgent || !approvalData?.id) return;
-                              try {
-                                setIsApproving(true);
-                                await lettaApi.approveToolRequestStream(
-                                  currentAgent.id,
-                                  { approval_request_id: approvalData.id, approve: true },
-                                  undefined,
-                                  async () => {
-                                    setApprovalVisible(false);
-                                    setApprovalData(null);
-                                    setApprovalReason('');
-                                    await loadMessagesForAgent(currentAgent.id);
-                                  },
-                                  (err) => {
-                                    Alert.alert('Error', err.message || 'Failed to approve');
-                                  }
-                                );
-                              } finally {
-                                setIsApproving(false);
-                              }
-                            }}
-                          >
-                            <Text style={styles.approvalBtnText}>Approve</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[styles.approvalBtn, styles.reject]}
-                            disabled={isApproving}
-                            onPress={async () => {
-                              if (!currentAgent || !approvalData?.id) return;
-                              try {
-                                setIsApproving(true);
-                                await lettaApi.approveToolRequestStream(
-                                  currentAgent.id,
-                                  { approval_request_id: approvalData.id, approve: false },
-                                  undefined,
-                                  async () => {
-                                    setApprovalVisible(false);
-                                    setApprovalData(null);
-                                    setApprovalReason('');
-                                    await loadMessagesForAgent(currentAgent.id);
-                                  },
-                                  (err) => {
-                                    Alert.alert('Error', err.message || 'Failed to deny');
-                                  }
-                                );
-                              } finally {
-                                setIsApproving(false);
-                              }
-                            }}
-                          >
-                            <Text style={styles.approvalBtnText}>Reject</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <View style={styles.feedbackBlock}>
-                          <Text style={styles.approvalLabel}>Reject with feedback</Text>
-                          <TextInput
-                            style={styles.approvalInput}
-                            placeholder="Provide guidance for the agent"
-                            placeholderTextColor={darkTheme.colors.text.secondary}
-                            value={approvalReason}
-                            onChangeText={setApprovalReason}
-                            multiline
-                          />
-                          <TouchableOpacity
-                            style={[styles.approvalBtn, styles.reject]}
-                            disabled={isApproving || approvalReason.trim().length === 0}
-                            onPress={async () => {
-                              if (!currentAgent || !approvalData?.id) return;
-                              try {
-                                setIsApproving(true);
-                                await lettaApi.approveToolRequestStream(
-                                  currentAgent.id,
-                                  { approval_request_id: approvalData.id, approve: false, reason: approvalReason.trim() },
-                                  undefined,
-                                  async () => {
-                                    setApprovalVisible(false);
-                                    setApprovalData(null);
-                                    setApprovalReason('');
-                                    await loadMessagesForAgent(currentAgent.id);
-                                  },
-                                  (err) => {
-                                    Alert.alert('Error', err.message || 'Failed to deny with feedback');
-                                  }
-                                );
-                              } finally {
-                                setIsApproving(false);
-                              }
-                            }}
-                          >
-                            <Text style={styles.approvalBtnText}>Send Feedback</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-                )}
-
-                {/* PaddingBottom above reserves vertical room while streaming */}
-              </View>
-            </ScrollView>
+              {isStreaming && (
+                <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
+                  {streamingStep && (
+                    <Text style={styles.streamingStep}>{streamingStep}</Text>
+                  )}
+                  {streamingMessage && (
+                    <MessageContent
+                      content={streamingMessage + ' ○'}
+                      isUser={false}
+                      isDark={colorScheme === 'dark'}
+                    />
+                  )}
+                </Animated.View>
               )}
             </>
-          )}
-
-          {/* Scroll-to-bottom floating button */}
-          {activeSidebarTab !== 'memory' && showScrollToBottom && (
-            <TouchableOpacity
-              style={[
-                styles.scrollToBottomBtn,
-                {
-                  bottom:
-                    Math.max(
-                      darkTheme.spacing[6],
-                      inputContainerHeight + (Platform.OS === 'ios' ? insets.bottom : 0) + darkTheme.spacing[2]
-                    ),
-                },
-              ]}
-              onPress={scrollToBottom}
-              accessibilityLabel="Scroll to latest messages"
-            >
-              <Ionicons name="chevron-down" size={18} color={darkTheme.colors.text.inverse} />
-            </TouchableOpacity>
-          )}
-
-          {/* Input */}
-          {activeSidebarTab !== 'memory' && (
-            <View style={styles.inputContainer} onLayout={handleInputLayout}>
-              <View style={styles.inputWrapper}>
-                <TextInput
-                  style={styles.messageInput}
-                  value={inputText}
-                  onChangeText={setInputText}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.sendButton,
-                    (!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible) && styles.sendButtonDisabled
-                  ]}
-                  onPress={handleSendMessage}
-                  disabled={!inputText.trim() || !currentAgent || isSendingMessage || approvalVisible}
-                >
-                  {isSendingMessage ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.sendButtonText}>Send</Text>
-                  )}
-                </TouchableOpacity>
+          }
+          ListEmptyComponent={
+            isLoadingMessages ? (
+              <View style={styles.emptyContainer}>
+                <ActivityIndicator size="large" color={theme.colors.text.secondary} />
               </View>
-            </View>
-          )}
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Start your conversation with Co</Text>
+              </View>
+            )
+          }
+        />
+
+        {/* Scroll to bottom button */}
+        {showScrollToBottom && (
+          <TouchableOpacity onPress={scrollToBottom} style={styles.scrollToBottomButton}>
+            <Ionicons name="arrow-down" size={24} color="#000" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Input */}
+      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]} onLayout={handleInputLayout}>
+        <View style={styles.inputCentered}>
+          {/* Solid backdrop matching theme */}
+          <View style={[
+            styles.inputBackdrop,
+            {
+              backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+              borderWidth: 0,
+            }
+          ]} />
+          <View style={styles.inputWrapper}>
+            <TextInput
+              style={inputStyles}
+              placeholder=""
+              placeholderTextColor={colorScheme === 'dark' ? '#666666' : '#999999'}
+              value={inputText}
+              onChangeText={setInputText}
+              multiline
+              maxLength={4000}
+              editable={!isSendingMessage}
+            />
+            <TouchableOpacity
+              onPress={sendMessage}
+              style={[
+                styles.sendButton,
+                { backgroundColor: colorScheme === 'dark' ? CoColors.deepBlack : CoColors.pureWhite },
+                (!inputText.trim() || isSendingMessage) && styles.sendButtonDisabled
+              ]}
+              disabled={!inputText.trim() || isSendingMessage}
+            >
+              {isSendingMessage ? (
+                <ActivityIndicator size="small" color={colorScheme === 'dark' ? '#fff' : '#000'} />
+              ) : (
+                <View style={[styles.sendRing, { borderColor: colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack }]} />
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
-      {/* Project Selector Modal for Chat View */}
-      <ProjectSelectorModal
-        visible={showProjectSelector}
-        currentProject={currentProject}
-        onProjectSelect={handleProjectSelect}
-        onClose={() => setShowProjectSelector(false)}
-      />
+      {/* Sidebar */}
+      <Modal
+        visible={sidebarVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setSidebarVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setSidebarVisible(false)}
+        >
+          <View style={[styles.sidebarContainer, { paddingTop: insets.top }]}>
+            <TouchableOpacity onPress={() => setSidebarVisible(false)} style={styles.closeSidebar}>
+              <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+            </TouchableOpacity>
 
+            <Text style={styles.sidebarTitle}>co Memory</Text>
 
-      <StatusBar
-        style={Platform.OS === 'android' ? 'light' : 'auto'}
-        backgroundColor={darkTheme.colors.background.secondary}
-      />
+            {isLoadingBlocks ? (
+              <ActivityIndicator size="large" color={darkTheme.colors.text.secondary} />
+            ) : blocksError ? (
+              <Text style={styles.errorText}>{blocksError}</Text>
+            ) : (
+              <FlatList
+                data={memoryBlocks}
+                keyExtractor={(item) => item.id || item.label}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.memoryBlockItem}
+                    onPress={() => setSelectedBlock(item)}
+                  >
+                    <Text style={styles.memoryBlockLabel}>{item.label}</Text>
+                    <Text style={styles.memoryBlockPreview} numberOfLines={2}>
+                      {item.value}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Memory block detail modal */}
+      <Modal
+        visible={selectedBlock !== null}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setSelectedBlock(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.detailContainer, { paddingTop: insets.top }]}>
+            <View style={styles.detailHeader}>
+              <Text style={styles.detailTitle}>{selectedBlock?.label}</Text>
+              <TouchableOpacity onPress={() => setSelectedBlock(null)}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.detailContent}>{selectedBlock?.value}</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Approval modal */}
+      <Modal
+        visible={approvalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setApprovalVisible(false)}
+      >
+        <View style={styles.approvalOverlay}>
+          <View style={styles.approvalContainer}>
+            <Text style={styles.approvalTitle}>Tool Approval Required</Text>
+
+            {approvalData?.toolName && (
+              <Text style={styles.approvalTool}>Tool: {approvalData.toolName}</Text>
+            )}
+
+            {approvalData?.reasoning && (
+              <View style={styles.approvalReasoning}>
+                <Text style={styles.approvalReasoningLabel}>Reasoning:</Text>
+                <Text style={styles.approvalReasoningText}>{approvalData.reasoning}</Text>
+              </View>
+            )}
+
+            <TextInput
+              style={styles.approvalInput}
+              placeholder="Optional reason..."
+              placeholderTextColor={theme.colors.text.tertiary}
+              value={approvalReason}
+              onChangeText={setApprovalReason}
+              multiline
+            />
+
+            <View style={styles.approvalButtons}>
+              <TouchableOpacity
+                style={[styles.approvalButton, styles.denyButton]}
+                onPress={() => handleApproval(false)}
+                disabled={isApproving}
+              >
+                <Text style={styles.approvalButtonText}>Deny</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.approvalButton, styles.approveButton]}
+                onPress={() => handleApproval(true)}
+                disabled={isApproving}
+              >
+                {isApproving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.approvalButtonText}>Approve</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <StatusBar style="auto" />
     </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <CoApp />
+    </SafeAreaProvider>
   );
 }
 
@@ -1822,561 +1061,177 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: darkTheme.colors.background.primary,
   },
-  // Setup screen styles
-  setupContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: darkTheme.spacing[3],
-    backgroundColor: darkTheme.colors.background.primary,
-  },
-  title: {
-    fontSize: darkTheme.typography.h1.fontSize,
-    fontWeight: darkTheme.typography.h1.fontWeight,
-    fontFamily: darkTheme.typography.h1.fontFamily,
-    marginBottom: darkTheme.spacing[1],
-    color: darkTheme.colors.text.primary,
-    letterSpacing: darkTheme.typography.h1.letterSpacing,
-  },
-  subtitle: {
-    fontSize: darkTheme.typography.body.fontSize,
-    fontFamily: darkTheme.typography.body.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    marginBottom: darkTheme.spacing[4],
-    textAlign: 'center',
-    lineHeight: darkTheme.typography.body.lineHeight * darkTheme.typography.body.fontSize,
-  },
-  input: {
-    width: '100%',
-    maxWidth: 400,
-    height: darkTheme.layout.inputHeight,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    paddingHorizontal: darkTheme.spacing[2],
-    marginBottom: darkTheme.spacing[3],
-    backgroundColor: darkTheme.colors.background.surface,
-    color: darkTheme.colors.text.primary,
-    fontSize: darkTheme.typography.input.fontSize,
-    fontFamily: darkTheme.typography.input.fontFamily,
-  },
-  button: {
-    backgroundColor: darkTheme.colors.interactive.primary,
-    paddingHorizontal: darkTheme.spacing[4],
-    paddingVertical: darkTheme.spacing[2],
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    marginBottom: darkTheme.spacing[3],
-    shadowColor: darkTheme.colors.interactive.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  buttonDisabled: {
-    backgroundColor: darkTheme.colors.interactive.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  buttonText: {
-    color: darkTheme.colors.text.inverse,
-    fontSize: darkTheme.typography.button.fontSize,
-    fontWeight: darkTheme.typography.button.fontWeight,
-    fontFamily: darkTheme.typography.button.fontFamily,
-    textAlign: 'center',
-  },
-  instructions: {
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: darkTheme.typography.caption.lineHeight * darkTheme.typography.caption.fontSize,
-  },
-  link: {
-    color: darkTheme.colors.interactive.primary,
-    textDecorationLine: 'underline',
-  },
-
-  // Main layout styles
-  mainLayout: {
-    flex: 1,
-    flexDirection: 'column',
-    backgroundColor: darkTheme.colors.background.primary,
-  },
-  desktopLayout: {
-    flexDirection: 'row',
-  },
-
-  // Mobile sidebar modal
-  mobileModal: {
-    flex: 1,
-    backgroundColor: darkTheme.colors.background.primary,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[1.5],
-    borderBottomWidth: 1,
-    borderBottomColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.secondary,
-  },
-  modalCloseText: {
-    fontSize: darkTheme.typography.h6.fontSize,
-    color: darkTheme.colors.text.secondary,
-    fontWeight: darkTheme.typography.h6.fontWeight,
-    fontFamily: darkTheme.typography.h6.fontFamily,
-  },
-
-  // Chat area styles
-  chatArea: {
-    flex: 1,
-    flexDirection: 'column',
-    backgroundColor: darkTheme.colors.background.primary,
-    position: 'relative',
-  },
-  chatHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: darkTheme.spacing[2],
-    backgroundColor: darkTheme.colors.background.secondary,
-    borderBottomWidth: 1,
-    borderBottomColor: darkTheme.colors.border.primary,
-    height: darkTheme.layout.headerHeight,
-  },
-  menuButton: {
-    marginRight: darkTheme.spacing[1.5],
-    padding: darkTheme.spacing[1],
-  },
-  menuIcon: {
-    fontSize: darkTheme.typography.h6.fontSize,
-    color: darkTheme.colors.text.secondary,
-    fontFamily: darkTheme.typography.h6.fontFamily,
-  },
-  
-  headerContent: {
-    flex: 1,
-  },
-  agentTitle: {
-    fontSize: darkTheme.typography.agentName.fontSize,
-    fontWeight: darkTheme.typography.agentName.fontWeight,
-    fontFamily: darkTheme.typography.agentName.fontFamily,
-    color: darkTheme.colors.text.primary,
-    letterSpacing: darkTheme.typography.agentName.letterSpacing,
-  },
-  agentSubtitle: {
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    marginTop: darkTheme.spacing[1],
-  },
-  headerAction: {
-    fontSize: darkTheme.typography.h5.fontSize,
-    color: darkTheme.colors.interactive.secondary,
-    fontWeight: '300',
-    marginLeft: darkTheme.spacing[1.5],
-    padding: darkTheme.spacing[1],
-  },
-  headerIconButton: {
-    marginLeft: darkTheme.spacing[1.5],
-    padding: darkTheme.spacing[1],
-  },
-  headerPill: {
-    marginLeft: darkTheme.spacing[1.5],
-    paddingVertical: darkTheme.spacing[0.75] || 6,
-    paddingHorizontal: darkTheme.spacing[1.5] || 10,
-    borderRadius: darkTheme.layout.borderRadius.round,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.surface,
-  },
-  headerPillActive: {
-    backgroundColor: darkTheme.colors.interactive.secondary,
-    borderColor: darkTheme.colors.interactive.secondary,
-  },
-  headerPillText: {
-    color: darkTheme.colors.text.secondary,
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-  },
-  headerPillTextActive: {
-    color: darkTheme.colors.text.inverse,
-    fontWeight: '600',
-  },
-  segmentedToggle: {
-    flexDirection: 'row',
-    marginLeft: darkTheme.spacing[1.5],
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.surface,
-    borderRadius: darkTheme.layout.borderRadius.round,
-    overflow: 'hidden',
-  },
-  segmentButton: {
-    paddingVertical: darkTheme.spacing[0.75] || 6,
-    paddingHorizontal: darkTheme.spacing[1.5] || 10,
-  },
-  segmentRight: {
-    borderLeftWidth: 1,
-    borderLeftColor: darkTheme.colors.border.primary,
-  },
-  segmentButtonActive: {
-    backgroundColor: darkTheme.colors.interactive.secondary,
-  },
-  segmentText: {
-    color: darkTheme.colors.text.secondary,
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-  },
-  segmentTextActive: {
-    color: darkTheme.colors.text.inverse,
-    fontWeight: '600',
-  },
-  // Approval message card (inline in the chat)
-  approvalCardInline: {
-    width: '100%',
-    backgroundColor: darkTheme.colors.background.surface,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    borderRadius: 0,
-    padding: darkTheme.spacing[2],
-  },
-  approvalTitle: {
-    fontSize: darkTheme.typography.h5.fontSize,
-    fontWeight: darkTheme.typography.h5.fontWeight,
-    fontFamily: darkTheme.typography.h5.fontFamily,
-    color: darkTheme.colors.text.primary,
-    marginBottom: darkTheme.spacing[1.5],
-  },
-  approvalBlock: {
-    marginTop: darkTheme.spacing[1],
-    marginBottom: darkTheme.spacing[2],
-  },
-  approvalLabel: {
-    fontSize: darkTheme.typography.label.fontSize,
-    fontFamily: darkTheme.typography.label.fontFamily,
-    fontWeight: darkTheme.typography.label.fontWeight,
-    color: darkTheme.colors.text.secondary,
-    letterSpacing: darkTheme.typography.label.letterSpacing,
-    textTransform: 'uppercase',
-    marginBottom: darkTheme.spacing[0.5],
-  },
-  approvalCode: {
-    fontFamily: 'Menlo',
-    fontSize: 13,
-    color: darkTheme.colors.text.primary,
-    backgroundColor: darkTheme.colors.background.tertiary,
-    padding: darkTheme.spacing[1],
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: darkTheme.colors.border.primary,
-  },
-  approvalButtons: {
-    flexDirection: 'row',
-    gap: darkTheme.spacing[1],
-    marginTop: darkTheme.spacing[1],
-  },
-  approvalBtn: {
-    flex: 1,
-    borderRadius: 0,
-    paddingVertical: darkTheme.spacing[1.5] || darkTheme.spacing[1],
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  approve: {
-    backgroundColor: darkTheme.colors.interactive.primary,
-    borderColor: darkTheme.colors.interactive.primary,
-  },
-  reject: {
-    backgroundColor: 'transparent',
-    borderColor: darkTheme.colors.border.primary,
-  },
-  approvalBtnText: {
-    color: darkTheme.colors.text.inverse,
-    fontSize: darkTheme.typography.buttonSmall.fontSize,
-    fontWeight: darkTheme.typography.buttonSmall.fontWeight,
-    fontFamily: darkTheme.typography.buttonSmall.fontFamily,
-  },
-  feedbackBlock: {
-    marginTop: darkTheme.spacing[2],
-  },
-  approvalInput: {
-    minHeight: 80,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.tertiary,
-    color: darkTheme.colors.text.primary,
-    padding: darkTheme.spacing[1],
-    marginTop: darkTheme.spacing[0.5],
-    marginBottom: darkTheme.spacing[1],
-  },
-
-  // Messages styles
-  messagesContainer: {
-    flex: 1,
-    backgroundColor: darkTheme.colors.background.primary,
-  },
-  messagesList: {
-    maxWidth: darkTheme.layout.maxContentWidth,
-    alignSelf: 'center',
-    width: '100%',
-    paddingHorizontal: darkTheme.spacing[3],
-    paddingVertical: darkTheme.spacing[2],
-  },
-  // Memory block list styles
-  blockItem: {
-    paddingVertical: darkTheme.spacing[1.5],
-    paddingHorizontal: darkTheme.spacing[2],
-    marginHorizontal: darkTheme.spacing[2],
-    marginBottom: darkTheme.spacing[1],
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.secondary,
-  },
-  blockLabel: {
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    marginBottom: darkTheme.spacing[0.5],
-  },
-  blockName: {
-    fontSize: darkTheme.typography.h6.fontSize,
-    fontWeight: darkTheme.typography.h6.fontWeight,
-    fontFamily: darkTheme.typography.h6.fontFamily,
-    color: darkTheme.colors.text.primary,
-  },
-  blockDesc: {
-    marginTop: darkTheme.spacing[0.5],
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
-    color: darkTheme.colors.text.secondary,
-  },
-  messageGroup: {
-    marginBottom: darkTheme.spacing.messageGap,
-  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: darkTheme.spacing[3],
     backgroundColor: darkTheme.colors.background.primary,
   },
   loadingText: {
-    marginTop: darkTheme.spacing[1.5],
-    fontSize: darkTheme.typography.body.fontSize,
-    fontFamily: darkTheme.typography.body.fontFamily,
+    marginTop: 16,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.secondary,
   },
-  emptyContainer: {
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: darkTheme.spacing[10],
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: darkTheme.colors.background.secondary,
+    borderBottomWidth: 1,
+    borderBottomColor: darkTheme.colors.border.primary,
   },
-  emptyText: {
-    fontSize: darkTheme.typography.body.fontSize,
-    fontFamily: darkTheme.typography.body.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    textAlign: 'center',
-    lineHeight: darkTheme.typography.body.lineHeight * darkTheme.typography.body.fontSize,
+  menuButton: {
+    padding: 8,
   },
-
-  // Message styles (Letta design system)
-  message: {
-    paddingVertical: darkTheme.spacing[0.5],
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
   },
-  userMessage: {
-    alignSelf: 'flex-end',
-    maxWidth: '70%',
-    backgroundColor: darkTheme.colors.interactive.primary,
-    paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[1],
-    borderRadius: darkTheme.layout.borderRadius.large,
-    borderBottomRightRadius: darkTheme.layout.borderRadius.small,
-    borderWidth: 0,
-    borderColor: 'transparent',
-    // Subtle lift so user bubbles float off the page
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
+  headerTitle: {
+    fontSize: 28,
+    fontFamily: 'Lexend_700Bold',
+    color: darkTheme.colors.text.primary,
   },
-  assistantMessage: {
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    paddingHorizontal: darkTheme.spacing[1],
-    paddingVertical: darkTheme.spacing[0.5],
+  headerButton: {
+    padding: 8,
   },
-  messageText: {
-    fontSize: 15, // Refined font size (15px)
-    fontFamily: darkTheme.typography.chatMessage.fontFamily,
-    fontWeight: '400', // Regular weight
-    lineHeight: 1.6 * 15, // 1.6 line height ratio for readability
-    letterSpacing: darkTheme.typography.chatMessage.letterSpacing,
-    // Ensure long tokens (URLs) can wrap in bubbles
-    wordBreak: 'break-word' as any,
-    overflowWrap: 'anywhere' as any,
-    whiteSpace: 'pre-wrap' as any,
+  headerButtonDisabled: {
+    opacity: 0.3,
   },
-  codeText: {
+  logoutButton: {
+    padding: 8,
+  },
+  messagesContainer: {
+    flex: 1,
+  },
+  messagesList: {
+    maxWidth: 800,
+    width: '100%',
+    alignSelf: 'center',
+    paddingBottom: 100, // Space for input at bottom
+  },
+  messageContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  userMessageContainer: {
+    alignItems: 'flex-end',
+  },
+  assistantMessageContainer: {
+    alignItems: 'flex-start',
+  },
+  assistantFullWidthContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    width: '100%',
+  },
+  messageBubble: {
+    maxWidth: 600,
+    padding: 12,
+    borderRadius: 24,
+  },
+  userBubble: {
+    // Background color set dynamically per theme in render
+  },
+  assistantBubble: {
+    backgroundColor: darkTheme.colors.background.secondary,
+    borderWidth: 1,
+    borderColor: darkTheme.colors.border.primary,
+  },
+  userMessageText: {
+    color: darkTheme.colors.background.primary,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+  },
+  assistantMessageText: {
+    color: darkTheme.colors.text.primary,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+  },
+  reasoningToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  reasoningToggleText: {
     fontSize: 13,
-    fontFamily: 'Menlo',
-    color: darkTheme.colors.text.primary,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
+    marginRight: 4,
   },
-  userText: {
-    color: darkTheme.colors.text.primary,
+  reasoningExpandedContainer: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 6,
+    borderLeftWidth: 2,
+    borderLeftColor: darkTheme.colors.text.tertiary,
   },
-  assistantText: {
-    color: darkTheme.colors.text.primary,
+  reasoningExpandedText: {
+    fontSize: 13,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
+    lineHeight: 18,
+    fontStyle: 'italic',
   },
-
-  // Reasoning styles (Subtle and readable)
   reasoningContainer: {
-    backgroundColor: 'transparent',
-    // Align with assistant message horizontal padding
-    paddingHorizontal: darkTheme.spacing[1],
-    paddingTop: darkTheme.spacing[1],
-    paddingBottom: darkTheme.spacing[0.5],
-    // Breathing room from previous block (e.g., tool call)
-    marginTop: darkTheme.spacing[1],
-    marginBottom: darkTheme.spacing[1],
-  },
-  reasoningText: {
-    fontSize: 14, // Slightly larger for readability
-    fontFamily: darkTheme.typography.reasoning.fontFamily,
-    fontWeight: '400', // Regular weight for better readability
-    color: 'rgba(184, 184, 184, 0.8)', // More visible gray
-    fontStyle: darkTheme.typography.reasoning.fontStyle,
-    lineHeight: 1.5 * 14, // Comfortable line height
-    letterSpacing: 0.01, // Minimal letter spacing
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: darkTheme.colors.border.primary,
   },
   reasoningLabel: {
-    color: 'rgba(184, 184, 184, 0.8)',
-    fontSize: 11,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: darkTheme.spacing[0.5],
-  },
-
-  // Streaming styles (Technical indicators)
-  streamingMessage: {
-    borderLeftWidth: 0,
-    paddingLeft: 0,
-    opacity: 0.9,
-  },
-  cursor: {
+    fontSize: 12,
+    fontFamily: 'Lexend_600SemiBold',
     color: darkTheme.colors.text.secondary,
-    fontWeight: 'bold',
-    opacity: 0.6,
+    marginBottom: 4,
   },
-  thinkingIndicator: {
-    flexDirection: 'row',
+  reasoningText: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
+    fontStyle: 'italic',
+  },
+  loadMoreButton: {
+    padding: 16,
     alignItems: 'center',
-    padding: darkTheme.spacing[1],
-  },
-  thinkingText: {
-    fontSize: darkTheme.typography.reasoning.fontSize,
-    fontFamily: darkTheme.typography.reasoning.fontFamily,
-    color: darkTheme.colors.text.secondary,
-    fontStyle: darkTheme.typography.reasoning.fontStyle,
-    marginLeft: darkTheme.spacing[1],
-  },
-
-  // Input styles (Floating glass design)
-  inputContainer: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: darkTheme.spacing[3],
-    paddingVertical: darkTheme.spacing[2],
-    paddingBottom: darkTheme.spacing[3], // Extra bottom padding for floating effect
-  },
-  inputWrapper: {
-    maxWidth: darkTheme.layout.maxInputWidth,
-    alignSelf: 'center',
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: darkTheme.colors.background.primary,
-    borderRadius: darkTheme.layout.borderRadius.large,
-    padding: darkTheme.spacing[0.5],
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  messageInput: {
-    flex: 1,
-    borderWidth: 0,
-    borderColor: 'transparent',
-    borderRadius: darkTheme.layout.borderRadius.large,
-    paddingHorizontal: darkTheme.spacing[2],
-    paddingVertical: darkTheme.spacing[1.5],
-    marginRight: darkTheme.spacing[1],
-    maxHeight: 120,
-    fontSize: darkTheme.typography.input.fontSize,
-    fontFamily: darkTheme.typography.input.fontFamily,
-    backgroundColor: 'transparent',
-    color: darkTheme.colors.text.primary,
-    // Remove noisy blue focus ring on web
-    ...(Platform.OS === 'web' && {
-      outlineStyle: 'none' as any,
-      outlineWidth: 0,
-      outlineColor: 'transparent',
-    }),
-  },
-  sendButton: {
-    backgroundColor: darkTheme.colors.interactive.secondary,
-    borderRadius: darkTheme.layout.borderRadius.round,
-    paddingHorizontal: darkTheme.spacing[2.5],
-    paddingVertical: darkTheme.spacing[1.5],
-    minWidth: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: darkTheme.colors.interactive.secondary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  sendButtonDisabled: {
-    backgroundColor: darkTheme.colors.interactive.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  sendButtonText: {
-    color: darkTheme.colors.text.inverse,
-    fontSize: darkTheme.typography.buttonSmall.fontSize,
-    fontWeight: darkTheme.typography.buttonSmall.fontWeight,
-    fontFamily: darkTheme.typography.buttonSmall.fontFamily,
-    textAlign: 'center',
-  },
-  loadMoreBtn: {
-    alignSelf: 'center',
-    marginVertical: darkTheme.spacing[1],
-    paddingVertical: darkTheme.spacing[0.75] || 6,
-    paddingHorizontal: darkTheme.spacing[1.5] || 10,
-    borderRadius: darkTheme.layout.borderRadius.round,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    backgroundColor: darkTheme.colors.background.surface,
   },
   loadMoreText: {
     color: darkTheme.colors.text.secondary,
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
   },
-
-  // Floating controls
-  scrollToBottomBtn: {
+  streamingStep: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.secondary,
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.secondary,
+    textAlign: 'center',
+  },
+  scrollToBottomButton: {
     position: 'absolute',
-    right: darkTheme.spacing[2],
-    bottom: darkTheme.spacing[10],
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: darkTheme.colors.interactive.secondary,
+    bottom: 16,
+    right: 16,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: darkTheme.colors.interactive.primary,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -2384,136 +1239,215 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
   },
-
-  // Legacy modal styles (for project selector, etc.)
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 10, 10, 0.8)',
+  inputContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  inputCentered: {
+    position: 'relative',
+    maxWidth: 800,
+    width: '100%',
+  },
+  inputBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 28,
+    zIndex: -1,
+  },
+  inputWrapper: {
+    position: 'relative',
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+  sendButton: {
+    position: 'absolute',
+    right: 10,
+    top: '50%',
+    transform: [{ translateY: -18 }],
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: darkTheme.colors.interactive.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    backgroundColor: darkTheme.colors.background.surface,
-    borderRadius: darkTheme.layout.borderRadius.large,
-    padding: darkTheme.spacing[3],
-    width: '90%',
-    maxWidth: 400,
+  sendRing: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: darkTheme.colors.background.primary,
+  },
+  sendButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  sidebarContainer: {
+    width: '100%',
     maxHeight: '80%',
+    backgroundColor: darkTheme.colors.background.primary,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+  },
+  closeSidebar: {
+    alignSelf: 'flex-end',
+    padding: 8,
+  },
+  sidebarTitle: {
+    fontSize: 24,
+    fontFamily: 'Lexend_700Bold',
+    color: darkTheme.colors.text.primary,
+    marginBottom: 16,
+  },
+  memoryBlockItem: {
+    padding: 16,
+    backgroundColor: darkTheme.colors.background.secondary,
+    borderRadius: 8,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
-    shadowColor: darkTheme.colors.text.primary,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 8,
   },
-  modalTitle: {
-    fontSize: darkTheme.typography.h5.fontSize,
-    fontWeight: darkTheme.typography.h5.fontWeight,
-    fontFamily: darkTheme.typography.h5.fontFamily,
+  memoryBlockLabel: {
+    fontSize: 16,
+    fontFamily: 'Lexend_600SemiBold',
     color: darkTheme.colors.text.primary,
-    marginBottom: darkTheme.spacing[2],
-    textAlign: 'center',
+    marginBottom: 4,
   },
-  agentList: {
-    maxHeight: 300,
-  },
-  agentItem: {
-    padding: darkTheme.spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: darkTheme.colors.border.secondary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    marginBottom: darkTheme.spacing[0.5],
-  },
-  selectedAgentItem: {
-    backgroundColor: darkTheme.colors.background.tertiary,
-    borderLeftWidth: 3,
-    borderLeftColor: darkTheme.colors.interactive.primary,
-  },
-  agentName: {
-    fontSize: darkTheme.typography.body.fontSize,
-    fontWeight: darkTheme.typography.agentName.fontWeight,
-    fontFamily: darkTheme.typography.agentName.fontFamily,
-    color: darkTheme.colors.text.primary,
-    marginBottom: darkTheme.spacing[0.5],
-  },
-  agentDescription: {
-    fontSize: darkTheme.typography.caption.fontSize,
-    fontFamily: darkTheme.typography.caption.fontFamily,
+  memoryBlockPreview: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.secondary,
   },
-  modalCloseButton: {
-    marginTop: darkTheme.spacing[2],
-    backgroundColor: darkTheme.colors.interactive.primary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    paddingVertical: darkTheme.spacing[1.5],
+  detailContainer: {
+    width: '90%',
+    maxHeight: '80%',
+    backgroundColor: darkTheme.colors.background.primary,
+    borderRadius: 16,
+    padding: 20,
+    alignSelf: 'center',
+    marginTop: 'auto',
+    marginBottom: 'auto',
   },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: darkTheme.colors.border.primary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    paddingHorizontal: darkTheme.spacing[1.5],
-    paddingVertical: darkTheme.spacing[1.5],
-    marginBottom: darkTheme.spacing[3],
-    fontSize: darkTheme.typography.input.fontSize,
-    fontFamily: darkTheme.typography.input.fontFamily,
-    backgroundColor: darkTheme.colors.background.tertiary,
-    color: darkTheme.colors.text.primary,
-  },
-  modalButtons: {
+  detailHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: darkTheme.spacing[1.5],
+    alignItems: 'center',
+    marginBottom: 16,
   },
-  modalCancelButton: {
+  detailTitle: {
+    fontSize: 20,
+    fontFamily: 'Lexend_700Bold',
+    color: darkTheme.colors.text.primary,
+  },
+  detailContent: {
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
+    lineHeight: 24,
+  },
+  errorText: {
+    color: darkTheme.colors.status.error,
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    textAlign: 'center',
+  },
+  approvalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  approvalContainer: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: darkTheme.colors.background.primary,
+    borderRadius: 16,
+    padding: 20,
+  },
+  approvalTitle: {
+    fontSize: 20,
+    fontFamily: 'Lexend_700Bold',
+    color: darkTheme.colors.text.primary,
+    marginBottom: 16,
+  },
+  approvalTool: {
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
+    marginBottom: 12,
+  },
+  approvalReasoning: {
+    backgroundColor: darkTheme.colors.background.secondary,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  approvalReasoningLabel: {
+    fontSize: 12,
+    fontFamily: 'Lexend_600SemiBold',
+    color: darkTheme.colors.text.secondary,
+    marginBottom: 4,
+  },
+  approvalReasoningText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
+  },
+  approvalInput: {
+    height: 80,
     borderWidth: 1,
     borderColor: darkTheme.colors.border.primary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    paddingVertical: darkTheme.spacing[1.5],
+    borderRadius: 8,
+    padding: 12,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
+    backgroundColor: darkTheme.colors.background.secondary,
+    marginBottom: 16,
+    textAlignVertical: 'top',
   },
-  modalCancelText: {
-    color: darkTheme.colors.text.secondary,
-    fontSize: darkTheme.typography.button.fontSize,
-    fontWeight: darkTheme.typography.button.fontWeight,
-    fontFamily: darkTheme.typography.button.fontFamily,
-    textAlign: 'center',
+  approvalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
-  modalCreateButton: {
+  approvalButton: {
     flex: 1,
-    backgroundColor: darkTheme.colors.interactive.primary,
-    borderRadius: darkTheme.layout.borderRadius.medium,
-    paddingVertical: darkTheme.spacing[1.5],
-    shadowColor: darkTheme.colors.interactive.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 4,
   },
-  modalCreateText: {
-    color: darkTheme.colors.text.inverse,
-    fontSize: darkTheme.typography.button.fontSize,
-    fontWeight: darkTheme.typography.button.fontWeight,
-    fontFamily: darkTheme.typography.button.fontFamily,
-    textAlign: 'center',
+  denyButton: {
+    backgroundColor: darkTheme.colors.status.error,
+  },
+  approveButton: {
+    backgroundColor: darkTheme.colors.status.success,
+  },
+  approvalButtonText: {
+    color: darkTheme.colors.background.primary,
+    fontSize: 16,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  typingCursor: {
+    width: 2,
+    height: 20,
+    backgroundColor: darkTheme.colors.interactive.primary,
+    marginLeft: 2,
+    marginTop: 2,
   },
 });
-
-export default function App() {
-  const [fontsLoaded] = useFonts({
-    Roobert: require('./assets/fonts/Roobert-Regular.ttf'),
-  });
-
-  if (!fontsLoaded) {
-    return null;
-  }
-
-  return (
-    <SafeAreaProvider>
-      <MainApp />
-    </SafeAreaProvider>
-  );
-}

@@ -1,173 +1,221 @@
-# Letta Chat - React Native App
+# Co - Knowledge Management Assistant
 
-A React Native application for iOS, Android, and web that connects users to Letta AI agents for conversations.
+Co is a single-agent knowledge management assistant built with Letta's memory framework. Each user gets their own persistent Co agent that learns and remembers across conversations.
 
 ## Features
 
-- 🤖 Connect to Letta AI agents via API
-- 💬 Real-time chat interface
-- 📱 Cross-platform (iOS, Android, Web)
-- 🎨 Modern, intuitive UI design
-- 🗂️ Agent selection drawer
-- 🔒 Secure API token management
-- 💾 Persistent chat history
+- 🤖 **Single Agent Model**: One Co agent per user, tagged with `co-app`
+- 🧠 **Persistent Memory**: Advanced memory blocks that evolve over time
+- 💬 **Real-time Streaming**: Token-by-token message streaming
+- 🔧 **Tool Support**: Web search, archival memory, conversation search
+- 📱 **Cross-platform**: iOS, Android, and Web support via React Native + Expo
+- 🎨 **Modern UI**: Clean, intuitive interface with memory viewer
+- 🔒 **Secure**: API token storage with AsyncStorage
+
+## Architecture
+
+Co uses a simplified single-agent architecture:
+
+1. **Login**: User enters Letta API key
+2. **Agent Discovery**: App searches for agent with `co-app` tag using `client.agents.list(tags=["co-app"])`
+3. **Agent Creation**: If no Co agent exists, creates one with the `createCoAgent()` function
+4. **Chat**: User chats directly with their Co agent
+
+### Co Agent Configuration
+
+Co is created with:
+- **Model**: `anthropic/claude-sonnet-4-5-20250929`
+- **Tools**: `send_message`, `archival_memory_insert`, `archival_memory_search`, `conversation_search`, `web_search`, `fetch_webpage`
+- **Memory Blocks**:
+  - `persona`: Co's adaptive personality
+  - `human`: User profile that evolves
+  - `approach`: Conversation and memory approach
+  - `working_theories`: Active theories about the user
+  - `notes_to_self`: Reminders for future reference
+  - `active_questions`: Questions to explore
+  - `conversation_summary`: Ongoing conversation overview
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 - Expo CLI
-- Letta API token
+- Letta API token from [letta.com](https://letta.com)
 
 ### Installation
 
-1. Navigate to the project directory:
-   ```bash
-   cd /path/to/letta-chat
-   ```
-
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the development server:
-   ```bash
-   npm start
-   ```
-
-4. Choose your platform:
-   - **Web**: Run `npm run web` or press `w` in the terminal
-   - **iOS Simulator**: Press `i` in the terminal (requires Xcode)
-   - **Android Emulator**: Press `a` in the terminal (requires Android Studio)  
-   - **Mobile Device**: Download Expo Go app and scan the QR code
-
-### Quick Start for Web
-
-To run the web version immediately:
 ```bash
-npm run web
-```
-The app will open in your browser at `http://localhost:8081`
+# Install dependencies
+npm install
 
-### Configuration
-
-1. Get your Letta API token from the Letta dashboard
-2. Open the app and go to Settings
-3. Enter your API token and tap "Save & Connect"
-4. Create or select an agent from the drawer
-5. Start chatting!
-
-## Architecture
-
-### Tech Stack
-
-- **React Native** with Expo for cross-platform development
-- **TypeScript** for type safety
-- **React Navigation** for navigation (drawer + stack)
-- **Zustand** for state management
-- **Axios** for API calls
-- **React Native Paper** components
-- **AsyncStorage** for persistence
-
-### Project Structure
-
-```
-src/
-├── api/           # API service layer
-├── components/    # Reusable UI components
-├── screens/       # Main app screens
-├── navigation/    # Navigation configuration
-├── store/         # Zustand state management
-├── types/         # TypeScript definitions
-└── utils/         # Helper functions
+# Start development server
+npm start
 ```
 
-### Key Components
+### Run Options
 
-- **MessageBubble**: Individual chat messages
-- **AgentCard**: Agent selection cards
-- **ChatInput**: Message input component
-- **AgentsDrawerContent**: Sidebar agent list
+- **Web**: `npm run web` or press `w`
+- **iOS**: Press `i` (requires Xcode)
+- **Android**: Press `a` (requires Android Studio)
+- **Mobile Device**: Use Expo Go app and scan QR code
 
-### API Integration
+### First Use
 
-The app connects to Letta's REST API endpoints:
+1. Launch the app
+2. Enter your Letta API key
+3. Wait for Co to initialize (creates agent if needed)
+4. Start chatting!
 
-- `GET /agents` - List available agents
-- `POST /agents` - Create new agents  
-- `GET /agents/{id}/messages` - Get message history
-- `POST /agents/{id}/messages` - Send messages
+## Project Structure
+
+```
+ion/
+├── App.tsx                   # Main Co application
+├── CoLoginScreen.tsx        # Login/authentication screen
+├── src/
+│   ├── api/
+│   │   └── lettaApi.ts       # Letta API client
+│   ├── components/
+│   │   ├── MessageContent.tsx
+│   │   ├── ExpandableMessageContent.tsx
+│   │   ├── ToolCallItem.tsx
+│   │   └── LogoLoader.tsx
+│   ├── types/
+│   │   └── letta.ts          # TypeScript definitions
+│   ├── utils/
+│   │   ├── ionAgent.ts       # Co agent creation logic
+│   │   └── storage.ts        # AsyncStorage wrapper
+│   └── theme/
+│       └── index.ts          # Design system
+```
+
+## Key Files
+
+### `src/utils/ionAgent.ts`
+
+Contains the `createCoAgent()` function that defines Co's system prompt, memory blocks, and configuration. This is where you can customize Co's personality and capabilities.
+
+### `src/api/lettaApi.ts`
+
+Letta API client with:
+- `findAgentByTags()`: Find agent by tags
+- `findOrCreateCo()`: Get or create Co agent
+- `sendMessageStream()`: Stream messages from Co
+- `listAgentBlocks()`: View memory blocks
+
+### `App.tsx`
+
+Main application with:
+- Authentication flow
+- Co initialization
+- Chat interface
+- Memory viewer sidebar
+- Tool approval modals
+
+## Customizing Co
+
+### Modify Personality
+
+Edit `src/utils/ionAgent.ts` and update:
+- System prompt
+- Memory block initial values
+- Available tools
+- Model selection
+
+### Add Memory Blocks
+
+Add new blocks to the `memoryBlocks` array in `createCoAgent()`:
+
+```typescript
+{
+  label: 'custom_block',
+  value: 'Custom content here...',
+}
+```
+
+### Change Model
+
+Update the `model` field in `createCoAgent()`:
+
+```typescript
+model: 'openai/gpt-4.1',  // or other supported models
+```
 
 ## Development
 
+### Tech Stack
+
+- **React Native** + **Expo**: Cross-platform framework
+- **TypeScript**: Type safety
+- **Letta SDK**: AI agent framework
+- **AsyncStorage**: Persistent storage
+
 ### Available Scripts
 
-- `npm start` - Start Expo development server
+- `npm start` - Start Expo dev server
+- `npm run web` - Run in browser
 - `npm run android` - Run on Android
 - `npm run ios` - Run on iOS
-- `npm run web` - Run in web browser
+- `npx expo start -c` - Clear cache and restart
 
-### Building
-
-For production builds:
+### Building for Production
 
 ```bash
-# Build for web
+# Web build
 npm run build:web
 
-# Build for mobile (requires EAS CLI)
+# Mobile builds (requires EAS CLI)
 npx eas build --platform all
 ```
 
-## Customization
+## API Integration
 
-### Themes & Styling
+Co connects to Letta's API:
 
-The app uses a consistent design system with:
-- iOS-style design patterns
-- Custom color scheme
-- Responsive layouts
-- Dark/light mode support (future)
-
-### API Configuration
-
-Update `src/api/lettaApi.ts` to modify:
-- Base URL
-- Request/response handling
-- Error handling
-- Authentication
+- `GET /agents?tags=co-app` - Find Co agent
+- `POST /agents` - Create Co agent
+- `GET /agents/{id}/messages` - Load message history
+- `POST /agents/{id}/messages/streaming` - Stream messages
+- `GET /agents/{id}/blocks` - View memory blocks
 
 ## Troubleshooting
 
-### Common Issues
+### Agent Not Found
 
-1. **Metro bundler stuck**: Clear cache with `npx expo start -c`
-2. **Dependencies conflicts**: Run `npx expo install --fix`
-3. **API connection issues**: Check token validity and network
+If Co fails to initialize:
+1. Check API token validity
+2. Verify network connection
+3. Check console logs for errors
 
-### Debug Mode
+### Memory Blocks Not Loading
 
-Enable debug logging by setting:
-```typescript
-const DEBUG = true;
-```
+- Ensure agent is fully initialized
+- Check that `listAgentBlocks()` has proper permissions
+- Verify agent ID is correct
+
+### Streaming Issues
+
+- Check network stability
+- Verify streaming endpoint support
+- Review console logs for chunk errors
 
 ## Contributing
 
+Co is a reference implementation. To customize:
+
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
+2. Modify Co's configuration in `src/utils/ionAgent.ts`
+3. Update UI components as needed
 4. Test on multiple platforms
-5. Submit a pull request
+5. Submit pull request with clear description
 
 ## License
 
-MIT License - see LICENSE file for details
+MIT License
 
-## Documentation
+## Resources
 
 - [Letta Documentation](https://docs.letta.com)
 - [React Native Docs](https://reactnative.dev)

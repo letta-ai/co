@@ -26,7 +26,7 @@ export interface LettaAgent {
 }
 
 export interface MemoryBlock {
-  id: string;
+  id?: string;
   label: string;
   value: string;
   limit?: number;

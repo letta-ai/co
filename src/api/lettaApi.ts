@@ -131,16 +131,39 @@ class LettaApiService {
         projectId: projectId,
         sortBy: params.sortBy || 'last_run_completion'
       };
-      
+
       console.log('listAgentsForProject - projectId:', projectId);
       console.log('listAgentsForProject - enhancedParams:', enhancedParams);
-      
+
       const result = await this.listAgents(enhancedParams);
       console.log('listAgentsForProject - result count:', result?.length || 0);
-      
+
       return result;
     } catch (error) {
       console.error('listAgentsForProject - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async findAgentByTags(tags: string[]): Promise<LettaAgent | null> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('findAgentByTags - searching for tags:', tags);
+
+      const agents = await this.listAgents({
+        tags,
+        matchAllTags: true,
+        limit: 1
+      });
+
+      console.log('findAgentByTags - found agents:', agents.length);
+
+      return agents.length > 0 ? agents[0] : null;
+    } catch (error) {
+      console.error('findAgentByTags - error:', error);
       throw this.handleError(error);
     }
   }

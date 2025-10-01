@@ -1,0 +1,78 @@
+/* Prevent zoom from pushing content off bottom */
+html, body {
+  /* Prevent iOS Safari from zooming when focusing inputs */
+  -webkit-text-size-adjust: 100%;
+  /* Ensure consistent rendering */
+  touch-action: manipulation;
+}
+
+/* Force transparent background on input */
+textarea,
+input[type="text"],
+.input-transparent {
+  background: transparent !important;
+  background-color: transparent !important;
+  -webkit-appearance: none;
+  /* Prevent iOS zoom on focus - minimum 16px font */
+  font-size: 16px !important;
+  /* Remove default outline */
+  outline: none !important;
+  border: none !important;
+}
+
+textarea:focus,
+input[type="text"]:focus {
+  outline: 2px solid rgba(255, 255, 255, 0.3) !important;
+  outline-offset: -2px !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Light mode - use black outline */
+@media (prefers-color-scheme: light) {
+  textarea:focus,
+  input[type="text"]:focus {
+    outline: 2px solid rgba(0, 0, 0, 0.2) !important;
+    outline-offset: -2px !important;
+  }
+}
+
+/* Override any blue focus styles */
+textarea:focus-visible,
+input[type="text"]:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.3) !important;
+  outline-offset: -2px !important;
+  border: none !important;
+}
+
+@media (prefers-color-scheme: light) {
+  textarea:focus-visible,
+  input[type="text"]:focus-visible {
+    outline: 2px solid rgba(0, 0, 0, 0.2) !important;
+    outline-offset: -2px !important;
+  }
+}
+
+/* Force user message text color based on app theme */
+[data-theme="light"] [data-user-message="true"] * {
+  color: white !important;
+}
+
+[data-theme="dark"] [data-user-message="true"] * {
+  color: black !important;
+}
+
+/* Typing cursor animation */
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+/* Apply blink animation to typing cursor - web only */
+.cursor-blink {
+  animation: blink 1s infinite;
+}

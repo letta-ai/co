@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "letta-chat",
-    "slug": "letta-chat",
+    "name": "Co",
+    "slug": "co",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -25,7 +25,10 @@
       "statusBarStyle": "light"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "meta": {
+        "viewport": "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+      }
     },
     "plugins": [
       "expo-secure-store",

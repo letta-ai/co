@@ -11,6 +11,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 interface ExpandableMessageContentProps {
   content: string;
   isUser: boolean;
+  isDark?: boolean;
   lineLimit?: number;
   onToggle?: (expanding: boolean) => void;
 }
@@ -18,6 +19,7 @@ interface ExpandableMessageContentProps {
 const ExpandableMessageContent: React.FC<ExpandableMessageContentProps> = ({
   content,
   isUser,
+  isDark = true,
   lineLimit = 3,
   onToggle
 }) => {
@@ -26,7 +28,7 @@ const ExpandableMessageContent: React.FC<ExpandableMessageContentProps> = ({
 
   // Only apply expandable behavior to user messages
   if (!isUser) {
-    return <MessageContent content={content} isUser={isUser} />;
+    return <MessageContent content={content} isUser={isUser} isDark={isDark} />;
   }
 
   // Simple heuristic: estimate if content would exceed line limit
@@ -56,6 +58,7 @@ const ExpandableMessageContent: React.FC<ExpandableMessageContentProps> = ({
         <MessageContent
           content={isExpanded ? content : content.slice(0, 180) + '...'}
           isUser={isUser}
+          isDark={isDark}
         />
       </View>
       <TouchableOpacity
@@ -81,10 +84,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   toggleText: {
-    color: darkTheme.colors.text.inverse,
+    color: '#000000',
     fontSize: 13,
     fontWeight: '500',
-    opacity: 0.8,
+    opacity: 0.6,
   },
 });
 

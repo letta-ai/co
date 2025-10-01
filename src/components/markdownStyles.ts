@@ -1,13 +1,15 @@
 import { Platform, StyleSheet } from 'react-native';
-import { darkTheme } from '../theme';
+import { darkTheme, lightTheme, type Theme } from '../theme';
 
 export interface MarkdownStyleOptions {
   isUser: boolean;
+  isDark?: boolean;
 }
 
-export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
-  const theme = darkTheme;
-  const userTextColor = theme.colors.text.inverse;
+export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOptions) => {
+  const theme = isDark ? darkTheme : lightTheme;
+  // Dark mode: white bg -> black text, Light mode: black bg -> white text
+  const userTextColor = isDark ? '#000000' : '#FFFFFF';
   const assistantTextColor = theme.colors.text.primary;
 
   const codeFontFamily = Platform.select({
@@ -44,7 +46,7 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
     code_inline: {
       // Inline code should look like text (no bubble)
       backgroundColor: 'transparent',
-      color: isUser ? userTextColor : '#E5E5E5',
+      color: isUser ? userTextColor : (isDark ? '#E5E5E5' : '#2A2A2A'),
       paddingHorizontal: 0,
       paddingVertical: 0,
       borderRadius: 0,
@@ -57,7 +59,7 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
     code_block: {
       // Slightly lighter than the chat background for contrast
       backgroundColor: theme.colors.background.tertiary,
-      color: isUser ? userTextColor : '#E5E5E5',
+      color: isUser ? userTextColor : (isDark ? '#E5E5E5' : '#2A2A2A'),
       padding: theme.spacing[1.5],
       // 90-degree corners to match app visual style
       borderRadius: 0,
@@ -73,7 +75,7 @@ export const createMarkdownStyles = ({ isUser }: MarkdownStyleOptions) => {
     // Some markdown renders fenced blocks using `fence` instead of `code_block`
     fence: {
       backgroundColor: theme.colors.background.tertiary,
-      color: isUser ? userTextColor : '#E5E5E5',
+      color: isUser ? userTextColor : (isDark ? '#E5E5E5' : '#2A2A2A'),
       padding: theme.spacing[1.5],
       borderRadius: 0,
       borderTopWidth: StyleSheet.hairlineWidth,

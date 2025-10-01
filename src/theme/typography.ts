@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 
 export const fontFamily = {
   // Use the Expo-loaded font family name from useFonts in App.tsx
-  primary: 'Roobert',
+  primary: 'Lexend_400Regular',
   // Use reliable monospace stacks per platform to ensure actual monospace rendering
   mono: Platform.select({
     ios: 'Menlo',

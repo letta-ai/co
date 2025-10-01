@@ -1,5 +1,5 @@
 {
-  "name": "letta-chat",
+  "name": "co",
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
@@ -9,6 +9,7 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@expo-google-fonts/lexend": "^0.4.1",
     "@expo/metro-runtime": "~6.1.2",
     "@letta-ai/letta-client": "^0.0.68639",
     "@lottiefiles/dotlottie-react": "^0.13.5",
