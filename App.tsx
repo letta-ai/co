@@ -1249,13 +1249,13 @@ function CoApp() {
 
   const inputStyles = {
     width: '100%',
-    minHeight: 44,
+    minHeight: 40,
     maxHeight: 120,
     paddingLeft: 18,
     paddingRight: 130,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderRadius: 28,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderRadius: 24,
     color: colorScheme === 'dark' ? '#000000' : '#FFFFFF', // Inverted: black text in dark mode
     fontFamily: 'Lexend_400Regular',
     fontSize: 16,
@@ -1992,7 +1992,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 28,
+    borderRadius: 24,
     zIndex: -1,
   },
   inputWrapper: {
