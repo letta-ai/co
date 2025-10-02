@@ -85,6 +85,7 @@ export class Storage {
 export const STORAGE_KEYS = {
   API_TOKEN: 'ion_api_token',
   AGENT_ID: 'ion_agent_id',
+  CO_FOLDER_ID: 'co_folder_id',
 } as const;
 
 export default Storage;

@@ -317,6 +317,14 @@ class LettaApiService {
         // Token streaming provides partial chunks for real-time UX
         streamTokens: messageData.stream_tokens !== false,
       };
+
+      // Only add optional params if they're defined
+      if (messageData.use_assistant_message !== undefined) {
+        lettaStreamingRequest.useAssistantMessage = messageData.use_assistant_message;
+      }
+      if (messageData.max_steps !== undefined) {
+        lettaStreamingRequest.maxSteps = messageData.max_steps;
+      }
       // Optional ping events if requested by caller
       if ((messageData as any).include_pings === true) {
         lettaStreamingRequest.includePings = true;
@@ -345,9 +353,18 @@ class LettaApiService {
         }
       });
 
+      console.log('=== CALLING SDK createStream ===');
+      console.log('Agent ID:', agentId);
+      console.log('Client base URL:', (this.client as any)?.baseURL || 'unknown');
+      console.log('About to call: POST /agents/{agentId}/messages/stream');
+
       const stream = await this.client.agents.messages.createStream(agentId, lettaStreamingRequest);
 
+      console.log('=== STREAM OBJECT CREATED ===');
+      console.log('Stream object type:', typeof stream);
+
       // Handle the stream response using async iteration
+      console.log('=== STARTING STREAM ITERATION ===');
       try {
         for await (const chunk of stream) {
           console.log('=== RAW CHUNK RECEIVED ===');
@@ -382,27 +399,61 @@ class LettaApiService {
           usage: undefined
         });
       } catch (streamError) {
+        console.error('=== STREAM ITERATION ERROR ===');
         console.error('Stream iteration error:', streamError);
         console.error('Stream error details:', {
           message: streamError.message,
           statusCode: streamError.statusCode,
+          status: streamError.status,
           body: streamError.body,
+          data: streamError.data,
+          response: streamError.response,
           rawResponse: streamError.rawResponse,
+          error: streamError.error,
           stack: streamError.stack
         });
+
+        // Try to extract any additional error info
+        if (streamError.response) {
+          console.error('Response object:', JSON.stringify(streamError.response, null, 2));
+        }
+        if (streamError.body) {
+          console.error('Body object:', JSON.stringify(streamError.body, null, 2));
+        }
+        if (streamError.data) {
+          console.error('Data object:', JSON.stringify(streamError.data, null, 2));
+        }
+
         onError(this.handleError(streamError));
       }
     } catch (error) {
+      console.error('=== STREAM SETUP ERROR ===');
       console.error('sendMessageStream setup error:', error);
       console.error('Setup error details:', {
         message: error.message,
         statusCode: error.statusCode,
+        status: error.status,
         body: error.body,
+        data: error.data,
+        response: error.response,
         rawResponse: error.rawResponse,
+        error: error.error,
         stack: error.stack,
         name: error.name,
         constructor: error.constructor.name
       });
+
+      // Try to extract any additional error info
+      if (error.response) {
+        console.error('Response object:', JSON.stringify(error.response, null, 2));
+      }
+      if (error.body) {
+        console.error('Body object:', JSON.stringify(error.body, null, 2));
+      }
+      if (error.data) {
+        console.error('Data object:', JSON.stringify(error.data, null, 2));
+      }
+
       onError(this.handleError(error));
     }
   }
@@ -825,12 +876,72 @@ class LettaApiService {
   }
 
   // Folder management
-  async listFolders(): Promise<any[]> {
+  async listFolders(params?: { name?: string }): Promise<any[]> {
     try {
-      if (!this.client) {
+      if (!this.client || !this.token) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      const folders = await this.client.folders.list();
+      console.log('listFolders - params:', params);
+
+      // If searching by name, use direct API call (SDK pagination is broken)
+      if (params?.name) {
+        console.log('listFolders - searching for folder with name via direct API:', params.name);
+        let allFolders: any[] = [];
+        let after: string | undefined = undefined;
+        let pageCount = 0;
+        const maxPages = 20; // Safety limit
+
+        do {
+          console.log(`listFolders - requesting page ${pageCount + 1} with after cursor:`, after);
+
+          // Build query params
+          const queryParams = new URLSearchParams({
+            limit: '50',
+            ...(after && { after })
+          });
+
+          const response = await fetch(`https://api.letta.com/v1/folders?${queryParams}`, {
+            headers: {
+              'Authorization': `Bearer ${this.token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+          }
+
+          const page = await response.json();
+          console.log(`listFolders - page ${pageCount + 1}: ${page.length} folders`);
+          console.log(`listFolders - page ${pageCount + 1} first 3 names:`, page.slice(0, 3).map(f => f.name));
+
+          allFolders = allFolders.concat(page);
+          pageCount++;
+
+          // Stop if we found the folder we're looking for
+          const found = page.find(f => f.name === params.name);
+          if (found) {
+            console.log('listFolders - found folder:', found);
+            return [found];
+          }
+
+          // Check if there are more pages
+          if (page.length < 50) {
+            after = undefined;
+          } else {
+            after = page[page.length - 1]?.id;
+          }
+
+        } while (after && pageCount < maxPages);
+
+        console.log('listFolders - searched through', pageCount, 'pages,', allFolders.length, 'total folders');
+        console.log('listFolders - folder not found with name:', params.name);
+        return [];
+      }
+
+      // No name filter, just return first page using SDK
+      const folders = await this.client.folders.list(params);
+      console.log('listFolders - returned count:', folders.length);
       return folders;
     } catch (error) {
       throw this.handleError(error);
@@ -855,7 +966,7 @@ class LettaApiService {
     }
   }
 
-  async uploadFileToFolder(folderId: string, file: File): Promise<any> {
+  async uploadFileToFolder(folderId: string, file: File, duplicateHandling: 'skip' | 'error' | 'suffix' | 'replace' = 'replace'): Promise<any> {
     try {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
@@ -863,11 +974,30 @@ class LettaApiService {
 
       console.log('uploadFileToFolder - folderId:', folderId, 'fileName:', file.name);
 
-      // Upload the file and get the job
-      const job = await this.client.folders.files.upload(file, folderId);
-      console.log('Upload job created:', job.id);
+      // The SDK upload method signature might vary - try direct API call
+      const formData = new FormData();
+      formData.append('file', file);
 
-      return job;
+      const response = await fetch(
+        `https://api.letta.com/v1/folders/${folderId}/files?duplicate_handling=${duplicateHandling}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.token}`
+          },
+          body: formData
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Upload failed: ${response.status} ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Upload response:', result);
+
+      return result;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -936,9 +1066,12 @@ class LettaApiService {
   }
 
   private handleError(error: any): ApiError {
+    console.error('=== HANDLE ERROR ===');
     console.error('handleError - Full error object:', error);
+    console.error('handleError - Error type:', typeof error);
     console.error('handleError - Error keys:', Object.keys(error));
-    
+    console.error('handleError - Error constructor:', error?.constructor?.name);
+
     let message = 'An error occurred';
     let status = 0;
     let code: string | undefined;
@@ -958,15 +1091,30 @@ class LettaApiService {
       code = error.code;
     }
 
+    // Try to extract detailed error information
+    const responseData = error?.responseData || error?.data || error?.body;
+    const response = error?.response || error?.rawResponse;
+
     const apiError = {
       message,
       status,
       code,
-      response: error?.response || error?.rawResponse,
-      responseData: error?.responseData || error?.data || error?.body
+      response,
+      responseData
     };
-    
-    console.error('handleError - Returning API error:', apiError);
+
+    console.error('handleError - Returning API error:', JSON.stringify(apiError, null, 2));
+    console.error('handleError - Response data type:', typeof responseData);
+    console.error('handleError - Response type:', typeof response);
+
+    // Log any nested error details
+    if (responseData) {
+      console.error('handleError - Response data content:', JSON.stringify(responseData, null, 2));
+    }
+    if (response) {
+      console.error('handleError - Response content:', JSON.stringify(response, null, 2));
+    }
+
     return apiError;
   }
 }

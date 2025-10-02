@@ -31,6 +31,7 @@ import MessageContent from './src/components/MessageContent';
 import ExpandableMessageContent from './src/components/ExpandableMessageContent';
 import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
+import MemoryBlockViewer from './src/components/MemoryBlockViewer';
 import { darkTheme, lightTheme, CoColors } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, MemoryBlock } from './src/types/letta';
 
@@ -122,12 +123,16 @@ function CoApp() {
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
   const sidebarAnimRef = useRef(new Animated.Value(0)).current;
+  const [developerMode, setDeveloperMode] = useState(false);
+  const [headerClickCount, setHeaderClickCount] = useState(0);
+  const headerClickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // File management state
   const [coFolder, setCoFolder] = useState<any | null>(null);
   const [folderFiles, setFolderFiles] = useState<any[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
   const [filesError, setFilesError] = useState<string | null>(null);
 
   const isDesktop = screenData.width >= 768;
@@ -244,7 +249,12 @@ function CoApp() {
       console.log('Initializing Co agent...');
       const agent = await findOrCreateCo('User');
       setCoAgent(agent);
-      console.log('Co agent ready:', agent.id);
+      console.log('=== CO AGENT INITIALIZED ===');
+      console.log('Co agent ID:', agent.id);
+      console.log('Co agent name:', agent.name);
+      console.log('Co agent LLM config:', JSON.stringify(agent.llmConfig, null, 2));
+      console.log('LLM model:', agent.llmConfig?.model);
+      console.log('LLM context window:', agent.llmConfig?.contextWindow);
     } catch (error: any) {
       console.error('Failed to initialize Co:', error);
       Alert.alert('Error', 'Failed to initialize Co: ' + (error.message || 'Unknown error'));
@@ -381,10 +391,6 @@ function CoApp() {
     setInputText('');
     setSelectedImages([]);
     setIsSendingMessage(true);
-
-    // Remove space from previous message before adding new user message
-    setLastMessageNeedsSpace(false);
-    spacerHeightAnim.setValue(0);
 
     // Immediately add user message to UI (with images if any)
     let tempMessageContent: any;
@@ -584,7 +590,24 @@ function CoApp() {
           streamCompleteRef.current = true;
         },
         (error) => {
+          console.error('=== APP STREAMING ERROR CALLBACK ===');
           console.error('Streaming error:', error);
+          console.error('Error type:', typeof error);
+          console.error('Error keys:', Object.keys(error || {}));
+          console.error('Error details:', {
+            message: error?.message,
+            status: error?.status,
+            code: error?.code,
+            response: error?.response,
+            responseData: error?.responseData
+          });
+
+          // Try to log full error structure
+          try {
+            console.error('Full error JSON:', JSON.stringify(error, null, 2));
+          } catch (e) {
+            console.error('Could not stringify error:', e);
+          }
 
           // Clear intervals on error
           if (bufferIntervalRef.current) {
@@ -608,11 +631,48 @@ function CoApp() {
           setStreamingReasoning('');
           tokenBufferRef.current = '';
           streamingReasoningRef.current = '';
-          Alert.alert('Error', 'Failed to send message: ' + (error.message || 'Unknown error'));
+
+          // Create detailed error message
+          let errorMsg = 'Failed to send message';
+          if (error?.message) {
+            errorMsg += ': ' + error.message;
+          }
+          if (error?.status) {
+            errorMsg += ' (Status: ' + error.status + ')';
+          }
+          if (error?.responseData) {
+            try {
+              const responseStr = typeof error.responseData === 'string'
+                ? error.responseData
+                : JSON.stringify(error.responseData);
+              errorMsg += '\nDetails: ' + responseStr;
+            } catch (e) {
+              // ignore
+            }
+          }
+
+          Alert.alert('Error', errorMsg);
         }
       );
     } catch (error: any) {
+      console.error('=== APP SEND MESSAGE OUTER CATCH ===');
       console.error('Failed to send message:', error);
+      console.error('Error type:', typeof error);
+      console.error('Error keys:', Object.keys(error || {}));
+      console.error('Error details:', {
+        message: error?.message,
+        status: error?.status,
+        code: error?.code,
+        response: error?.response,
+        responseData: error?.responseData
+      });
+
+      try {
+        console.error('Full error JSON:', JSON.stringify(error, null, 2));
+      } catch (e) {
+        console.error('Could not stringify error:', e);
+      }
+
       Alert.alert('Error', 'Failed to send message: ' + (error.message || 'Unknown error'));
       setIsStreaming(false);
       spacerHeightAnim.setValue(0);
@@ -724,15 +784,64 @@ function CoApp() {
     try {
       console.log('Initializing co folder...');
 
-      // Check if "co" folder already exists
-      const folders = await lettaApi.listFolders();
-      let folder = folders.find((f: any) => f.name === 'co');
+      let folder: any = null;
 
-      if (!folder) {
-        // Create the folder
-        console.log('Creating co folder...');
-        folder = await lettaApi.createFolder('co', 'Files shared with co');
+      // First, try to get cached folder ID
+      const cachedFolderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
+      if (cachedFolderId) {
+        console.log('Found cached folder ID:', cachedFolderId);
+        try {
+          // Try to get the folder by ID directly (we'll need to add this method)
+          const folders = await lettaApi.listFolders({ name: 'co-app' });
+          folder = folders.find(f => f.id === cachedFolderId);
+          if (folder) {
+            console.log('Using cached folder:', folder.id, folder.name);
+          } else {
+            console.log('Cached folder ID not found, will search...');
+            await Storage.removeItem(STORAGE_KEYS.CO_FOLDER_ID);
+          }
+        } catch (error) {
+          console.log('Failed to get cached folder, will search:', error);
+          await Storage.removeItem(STORAGE_KEYS.CO_FOLDER_ID);
+        }
       }
+
+      // If we don't have a cached folder, search for it
+      if (!folder) {
+        console.log('Searching for co-app folder...');
+        const folders = await lettaApi.listFolders({ name: 'co-app' });
+        console.log('Folder query result:', folders.length, 'folders');
+        folder = folders.length > 0 ? folders[0] : null;
+        console.log('Selected folder:', folder ? { id: folder.id, name: folder.name } : null);
+      }
+
+      // If still no folder, create it
+      if (!folder) {
+        console.log('Creating co-app folder...');
+        try {
+          folder = await lettaApi.createFolder('co-app', 'Files shared with co');
+          console.log('Folder created:', folder.id, 'name:', folder.name);
+        } catch (createError: any) {
+          // If 409 conflict, folder was created by another process - try to find it again
+          if (createError.status === 409) {
+            console.log('Folder already exists (409), retrying fetch...');
+            const foldersRetry = await lettaApi.listFolders({ name: 'co-app' });
+            console.log('Retry folder query result:', foldersRetry.length, 'folders');
+            folder = foldersRetry.length > 0 ? foldersRetry[0] : null;
+            if (!folder) {
+              console.error('Folder "co-app" not found after 409 conflict');
+              setFilesError('Folder "co-app" exists but could not be retrieved. Try refreshing.');
+              return;
+            }
+          } else {
+            throw createError;
+          }
+        }
+      }
+
+      // Cache the folder ID for next time
+      await Storage.setItem(STORAGE_KEYS.CO_FOLDER_ID, folder.id);
+      console.log('Cached folder ID:', folder.id);
 
       setCoFolder(folder);
       console.log('Co folder ready:', folder.id);
@@ -797,36 +906,63 @@ function CoApp() {
         }
 
         setIsUploadingFile(true);
+        setUploadProgress(`Uploading ${file.name}...`);
         try {
-          // Upload file
-          const job = await lettaApi.uploadFileToFolder(coFolder.id, file);
-          console.log('Upload job:', job.id);
+          // Upload file - this returns the job info
+          const result = await lettaApi.uploadFileToFolder(coFolder.id, file);
+          console.log('Upload result:', result);
 
-          // Poll for job completion
-          let attempts = 0;
-          const maxAttempts = 60; // 60 seconds max
-          while (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            const status = await lettaApi.getJobStatus(job.id);
-            console.log('Job status:', status.status);
+          // The upload might complete immediately or return a job
+          if (result.id && result.id.startsWith('file-')) {
+            // It's a job ID - poll for completion
+            setUploadProgress('Processing file...');
+            let attempts = 0;
+            const maxAttempts = 30; // 30 seconds max
 
-            if (status.status === 'completed') {
-              console.log('File uploaded successfully');
-              await loadFolderFiles();
-              Alert.alert('Success', `${file.name} uploaded successfully`);
-              break;
-            } else if (status.status === 'failed') {
-              throw new Error('Upload failed: ' + (status.metadata || 'Unknown error'));
+            while (attempts < maxAttempts) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+
+              try {
+                const status = await lettaApi.getJobStatus(result.id);
+                console.log('Job status:', status.status);
+
+                if (status.status === 'completed') {
+                  console.log('File uploaded successfully');
+                  await loadFolderFiles();
+                  setUploadProgress('');
+                  Alert.alert('Success', `${file.name} uploaded successfully`);
+                  break;
+                } else if (status.status === 'failed') {
+                  throw new Error('Upload failed: ' + (status.metadata || 'Unknown error'));
+                }
+              } catch (jobError: any) {
+                // If job not found (404), it might have completed already
+                if (jobError.status === 404) {
+                  console.log('Job not found - assuming completed');
+                  await loadFolderFiles();
+                  setUploadProgress('');
+                  Alert.alert('Success', `${file.name} uploaded successfully`);
+                  break;
+                }
+                throw jobError;
+              }
+
+              attempts++;
             }
 
-            attempts++;
-          }
-
-          if (attempts >= maxAttempts) {
-            throw new Error('Upload timed out');
+            if (attempts >= maxAttempts) {
+              throw new Error('Upload processing timed out');
+            }
+          } else {
+            // Upload completed immediately
+            console.log('File uploaded immediately');
+            await loadFolderFiles();
+            setUploadProgress('');
+            Alert.alert('Success', `${file.name} uploaded successfully`);
           }
         } catch (error: any) {
           console.error('Upload error:', error);
+          setUploadProgress('');
           Alert.alert('Upload Failed', error.message || 'Failed to upload file');
         } finally {
           setIsUploadingFile(false);
@@ -1249,12 +1385,11 @@ function CoApp() {
 
   const inputStyles = {
     width: '100%',
-    minHeight: 40,
-    maxHeight: 120,
+    height: 76,
     paddingLeft: 18,
     paddingRight: 130,
-    paddingTop: 10,
-    paddingBottom: 10,
+    paddingTop: 12,
+    paddingBottom: 12,
     borderRadius: 24,
     color: colorScheme === 'dark' ? '#000000' : '#FFFFFF', // Inverted: black text in dark mode
     fontFamily: 'Lexend_400Regular',
@@ -1329,8 +1464,11 @@ function CoApp() {
           </TouchableOpacity>
         </View>
 
-        {/* Menu Items */}
-        <View style={styles.menuItems}>
+        <FlatList
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          ListHeaderComponent={
+            <View style={styles.menuItems}>
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
             onPress={() => {
@@ -1381,6 +1519,54 @@ function CoApp() {
             <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Open in Browser</Text>
           </TouchableOpacity>
 
+          {developerMode && (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+              onPress={async () => {
+                console.log('Refresh Co button pressed');
+                const confirmed = Platform.OS === 'web'
+                  ? window.confirm('This will delete the current co agent and create a new one. All conversation history will be lost. Are you sure?')
+                  : await new Promise<boolean>((resolve) => {
+                      Alert.alert(
+                        'Refresh Co Agent',
+                        'This will delete the current co agent and create a new one. All conversation history will be lost. Are you sure?',
+                        [
+                          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                          { text: 'Refresh', style: 'destructive', onPress: () => resolve(true) },
+                        ]
+                      );
+                    });
+
+                if (!confirmed) return;
+
+                console.log('Refresh confirmed, starting process...');
+                setSidebarVisible(false);
+                try {
+                  if (coAgent) {
+                    console.log('Deleting agent:', coAgent.id);
+                    await lettaApi.deleteAgent(coAgent.id);
+                    console.log('Agent deleted, clearing state...');
+                    setCoAgent(null);
+                    setMessages([]);
+                    console.log('Initializing new co agent...');
+                    await initializeCo();
+                    console.log('Co agent refreshed successfully');
+                  }
+                } catch (error: any) {
+                  console.error('Error refreshing co:', error);
+                  if (Platform.OS === 'web') {
+                    window.alert('Failed to refresh co: ' + (error.message || 'Unknown error'));
+                  } else {
+                    Alert.alert('Error', 'Failed to refresh co: ' + (error.message || 'Unknown error'));
+                  }
+                }
+              }}
+            >
+              <Ionicons name="refresh-outline" size={24} color={theme.colors.status.error} />
+              <Text style={[styles.menuItemText, { color: theme.colors.status.error }]}>Refresh Co</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
             onPress={() => {
@@ -1391,11 +1577,13 @@ function CoApp() {
             <Ionicons name="log-out-outline" size={24} color={theme.colors.text.primary} />
             <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Logout</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* Memory blocks section - only show when memory tab is active */}
-        {activeSidebarTab === 'memory' && (
-          <View style={styles.memorySection}>
+            </View>
+          }
+          ListFooterComponent={
+            <>
+              {/* Memory blocks section - only show when memory tab is active */}
+              {activeSidebarTab === 'memory' && (
+                <View style={styles.memorySection}>
             <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary }]}>Memory Blocks</Text>
             {isLoadingBlocks ? (
               <ActivityIndicator size="large" color={theme.colors.text.secondary} />
@@ -1441,6 +1629,11 @@ function CoApp() {
                 )}
               </TouchableOpacity>
             </View>
+            {uploadProgress && (
+              <View style={{ marginBottom: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.background.tertiary, borderRadius: 8 }}>
+                <Text style={{ color: theme.colors.text.secondary, fontSize: 14 }}>{uploadProgress}</Text>
+              </View>
+            )}
             {isLoadingFiles ? (
               <ActivityIndicator size="large" color={theme.colors.text.secondary} />
             ) : filesError ? (
@@ -1482,7 +1675,12 @@ function CoApp() {
               />
             )}
           </View>
-        )}
+              )}
+            </>
+          }
+          data={[]}
+          renderItem={() => null}
+        />
       </Animated.View>
 
       {/* Main content area */}
@@ -1494,14 +1692,38 @@ function CoApp() {
           </TouchableOpacity>
 
           <View style={styles.headerCenter}>
-            <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+            <TouchableOpacity
+              onPress={() => {
+                setHeaderClickCount(prev => prev + 1);
+
+                if (headerClickTimeoutRef.current) {
+                  clearTimeout(headerClickTimeoutRef.current);
+                }
+
+                headerClickTimeoutRef.current = setTimeout(() => {
+                  if (headerClickCount >= 6) {
+                    setDeveloperMode(!developerMode);
+                    if (Platform.OS === 'web') {
+                      window.alert(developerMode ? 'Developer mode disabled' : 'Developer mode enabled');
+                    } else {
+                      Alert.alert('Developer Mode', developerMode ? 'Disabled' : 'Enabled');
+                    }
+                  }
+                  setHeaderClickCount(0);
+                }, 2000);
+              }}
+            >
+              <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.headerSpacer} />
         </View>
 
-      {/* Messages */}
-      <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
+        {/* Chat and Memory Row */}
+        <View style={styles.chatRow}>
+          {/* Messages */}
+          <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
         <FlatList
           ref={scrollViewRef}
           data={groupedMessages}
@@ -1675,28 +1897,29 @@ function CoApp() {
             </TouchableOpacity>
           </View>
         </View>
-      </View>
+          </View>
+
+          {/* Memory block viewer - right pane on desktop */}
+          {isDesktop && selectedBlock && (
+            <MemoryBlockViewer
+              block={selectedBlock}
+              onClose={() => setSelectedBlock(null)}
+              isDark={colorScheme === 'dark'}
+              isDesktop={isDesktop}
+            />
+          )}
+        </View>
       </View>
 
-      {/* Memory block detail modal */}
-      <Modal
-        visible={selectedBlock !== null}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setSelectedBlock(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.detailContainer, { paddingTop: insets.top }]}>
-            <View style={styles.detailHeader}>
-              <Text style={styles.detailTitle}>{selectedBlock?.label}</Text>
-              <TouchableOpacity onPress={() => setSelectedBlock(null)}>
-                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.detailContent}>{selectedBlock?.value}</Text>
-          </View>
-        </View>
-      </Modal>
+      {/* Memory block viewer - overlay on mobile */}
+      {!isDesktop && selectedBlock && (
+        <MemoryBlockViewer
+          block={selectedBlock}
+          onClose={() => setSelectedBlock(null)}
+          isDark={colorScheme === 'dark'}
+          isDesktop={isDesktop}
+        />
+      )}
 
       {/* Approval modal */}
       <Modal
@@ -1777,6 +2000,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'column',
   },
+  chatRow: {
+    flex: 1,
+    flexDirection: 'row',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1833,7 +2060,7 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Space for input at bottom
   },
   messageContainer: {
-    paddingHorizontal: 40,
+    paddingHorizontal: 18,
     paddingVertical: 8,
   },
   userMessageContainer: {
@@ -1843,7 +2070,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   assistantFullWidthContainer: {
-    paddingHorizontal: 40,
+    paddingHorizontal: 18,
     paddingVertical: 12,
     width: '100%',
   },
@@ -1948,13 +2175,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 40,
+    paddingHorizontal: 60,
+    paddingVertical: 80,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 24,
     fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.secondary,
+    color: darkTheme.colors.text.primary,
     textAlign: 'center',
+    lineHeight: 36,
   },
   scrollToBottomButton: {
     position: 'absolute',
@@ -2066,11 +2295,6 @@ const styles = StyleSheet.create({
   sendButtonDisabled: {
     opacity: 0.5,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
   sidebarContainer: {
     height: '100%',
     backgroundColor: darkTheme.colors.background.secondary,
@@ -2143,33 +2367,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.secondary,
-  },
-  detailContainer: {
-    width: '90%',
-    maxHeight: '80%',
-    backgroundColor: darkTheme.colors.background.primary,
-    borderRadius: 16,
-    padding: 20,
-    alignSelf: 'center',
-    marginTop: 'auto',
-    marginBottom: 'auto',
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  detailTitle: {
-    fontSize: 20,
-    fontFamily: 'Lexend_700Bold',
-    color: darkTheme.colors.text.primary,
-  },
-  detailContent: {
-    fontSize: 16,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.primary,
-    lineHeight: 24,
   },
   errorText: {
     color: darkTheme.colors.status.error,
@@ -2264,7 +2461,7 @@ const styles = StyleSheet.create({
   },
   compactionContainer: {
     marginVertical: 16,
-    marginHorizontal: 20,
+    marginHorizontal: 18,
   },
   compactionLine: {
     flexDirection: 'row',
