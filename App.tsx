@@ -907,6 +907,10 @@ function CoApp() {
 
         setIsUploadingFile(true);
         setUploadProgress(`Uploading ${file.name}...`);
+
+        // Show immediate feedback
+        console.log(`Starting upload: ${file.name}`);
+
         try {
           // Upload file - this returns the job info
           const result = await lettaApi.uploadFileToFolder(coFolder.id, file);
@@ -2101,13 +2105,15 @@ const styles = StyleSheet.create({
   },
   userMessageText: {
     color: darkTheme.colors.background.primary,
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: 'Lexend_400Regular',
+    lineHeight: 26,
   },
   assistantMessageText: {
     color: darkTheme.colors.text.primary,
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: 'Lexend_400Regular',
+    lineHeight: 26,
   },
   reasoningToggle: {
     flexDirection: 'row',

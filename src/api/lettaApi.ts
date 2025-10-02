@@ -979,7 +979,7 @@ class LettaApiService {
       formData.append('file', file);
 
       const response = await fetch(
-        `https://api.letta.com/v1/folders/${folderId}/files?duplicate_handling=${duplicateHandling}`,
+        `https://api.letta.com/v1/folders/${folderId}/upload?duplicate_handling=${duplicateHandling}`,
         {
           method: 'POST',
           headers: {
