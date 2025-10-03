@@ -2238,7 +2238,7 @@ function CoApp() {
                   borderColor: theme.colors.border.primary,
                   paddingRight: passageSearchQuery ? 96 : 60,
                 }]}
-                placeholder="Search passages (semantic)..."
+                placeholder="Search archival memory..."
                 placeholderTextColor={theme.colors.text.tertiary}
                 value={passageSearchQuery}
                 onChangeText={setPassageSearchQuery}
