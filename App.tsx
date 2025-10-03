@@ -146,6 +146,7 @@ function CoApp() {
   const [selectedPassage, setSelectedPassage] = useState<Passage | null>(null);
   const [isCreatingPassage, setIsCreatingPassage] = useState(false);
   const [isEditingPassage, setIsEditingPassage] = useState(false);
+  const [isSavingPassage, setIsSavingPassage] = useState(false);
   const [passageAfterCursor, setPassageAfterCursor] = useState<string | undefined>(undefined);
   const [hasMorePassages, setHasMorePassages] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
@@ -2500,12 +2501,16 @@ function CoApp() {
               <Text style={[styles.modalTitle, { color: theme.colors.text.primary }]}>
                 {isCreatingPassage ? 'Create Passage' : 'Edit Passage'}
               </Text>
-              <TouchableOpacity onPress={() => {
-                setIsCreatingPassage(false);
-                setIsEditingPassage(false);
-                setSelectedPassage(null);
-              }}>
-                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              <TouchableOpacity
+                onPress={() => {
+                  if (isSavingPassage) return;
+                  setIsCreatingPassage(false);
+                  setIsEditingPassage(false);
+                  setSelectedPassage(null);
+                }}
+                disabled={isSavingPassage}
+              >
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} style={{ opacity: isSavingPassage ? 0.5 : 1 }} />
               </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
@@ -2543,35 +2548,50 @@ function CoApp() {
             </View>
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSecondary, { borderColor: theme.colors.border.primary }]}
+                style={[styles.modalButton, styles.modalButtonSecondary, { borderColor: theme.colors.border.primary, opacity: isSavingPassage ? 0.5 : 1 }]}
                 onPress={() => {
+                  if (isSavingPassage) return;
                   setIsCreatingPassage(false);
                   setIsEditingPassage(false);
                   setSelectedPassage(null);
                 }}
+                disabled={isSavingPassage}
               >
                 <Text style={[styles.modalButtonText, { color: theme.colors.text.primary }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: theme.colors.text.primary }]}
+                style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: theme.colors.text.primary, opacity: isSavingPassage ? 0.7 : 1 }]}
                 onPress={async () => {
+                  if (isSavingPassage) return;
                   if (!selectedPassage?.text) {
                     Alert.alert('Error', 'Please enter passage text');
                     return;
                   }
-                  if (isEditingPassage && selectedPassage.id) {
-                    await modifyPassage(selectedPassage.id, selectedPassage.text, selectedPassage.tags);
-                  } else {
-                    await createPassage(selectedPassage.text, selectedPassage.tags);
+                  setIsSavingPassage(true);
+                  try {
+                    if (isEditingPassage && selectedPassage.id) {
+                      await modifyPassage(selectedPassage.id, selectedPassage.text, selectedPassage.tags);
+                    } else {
+                      await createPassage(selectedPassage.text, selectedPassage.tags);
+                    }
+                    setIsCreatingPassage(false);
+                    setIsEditingPassage(false);
+                    setSelectedPassage(null);
+                  } catch (error) {
+                    console.error('Error saving passage:', error);
+                  } finally {
+                    setIsSavingPassage(false);
                   }
-                  setIsCreatingPassage(false);
-                  setIsEditingPassage(false);
-                  setSelectedPassage(null);
                 }}
+                disabled={isSavingPassage}
               >
-                <Text style={[styles.modalButtonText, { color: theme.colors.background.primary }]}>
-                  {isCreatingPassage ? 'Create' : 'Save'}
-                </Text>
+                {isSavingPassage ? (
+                  <ActivityIndicator size="small" color={theme.colors.background.primary} />
+                ) : (
+                  <Text style={[styles.modalButtonText, { color: theme.colors.background.primary }]}>
+                    {isCreatingPassage ? 'Create' : 'Save'}
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
