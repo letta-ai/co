@@ -2302,40 +2302,38 @@ function CoApp() {
               /* Archival Memory view */
               <>
                 {/* Semantic Search bar with Add button */}
-                <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
-                  <View style={styles.memorySearchContainer}>
-                    <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
-                    <TextInput
-                      style={[styles.memorySearchInput, {
-                        color: theme.colors.text.primary,
-                        backgroundColor: theme.colors.background.tertiary,
-                        borderColor: theme.colors.border.primary,
-                        paddingRight: passageSearchQuery ? 80 : 50,
-                      }]}
-                      placeholder="Search passages (semantic)..."
-                      placeholderTextColor={theme.colors.text.tertiary}
-                      value={passageSearchQuery}
-                      onChangeText={setPassageSearchQuery}
-                      onSubmitEditing={() => loadPassages(true)}
-                    />
-                    {passageSearchQuery && (
-                      <TouchableOpacity
-                        style={{ position: 'absolute', right: 56, padding: 8 }}
-                        onPress={() => {
-                          setPassageSearchQuery('');
-                          loadPassages(true);
-                        }}
-                      >
-                        <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
-                      </TouchableOpacity>
-                    )}
+                <View style={styles.memorySearchContainer}>
+                  <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
+                  <TextInput
+                    style={[styles.memorySearchInput, {
+                      color: theme.colors.text.primary,
+                      backgroundColor: theme.colors.background.tertiary,
+                      borderColor: theme.colors.border.primary,
+                      paddingRight: passageSearchQuery ? 96 : 60,
+                    }]}
+                    placeholder="Search passages (semantic)..."
+                    placeholderTextColor={theme.colors.text.tertiary}
+                    value={passageSearchQuery}
+                    onChangeText={setPassageSearchQuery}
+                    onSubmitEditing={() => loadPassages(true)}
+                  />
+                  {passageSearchQuery && (
                     <TouchableOpacity
-                      style={{ position: 'absolute', right: 16, padding: 8 }}
-                      onPress={() => setIsCreatingPassage(true)}
+                      style={{ position: 'absolute', right: 64, padding: 8 }}
+                      onPress={() => {
+                        setPassageSearchQuery('');
+                        loadPassages(true);
+                      }}
                     >
-                      <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+                      <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
                     </TouchableOpacity>
-                  </View>
+                  )}
+                  <TouchableOpacity
+                    style={{ position: 'absolute', right: 28, padding: 8 }}
+                    onPress={() => setIsCreatingPassage(true)}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+                  </TouchableOpacity>
                 </View>
                 {isLoadingPassages ? (
                   <View style={styles.memoryLoadingContainer}>
