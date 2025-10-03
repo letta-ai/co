@@ -2210,7 +2210,7 @@ function CoApp() {
             </TouchableOpacity>
           </View>
 
-          {/* Search bar - only for Core Memory tab */}
+          {/* Search bars */}
           {knowledgeTab === 'core' && (
             <View style={styles.memorySearchContainer}>
               <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
@@ -2225,6 +2225,42 @@ function CoApp() {
                 value={memorySearchQuery}
                 onChangeText={setMemorySearchQuery}
               />
+            </View>
+          )}
+
+          {knowledgeTab === 'archival' && (
+            <View style={styles.memorySearchContainer}>
+              <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
+              <TextInput
+                style={[styles.memorySearchInput, {
+                  color: theme.colors.text.primary,
+                  backgroundColor: theme.colors.background.tertiary,
+                  borderColor: theme.colors.border.primary,
+                  paddingRight: passageSearchQuery ? 96 : 60,
+                }]}
+                placeholder="Search passages (semantic)..."
+                placeholderTextColor={theme.colors.text.tertiary}
+                value={passageSearchQuery}
+                onChangeText={setPassageSearchQuery}
+                onSubmitEditing={() => loadPassages(true)}
+              />
+              {passageSearchQuery && (
+                <TouchableOpacity
+                  style={{ position: 'absolute', right: 64, padding: 8 }}
+                  onPress={() => {
+                    setPassageSearchQuery('');
+                    loadPassages(true);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={{ position: 'absolute', right: 28, padding: 8 }}
+                onPress={() => setIsCreatingPassage(true)}
+              >
+                <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
             </View>
           )}
 
@@ -2300,42 +2336,7 @@ function CoApp() {
               </>
             ) : knowledgeTab === 'archival' ? (
               /* Archival Memory view */
-              <>
-                {/* Semantic Search bar with Add button */}
-                <View style={styles.memorySearchContainer}>
-                  <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
-                  <TextInput
-                    style={[styles.memorySearchInput, {
-                      color: theme.colors.text.primary,
-                      backgroundColor: theme.colors.background.tertiary,
-                      borderColor: theme.colors.border.primary,
-                      paddingRight: passageSearchQuery ? 96 : 60,
-                    }]}
-                    placeholder="Search passages (semantic)..."
-                    placeholderTextColor={theme.colors.text.tertiary}
-                    value={passageSearchQuery}
-                    onChangeText={setPassageSearchQuery}
-                    onSubmitEditing={() => loadPassages(true)}
-                  />
-                  {passageSearchQuery && (
-                    <TouchableOpacity
-                      style={{ position: 'absolute', right: 64, padding: 8 }}
-                      onPress={() => {
-                        setPassageSearchQuery('');
-                        loadPassages(true);
-                      }}
-                    >
-                      <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={{ position: 'absolute', right: 28, padding: 8 }}
-                    onPress={() => setIsCreatingPassage(true)}
-                  >
-                    <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
-                  </TouchableOpacity>
-                </View>
-                {isLoadingPassages ? (
+              isLoadingPassages ? (
                   <View style={styles.memoryLoadingContainer}>
                     <ActivityIndicator size="large" color={theme.colors.text.secondary} />
                   </View>
@@ -2408,8 +2409,7 @@ function CoApp() {
                       ) : null
                     }
                   />
-                )}
-              </>
+                )
             ) : isLoadingBlocks ? (
               <View style={styles.memoryLoadingContainer}>
                 <ActivityIndicator size="large" color={theme.colors.text.secondary} />
