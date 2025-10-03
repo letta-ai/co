@@ -16,9 +16,11 @@ import {
   Linking,
   Animated,
   Image,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import * as Clipboard from 'expo-clipboard';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Lexend_300Light, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
@@ -93,6 +95,7 @@ function CoApp() {
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
   const streamCompleteRef = useRef(false);
   const rainbowAnimValue = useRef(new Animated.Value(0)).current;
+  const [isInputFocused, setIsInputFocused] = useState(false);
 
   // Token buffering for smooth streaming
   const tokenBufferRef = useRef<string>('');
@@ -117,13 +120,16 @@ function CoApp() {
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
-  const [activeSidebarTab, setActiveSidebarTab] = useState<'memory' | 'files'>('memory');
+  const [activeSidebarTab, setActiveSidebarTab] = useState<'files'>('files');
+  const [currentView, setCurrentView] = useState<'chat' | 'knowledge'>('chat');
+  const [knowledgeTab, setKnowledgeTab] = useState<'core' | 'archival' | 'files'>('core');
   const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
+  const [memorySearchQuery, setMemorySearchQuery] = useState('');
   const sidebarAnimRef = useRef(new Animated.Value(0)).current;
-  const [developerMode, setDeveloperMode] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(true);
   const [headerClickCount, setHeaderClickCount] = useState(0);
   const headerClickTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -307,6 +313,15 @@ function CoApp() {
   const loadMoreMessages = () => {
     if (hasMoreBefore && !isLoadingMore && earliestCursor) {
       loadMessages(earliestCursor);
+    }
+  };
+
+  const copyToClipboard = async (content: string) => {
+    try {
+      await Clipboard.setStringAsync(content);
+      // Optionally show a brief success feedback
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
     }
   };
 
@@ -933,6 +948,17 @@ function CoApp() {
                 if (status.status === 'completed') {
                   console.log('File uploaded successfully');
                   await loadFolderFiles();
+
+                  // Close all open files to avoid flooding context
+                  if (coAgent) {
+                    try {
+                      await lettaApi.closeAllFiles(coAgent.id);
+                      console.log('Closed all open files after upload');
+                    } catch (err) {
+                      console.error('Failed to close files:', err);
+                    }
+                  }
+
                   setUploadProgress('');
                   Alert.alert('Success', `${file.name} uploaded successfully`);
                   break;
@@ -944,6 +970,17 @@ function CoApp() {
                 if (jobError.status === 404) {
                   console.log('Job not found - assuming completed');
                   await loadFolderFiles();
+
+                  // Close all open files to avoid flooding context
+                  if (coAgent) {
+                    try {
+                      await lettaApi.closeAllFiles(coAgent.id);
+                      console.log('Closed all open files after upload');
+                    } catch (err) {
+                      console.error('Failed to close files:', err);
+                    }
+                  }
+
                   setUploadProgress('');
                   Alert.alert('Success', `${file.name} uploaded successfully`);
                   break;
@@ -961,6 +998,17 @@ function CoApp() {
             // Upload completed immediately
             console.log('File uploaded immediately');
             await loadFolderFiles();
+
+            // Close all open files to avoid flooding context
+            if (coAgent) {
+              try {
+                await lettaApi.closeAllFiles(coAgent.id);
+                console.log('Closed all open files after upload');
+              } catch (err) {
+                console.error('Failed to close files:', err);
+              }
+            }
+
             setUploadProgress('');
             Alert.alert('Success', `${file.name} uploaded successfully`);
           }
@@ -983,44 +1031,54 @@ function CoApp() {
   const deleteFile = async (fileId: string, fileName: string) => {
     if (!coFolder) return;
 
-    Alert.alert(
-      'Delete File',
-      `Are you sure you want to delete "${fileName}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await lettaApi.deleteFile(coFolder.id, fileId);
-              await loadFolderFiles();
-              Alert.alert('Success', 'File deleted');
-            } catch (error: any) {
-              console.error('Delete error:', error);
-              Alert.alert('Error', 'Failed to delete file: ' + (error.message || 'Unknown error'));
-            }
-          },
-        },
-      ]
-    );
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm(`Are you sure you want to delete "${fileName}"?`)
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Delete File',
+            `Are you sure you want to delete "${fileName}"?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
+
+    if (!confirmed) return;
+
+    try {
+      await lettaApi.deleteFile(coFolder.id, fileId);
+      await loadFolderFiles();
+      if (Platform.OS === 'web') {
+        window.alert('File deleted successfully');
+      } else {
+        Alert.alert('Success', 'File deleted');
+      }
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Failed to delete file: ' + (error.message || 'Unknown error'));
+      } else {
+        Alert.alert('Error', 'Failed to delete file: ' + (error.message || 'Unknown error'));
+      }
+    }
   };
 
   useEffect(() => {
-    if (coAgent && sidebarVisible && activeSidebarTab === 'memory') {
+    if (coAgent && currentView === 'knowledge') {
       loadMemoryBlocks();
     }
-  }, [coAgent, sidebarVisible, activeSidebarTab]);
+  }, [coAgent, currentView]);
 
   useEffect(() => {
-    if (coAgent && sidebarVisible && activeSidebarTab === 'files') {
+    if (coAgent && sidebarVisible) {
       if (!coFolder) {
         initializeCoFolder();
       } else {
         loadFolderFiles();
       }
     }
-  }, [coAgent, sidebarVisible, activeSidebarTab]);
+  }, [coAgent, sidebarVisible]);
 
   // Initialize folder when agent is ready
   useEffect(() => {
@@ -1028,6 +1086,10 @@ function CoApp() {
       initializeCoFolder();
     }
   }, [coAgent]);
+
+  // State for tracking expanded reasoning
+  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
+  const [expandedCompaction, setExpandedCompaction] = useState<Set<string>>(new Set());
 
   // Animate sidebar
   useEffect(() => {
@@ -1038,9 +1100,9 @@ function CoApp() {
     }).start();
   }, [sidebarVisible]);
 
-  // Animate rainbow gradient for "co is thinking"
+  // Animate rainbow gradient for "co is thinking", input box, and reasoning sections
   useEffect(() => {
-    if (isReasoningStreaming) {
+    if (isReasoningStreaming || isInputFocused || expandedReasoning.size > 0) {
       rainbowAnimValue.setValue(0);
       Animated.loop(
         Animated.timing(rainbowAnimValue, {
@@ -1052,11 +1114,7 @@ function CoApp() {
     } else {
       rainbowAnimValue.stopAnimation();
     }
-  }, [isReasoningStreaming]);
-
-  // State for tracking expanded reasoning
-  const [expandedReasoning, setExpandedReasoning] = useState<Set<string>>(new Set());
-  const [expandedCompaction, setExpandedCompaction] = useState<Set<string>>(new Set());
+  }, [isReasoningStreaming, isInputFocused, expandedReasoning]);
 
   const toggleReasoning = (messageId: string) => {
     setExpandedReasoning(prev => {
@@ -1098,8 +1156,35 @@ function CoApp() {
       }
     });
 
+    // Build a map to find reasoning messages that precede tool calls
+    const reasoningBeforeToolCall = new Map<string, string>();
+    const reasoningMessagesToSkip = new Set<string>();
+
+    for (let i = 0; i < messages.length - 1; i++) {
+      const current = messages[i];
+      const next = messages[i + 1];
+
+      // If current message has reasoning and next is a tool_call, associate them
+      if (current.reasoning && next.message_type?.includes('tool_call') && next.id) {
+        reasoningBeforeToolCall.set(next.id, current.reasoning);
+        reasoningMessagesToSkip.add(current.id); // Mark this message to skip
+        console.log('🔗 Found reasoning before tool call:', {
+          toolCallId: next.id,
+          reasoningMsgId: current.id,
+          reasoning: current.reasoning.substring(0, 100) + '...'
+        });
+      }
+    }
+
     messages.forEach(msg => {
       if (processedIds.has(msg.id)) return;
+
+      // Skip reasoning messages that precede tool calls
+      if (reasoningMessagesToSkip.has(msg.id)) {
+        processedIds.add(msg.id);
+        console.log('⏭️  Skipping reasoning message that precedes tool call:', msg.id);
+        return;
+      }
 
       // Filter out login/heartbeat messages
       if (msg.role === 'user' && msg.content) {
@@ -1117,12 +1202,18 @@ function CoApp() {
       if (msg.message_type?.includes('tool_return') && msg.step_id) {
         const toolCall = toolCallsMap.get(msg.step_id);
         if (toolCall) {
+          // Get reasoning from the message that preceded the tool call
+          const reasoning = reasoningBeforeToolCall.get(toolCall.id);
+          console.log('📦 Creating tool pair group:');
+          console.log('  toolCall.id:', toolCall.id);
+          console.log('  reasoning from map:', reasoning);
+
           groups.push({
             key: toolCall.id,
             type: 'toolPair',
             call: toolCall,
             ret: msg,
-            reasoning: toolCall.reasoning || msg.reasoning,
+            reasoning: reasoning,
           });
           processedIds.add(toolCall.id);
           processedIds.add(msg.id);
@@ -1150,6 +1241,14 @@ function CoApp() {
       const toolCall = item.call.tool_call || item.call.tool_calls?.[0];
       let callText = item.call.content || 'Tool call';
 
+      // DEBUG LOGGING
+      console.log('🔧 Tool Pair Debug:');
+      console.log('  item.reasoning:', item.reasoning);
+      console.log('  item.call.reasoning:', item.call.reasoning);
+      console.log('  item.ret?.reasoning:', item.ret?.reasoning);
+      console.log('  item.call keys:', Object.keys(item.call));
+      console.log('  Full item.call:', JSON.stringify(item.call, null, 2));
+
       if (toolCall) {
         // Handle both formats: with and without .function wrapper
         const callObj = toolCall.function || toolCall;
@@ -1165,12 +1264,16 @@ function CoApp() {
       }
 
       const resultText = item.ret?.content || undefined;
+      const reasoning = item.reasoning || undefined;
+
+      console.log('  Final reasoning value:', reasoning);
 
       return (
         <View key={item.key} style={styles.messageContainer}>
           <ToolCallItem
             callText={callText}
             resultText={resultText}
+            reasoning={reasoning}
           />
         </View>
       );
@@ -1322,7 +1425,14 @@ function CoApp() {
                 onPress={() => toggleReasoning(msg.id)}
                 style={styles.reasoningToggle}
               >
+                <Ionicons
+                  name="sparkles"
+                  size={16}
+                  color={darkTheme.colors.text.secondary}
+                  style={{ marginRight: 6 }}
+                />
                 <Text style={styles.reasoningToggleText}>Reasoning</Text>
+                <View style={{ flex: 1 }} />
                 <Ionicons
                   name={isReasoningExpanded ? "chevron-up" : "chevron-down"}
                   size={16}
@@ -1331,9 +1441,17 @@ function CoApp() {
               </TouchableOpacity>
             )}
             {item.reasoning && isReasoningExpanded && (
-              <View style={styles.reasoningExpandedContainer}>
+              <Animated.View style={[
+                styles.reasoningExpandedContainer,
+                {
+                  borderLeftColor: rainbowAnimValue.interpolate({
+                    inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                    outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+                  }),
+                }
+              ]}>
                 <Text style={styles.reasoningExpandedText}>{item.reasoning}</Text>
-              </View>
+              </Animated.View>
             )}
             <ExpandableMessageContent
               content={msg.content}
@@ -1341,6 +1459,21 @@ function CoApp() {
               isDark={colorScheme === 'dark'}
               lineLimit={20}
             />
+            <View style={styles.copyButtonContainer}>
+              <TouchableOpacity
+                onPress={() => copyToClipboard(msg.content)}
+                style={styles.copyButton}
+                activeOpacity={0.7}
+                testID="copy-button"
+              >
+                <Ionicons
+                  name="copy-outline"
+                  size={16}
+                  color={theme.colors.text.tertiary}
+                />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.messageSeparator} />
           </View>
         );
       }
@@ -1387,28 +1520,38 @@ function CoApp() {
     setInputContainerHeight(e.nativeEvent.layout.height || 0);
   };
 
-  const inputStyles = {
+  const inputStyles = useMemo(() => ({
     width: '100%',
-    height: 76,
+    height: 48,
     paddingLeft: 18,
     paddingRight: 130,
     paddingTop: 12,
     paddingBottom: 12,
     borderRadius: 24,
-    color: colorScheme === 'dark' ? '#000000' : '#FFFFFF', // Inverted: black text in dark mode
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
     fontFamily: 'Lexend_400Regular',
     fontSize: 16,
-    lineHeight: 20,
+    lineHeight: 24,
     borderWidth: 0,
-    backgroundColor: 'transparent',
+    backgroundColor: theme.colors.background.primary,
     ...(Platform.OS === 'web' && {
       // @ts-ignore
-      background: 'transparent',
-      backgroundImage: 'none',
+      outline: 'none',
       WebkitAppearance: 'none',
       MozAppearance: 'none',
     }),
-  } as const;
+  } as const), [colorScheme, theme]);
+
+  const inputWrapperStyle = useMemo(() => ({
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  }), [colorScheme]);
 
   if (isLoadingToken || !fontsLoaded) {
     return (
@@ -1476,22 +1619,12 @@ function CoApp() {
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
             onPress={() => {
-              setActiveSidebarTab('memory');
+              setCurrentView('knowledge');
               loadMemoryBlocks();
             }}
           >
             <Ionicons name="library-outline" size={24} color={theme.colors.text.primary} />
-            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Memory</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
-            onPress={() => {
-              setActiveSidebarTab('files');
-            }}
-          >
-            <Ionicons name="document-text-outline" size={24} color={theme.colors.text.primary} />
-            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Files</Text>
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Knowledge</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -1548,16 +1681,28 @@ function CoApp() {
                 try {
                   if (coAgent) {
                     console.log('Deleting agent:', coAgent.id);
-                    await lettaApi.deleteAgent(coAgent.id);
-                    console.log('Agent deleted, clearing state...');
+                    const deleteResult = await lettaApi.deleteAgent(coAgent.id);
+                    console.log('Delete result:', deleteResult);
+                    console.log('Agent deleted successfully, clearing state...');
                     setCoAgent(null);
                     setMessages([]);
+                    setEarliestCursor(null);
+                    setHasMoreBefore(false);
                     console.log('Initializing new co agent...');
                     await initializeCo();
                     console.log('Co agent refreshed successfully');
+                    if (Platform.OS === 'web') {
+                      window.alert('Co agent refreshed successfully');
+                    } else {
+                      Alert.alert('Success', 'Co agent refreshed successfully');
+                    }
                   }
                 } catch (error: any) {
-                  console.error('Error refreshing co:', error);
+                  console.error('=== ERROR REFRESHING CO ===');
+                  console.error('Error type:', typeof error);
+                  console.error('Error message:', error?.message);
+                  console.error('Error stack:', error?.stack);
+                  console.error('Full error:', error);
                   if (Platform.OS === 'web') {
                     window.alert('Failed to refresh co: ' + (error.message || 'Unknown error'));
                   } else {
@@ -1582,105 +1727,6 @@ function CoApp() {
             <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Logout</Text>
           </TouchableOpacity>
             </View>
-          }
-          ListFooterComponent={
-            <>
-              {/* Memory blocks section - only show when memory tab is active */}
-              {activeSidebarTab === 'memory' && (
-                <View style={styles.memorySection}>
-            <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary }]}>Memory Blocks</Text>
-            {isLoadingBlocks ? (
-              <ActivityIndicator size="large" color={theme.colors.text.secondary} />
-            ) : blocksError ? (
-              <Text style={styles.errorText}>{blocksError}</Text>
-            ) : (
-              <FlatList
-                data={memoryBlocks}
-                keyExtractor={(item) => item.id || item.label}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[styles.memoryBlockItem, {
-                      backgroundColor: theme.colors.background.primary,
-                      borderColor: theme.colors.border.primary
-                    }]}
-                    onPress={() => setSelectedBlock(item)}
-                  >
-                    <Text style={[styles.memoryBlockLabel, { color: theme.colors.text.primary }]}>{item.label}</Text>
-                    <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary }]} numberOfLines={2}>
-                      {item.value}
-                    </Text>
-                  </TouchableOpacity>
-                )}
-              />
-            )}
-          </View>
-        )}
-
-        {/* Files section - only show when files tab is active */}
-        {activeSidebarTab === 'files' && (
-          <View style={styles.memorySection}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary, marginBottom: 0 }]}>Files</Text>
-              <TouchableOpacity
-                onPress={pickAndUploadFile}
-                disabled={isUploadingFile}
-                style={{ padding: 4 }}
-              >
-                {isUploadingFile ? (
-                  <ActivityIndicator size="small" color={theme.colors.text.secondary} />
-                ) : (
-                  <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
-                )}
-              </TouchableOpacity>
-            </View>
-            {uploadProgress && (
-              <View style={{ marginBottom: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.background.tertiary, borderRadius: 8 }}>
-                <Text style={{ color: theme.colors.text.secondary, fontSize: 14 }}>{uploadProgress}</Text>
-              </View>
-            )}
-            {isLoadingFiles ? (
-              <ActivityIndicator size="large" color={theme.colors.text.secondary} />
-            ) : filesError ? (
-              <Text style={styles.errorText}>{filesError}</Text>
-            ) : folderFiles.length === 0 ? (
-              <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary, textAlign: 'center', marginTop: 20 }]}>
-                No files uploaded yet
-              </Text>
-            ) : (
-              <FlatList
-                data={folderFiles}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View
-                    style={[styles.memoryBlockItem, {
-                      backgroundColor: theme.colors.background.primary,
-                      borderColor: theme.colors.border.primary,
-                      flexDirection: 'row',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.memoryBlockLabel, { color: theme.colors.text.primary }]} numberOfLines={1}>
-                        {item.fileName || item.name || 'Untitled'}
-                      </Text>
-                      <Text style={[styles.memoryBlockPreview, { color: theme.colors.text.secondary, fontSize: 12 }]}>
-                        {new Date(item.createdAt || item.created_at).toLocaleDateString()}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => deleteFile(item.id, item.fileName || item.name)}
-                      style={{ padding: 8 }}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={theme.colors.status.error} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-            )}
-          </View>
-              )}
-            </>
           }
           data={[]}
           renderItem={() => null}
@@ -1724,8 +1770,45 @@ function CoApp() {
           <View style={styles.headerSpacer} />
         </View>
 
-        {/* Chat and Memory Row */}
-        <View style={styles.chatRow}>
+        {/* View Switcher */}
+        <View style={[styles.viewSwitcher, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+          <TouchableOpacity
+            style={[
+              styles.viewSwitcherButton,
+              currentView === 'chat' && { backgroundColor: theme.colors.background.tertiary }
+            ]}
+            onPress={() => setCurrentView('chat')}
+          >
+            <Text style={[
+              styles.viewSwitcherText,
+              { color: currentView === 'chat' ? theme.colors.text.primary : theme.colors.text.tertiary }
+            ]}>Chat</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.viewSwitcherButton,
+              currentView === 'knowledge' && { backgroundColor: theme.colors.background.tertiary }
+            ]}
+            onPress={() => {
+              setCurrentView('knowledge');
+              loadMemoryBlocks();
+            }}
+          >
+            <Text style={[
+              styles.viewSwitcherText,
+              { color: currentView === 'knowledge' ? theme.colors.text.primary : theme.colors.text.tertiary }
+            ]}>Knowledge</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Chat and Knowledge Row */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.chatRow}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
+        >
+          {currentView === 'chat' ? (
+          <>
           {/* Messages */}
           <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
         <FlatList
@@ -1773,7 +1856,16 @@ function CoApp() {
                         <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.tertiary }}> is thinking</Text>
                       </View>
                     ) : (
-                      <Text style={styles.reasoningToggleText}>Reasoning</Text>
+                      <>
+                        <Ionicons
+                          name="sparkles"
+                          size={16}
+                          color={darkTheme.colors.text.secondary}
+                          style={{ marginRight: 6 }}
+                        />
+                        <Text style={styles.reasoningToggleText}>Reasoning</Text>
+                        <View style={{ flex: 1 }} />
+                      </>
                     )}
                     {!isReasoningStreaming && (
                       <Ionicons
@@ -1784,21 +1876,49 @@ function CoApp() {
                     )}
                   </TouchableOpacity>
                   {expandedReasoning.has('streaming') && (
-                    <View style={styles.reasoningExpandedContainer}>
+                    <Animated.View style={[
+                      styles.reasoningExpandedContainer,
+                      {
+                        borderLeftColor: rainbowAnimValue.interpolate({
+                          inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                          outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+                        }),
+                      }
+                    ]}>
                       <Text style={styles.reasoningExpandedText}>
                         {streamingReasoning || ''}
                       </Text>
-                    </View>
+                    </Animated.View>
                   )}
                   {streamingStep && (
                     <Text style={styles.streamingStep}>{streamingStep}</Text>
                   )}
                   {streamingMessage && (
-                    <MessageContent
-                      content={streamingMessage + ' ○'}
-                      isUser={false}
-                      isDark={colorScheme === 'dark'}
-                    />
+                    <>
+                      <View style={{ flex: 1 }}>
+                        <MessageContent
+                          content={streamingMessage}
+                          isUser={false}
+                          isDark={colorScheme === 'dark'}
+                        />
+                        <Text style={{ color: theme.colors.text.tertiary, marginTop: 4 }}>○</Text>
+                      </View>
+                      <View style={styles.copyButtonContainer}>
+                        <TouchableOpacity
+                          onPress={() => copyToClipboard(streamingMessage)}
+                          style={styles.copyButton}
+                          activeOpacity={0.7}
+                          testID="copy-button"
+                        >
+                          <Ionicons
+                            name="copy-outline"
+                            size={16}
+                            color={theme.colors.text.tertiary}
+                          />
+                        </TouchableOpacity>
+                      </View>
+                      <View style={styles.messageSeparator} />
+                    </>
                   )}
                 </Animated.View>
               )}
@@ -1830,17 +1950,11 @@ function CoApp() {
       </View>
 
       {/* Input */}
-      <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]} onLayout={handleInputLayout}>
+      <View
+        style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}
+        onLayout={handleInputLayout}
+      >
         <View style={styles.inputCentered}>
-          {/* Solid backdrop matching theme */}
-          <View style={[
-            styles.inputBackdrop,
-            {
-              backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-              borderWidth: 0,
-            }
-          ]} />
-
           {/* Image preview section */}
           {selectedImages.length > 0 && (
             <View style={styles.imagePreviewContainer}>
@@ -1858,27 +1972,44 @@ function CoApp() {
             </View>
           )}
 
-          <View style={styles.inputWrapper}>
+          <Animated.View style={[
+            styles.inputWrapper,
+            inputWrapperStyle,
+            isInputFocused && {
+              borderColor: rainbowAnimValue.interpolate({
+                inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+              }),
+              shadowColor: rainbowAnimValue.interpolate({
+                inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+              }),
+              shadowOpacity: 0.4,
+              shadowRadius: 16,
+            }
+          ]}>
             <TouchableOpacity
               onPress={pickAndUploadFile}
               style={styles.fileButton}
               disabled={isSendingMessage || isUploadingFile}
             >
-              <Ionicons name="attach-outline" size={24} color="#888888" />
+              <Ionicons name="attach-outline" size={20} color="#666666" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={pickImage}
               style={styles.imageButton}
               disabled={isSendingMessage}
             >
-              <Ionicons name="image-outline" size={24} color="#888888" />
+              <Ionicons name="image-outline" size={20} color="#666666" />
             </TouchableOpacity>
             <TextInput
               style={inputStyles}
-              placeholder=""
+              placeholder="What's on your mind?"
               placeholderTextColor={colorScheme === 'dark' ? '#666666' : '#999999'}
               value={inputText}
               onChangeText={setInputText}
+              onFocus={() => setIsInputFocused(true)}
+              onBlur={() => setIsInputFocused(false)}
               multiline
               maxLength={4000}
               editable={!isSendingMessage}
@@ -1888,34 +2019,243 @@ function CoApp() {
               onPress={sendMessage}
               style={[
                 styles.sendButton,
-                { backgroundColor: theme.colors.background.primary },
-                ((!inputText.trim() && selectedImages.length === 0) || isSendingMessage) && styles.sendButtonDisabled
+                {
+                  backgroundColor: (!inputText.trim() && selectedImages.length === 0) || isSendingMessage
+                    ? 'transparent'
+                    : colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack
+                },
               ]}
               disabled={(!inputText.trim() && selectedImages.length === 0) || isSendingMessage}
             >
               {isSendingMessage ? (
                 <ActivityIndicator size="small" color={colorScheme === 'dark' ? '#fff' : '#000'} />
               ) : (
-                <View style={[styles.sendRing, { borderColor: colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack }]} />
+                <Ionicons
+                  name="arrow-up"
+                  size={20}
+                  color={
+                    (!inputText.trim() && selectedImages.length === 0)
+                      ? '#444444'
+                      : colorScheme === 'dark' ? CoColors.deepBlack : CoColors.pureWhite
+                  }
+                />
               )}
             </TouchableOpacity>
-          </View>
-        </View>
-          </View>
-
-          {/* Memory block viewer - right pane on desktop */}
-          {isDesktop && selectedBlock && (
-            <MemoryBlockViewer
-              block={selectedBlock}
-              onClose={() => setSelectedBlock(null)}
-              isDark={colorScheme === 'dark'}
-              isDesktop={isDesktop}
-            />
-          )}
+          </Animated.View>
         </View>
       </View>
+      </>
+      ) : (
+        /* Knowledge View */
+        <View style={styles.memoryViewContainer}>
+          {/* Knowledge Tabs */}
+          <View style={[styles.knowledgeTabs, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+            <TouchableOpacity
+              style={[
+                styles.knowledgeTab,
+                knowledgeTab === 'core' && { borderBottomColor: theme.colors.text.primary, borderBottomWidth: 2 }
+              ]}
+              onPress={() => setKnowledgeTab('core')}
+            >
+              <Text style={[
+                styles.knowledgeTabText,
+                { color: knowledgeTab === 'core' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>Core Memory</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.knowledgeTab,
+                knowledgeTab === 'archival' && { borderBottomColor: theme.colors.text.primary, borderBottomWidth: 2 }
+              ]}
+              onPress={() => setKnowledgeTab('archival')}
+            >
+              <Text style={[
+                styles.knowledgeTabText,
+                { color: knowledgeTab === 'archival' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>Archival Memory</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.knowledgeTab,
+                knowledgeTab === 'files' && { borderBottomColor: theme.colors.text.primary, borderBottomWidth: 2 }
+              ]}
+              onPress={() => setKnowledgeTab('files')}
+            >
+              <Text style={[
+                styles.knowledgeTabText,
+                { color: knowledgeTab === 'files' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>Files</Text>
+            </TouchableOpacity>
+          </View>
 
-      {/* Memory block viewer - overlay on mobile */}
+          {/* Search bar */}
+          <View style={styles.memorySearchContainer}>
+            <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
+            <TextInput
+              style={[styles.memorySearchInput, {
+                color: theme.colors.text.primary,
+                backgroundColor: theme.colors.background.tertiary,
+                borderColor: theme.colors.border.primary,
+              }]}
+              placeholder="Search memory blocks..."
+              placeholderTextColor={theme.colors.text.tertiary}
+              value={memorySearchQuery}
+              onChangeText={setMemorySearchQuery}
+            />
+          </View>
+
+          {/* Knowledge blocks grid */}
+          <View style={styles.memoryBlocksGrid}>
+            {knowledgeTab === 'files' ? (
+              /* Files view */
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 12 }}>
+                  <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary, marginBottom: 0 }]}>Uploaded Files</Text>
+                  <TouchableOpacity
+                    onPress={pickAndUploadFile}
+                    disabled={isUploadingFile}
+                    style={{ padding: 4 }}
+                  >
+                    {isUploadingFile ? (
+                      <ActivityIndicator size="small" color={theme.colors.text.secondary} />
+                    ) : (
+                      <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {uploadProgress && (
+                  <View style={{ marginHorizontal: 8, marginBottom: 12, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: theme.colors.background.tertiary, borderRadius: 8 }}>
+                    <Text style={{ color: theme.colors.text.secondary, fontSize: 14 }}>{uploadProgress}</Text>
+                  </View>
+                )}
+                {isLoadingFiles ? (
+                  <View style={styles.memoryLoadingContainer}>
+                    <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+                  </View>
+                ) : filesError ? (
+                  <Text style={[styles.errorText, { textAlign: 'center', marginTop: 40 }]}>{filesError}</Text>
+                ) : folderFiles.length === 0 ? (
+                  <View style={styles.memoryEmptyState}>
+                    <Ionicons name="folder-outline" size={64} color={theme.colors.text.tertiary} style={{ opacity: 0.3 }} />
+                    <Text style={[styles.memoryEmptyText, { color: theme.colors.text.tertiary }]}>No files uploaded yet</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={folderFiles}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.memoryBlocksContent}
+                    renderItem={({ item }) => (
+                      <View
+                        style={[styles.memoryBlockCard, {
+                          backgroundColor: theme.colors.background.secondary,
+                          borderColor: theme.colors.border.primary,
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          minHeight: 'auto'
+                        }]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.memoryBlockCardLabel, { color: theme.colors.text.primary }]} numberOfLines={1}>
+                            {item.fileName || item.name || 'Untitled'}
+                          </Text>
+                          <Text style={[styles.memoryBlockCardPreview, { color: theme.colors.text.secondary, fontSize: 12 }]}>
+                            {new Date(item.createdAt || item.created_at).toLocaleDateString()}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => deleteFile(item.id, item.fileName || item.name)}
+                          style={{ padding: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={20} color={theme.colors.status.error} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  />
+                )}
+              </>
+            ) : isLoadingBlocks ? (
+              <View style={styles.memoryLoadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+              </View>
+            ) : blocksError ? (
+              <Text style={[styles.errorText, { textAlign: 'center', marginTop: 40 }]}>{blocksError}</Text>
+            ) : (
+              <FlatList
+                data={memoryBlocks.filter(block => {
+                  // Filter by tab
+                  if (knowledgeTab === 'archival') {
+                    // Archival memory: placeholder - show nothing for now
+                    return false;
+                  } else if (knowledgeTab === 'files') {
+                    // Files: show nothing - files are separate from blocks
+                    return false;
+                  }
+                  // Core memory: show all blocks
+
+                  // Filter by search query
+                  if (memorySearchQuery) {
+                    return block.label.toLowerCase().includes(memorySearchQuery.toLowerCase()) ||
+                           block.value.toLowerCase().includes(memorySearchQuery.toLowerCase());
+                  }
+
+                  return true;
+                })}
+                numColumns={isDesktop ? 2 : 1}
+                key={isDesktop ? 'desktop' : 'mobile'}
+                keyExtractor={(item) => item.id || item.label}
+                contentContainerStyle={styles.memoryBlocksContent}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.memoryBlockCard, {
+                      backgroundColor: theme.colors.background.secondary,
+                      borderColor: theme.colors.border.primary
+                    }]}
+                    onPress={() => setSelectedBlock(item)}
+                  >
+                    <View style={styles.memoryBlockCardHeader}>
+                      <Text style={[styles.memoryBlockCardLabel, { color: theme.colors.text.primary }]}>
+                        {item.label}
+                      </Text>
+                      <Text style={[styles.memoryBlockCardCount, { color: theme.colors.text.tertiary }]}>
+                        {item.value.length} chars
+                      </Text>
+                    </View>
+                    <Text
+                      style={[styles.memoryBlockCardPreview, { color: theme.colors.text.secondary }]}
+                      numberOfLines={4}
+                    >
+                      {item.value || 'Empty'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <View style={styles.memoryEmptyState}>
+                    <Ionicons name="library-outline" size={64} color={theme.colors.text.tertiary} style={{ opacity: 0.3 }} />
+                    <Text style={[styles.memoryEmptyText, { color: theme.colors.text.secondary }]}>
+                      {memorySearchQuery ? 'No memory blocks found' : 'No memory blocks yet'}
+                    </Text>
+                  </View>
+                }
+              />
+            )}
+          </View>
+        </View>
+      )}
+
+        {/* Knowledge block viewer - right pane on desktop */}
+        {isDesktop && selectedBlock && (
+          <MemoryBlockViewer
+            block={selectedBlock}
+            onClose={() => setSelectedBlock(null)}
+            isDark={colorScheme === 'dark'}
+            isDesktop={isDesktop}
+          />
+        )}
+      </KeyboardAvoidingView>
+    </View>
+
+      {/* Knowledge block viewer - overlay on mobile */}
       {!isDesktop && selectedBlock && (
         <MemoryBlockViewer
           block={selectedBlock}
@@ -1981,7 +2321,7 @@ function CoApp() {
         </View>
       </Modal>
 
-      <StatusBar style="auto" />
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
     </View>
   );
 }
@@ -2030,6 +2370,22 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: darkTheme.colors.border.primary,
   },
+  viewSwitcher: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 8,
+    borderBottomWidth: 1,
+  },
+  viewSwitcherButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  viewSwitcherText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_500Medium',
+  },
   menuButton: {
     padding: 8,
   },
@@ -2058,14 +2414,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesList: {
-    maxWidth: 800,
+    maxWidth: 700,
     width: '100%',
     alignSelf: 'center',
     paddingBottom: 100, // Space for input at bottom
   },
   messageContainer: {
     paddingHorizontal: 18,
-    paddingVertical: 8,
+    paddingVertical: 12,
   },
   userMessageContainer: {
     alignItems: 'flex-end',
@@ -2075,7 +2431,7 @@ const styles = StyleSheet.create({
   },
   assistantFullWidthContainer: {
     paddingHorizontal: 18,
-    paddingVertical: 12,
+    paddingVertical: 16,
     width: '100%',
   },
   messageBubble: {
@@ -2119,29 +2475,33 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
-    marginBottom: 12,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderRadius: 8,
   },
   reasoningToggleText: {
-    fontSize: 16,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.tertiary,
-    marginRight: 4,
+    fontSize: 14,
+    fontFamily: 'Lexend_500Medium',
+    color: darkTheme.colors.text.secondary,
   },
   reasoningExpandedContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingLeft: 20,
     marginBottom: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 6,
-    borderLeftWidth: 2,
-    borderLeftColor: darkTheme.colors.text.tertiary,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#555555',
+    overflow: 'hidden',
   },
   reasoningExpandedText: {
-    fontSize: 13,
+    fontSize: 14,
     fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.tertiary,
-    lineHeight: 18,
-    fontStyle: 'italic',
+    color: darkTheme.colors.text.secondary,
+    lineHeight: 22,
+    fontStyle: 'normal',
   },
   reasoningContainer: {
     marginTop: 8,
@@ -2218,17 +2578,8 @@ const styles = StyleSheet.create({
   },
   inputCentered: {
     position: 'relative',
-    maxWidth: 800,
+    maxWidth: 700,
     width: '100%',
-  },
-  inputBackdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 24,
-    zIndex: -1,
   },
   inputWrapper: {
     position: 'relative',
@@ -2238,10 +2589,10 @@ const styles = StyleSheet.create({
   fileButton: {
     position: 'absolute',
     right: 88,
-    bottom: 6,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
@@ -2249,10 +2600,10 @@ const styles = StyleSheet.create({
   imageButton: {
     position: 'absolute',
     right: 52,
-    bottom: 6,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 1,
@@ -2284,22 +2635,13 @@ const styles = StyleSheet.create({
   sendButton: {
     position: 'absolute',
     right: 10,
-    bottom: 6,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    bottom: 8,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  sendRing: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: darkTheme.colors.background.primary,
-  },
-  sendButtonDisabled: {
-    opacity: 0.5,
+    transition: 'all 0.2s ease',
   },
   sidebarContainer: {
     height: '100%',
@@ -2503,5 +2845,139 @@ const styles = StyleSheet.create({
     fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.secondary,
     lineHeight: 18,
+  },
+  // Memory View Styles
+  memoryViewContainer: {
+    flex: 1,
+    backgroundColor: darkTheme.colors.background.primary,
+  },
+  knowledgeTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+  },
+  knowledgeTab: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginHorizontal: 4,
+  },
+  knowledgeTabText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_500Medium',
+  },
+  memoryViewHeader: {
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: darkTheme.colors.border.primary,
+  },
+  backToChat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  backToChatText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    marginLeft: 8,
+  },
+  memoryViewTitle: {
+    fontSize: 32,
+    fontFamily: 'Lexend_700Bold',
+  },
+  memorySearchContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  memorySearchIcon: {
+    position: 'absolute',
+    left: 36,
+    zIndex: 1,
+  },
+  memorySearchInput: {
+    flex: 1,
+    height: 44,
+    paddingLeft: 40,
+    paddingRight: 16,
+    borderRadius: 22,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    borderWidth: 1,
+  },
+  memoryBlocksGrid: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  memoryBlocksContent: {
+    paddingBottom: 24,
+  },
+  memoryLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 60,
+  },
+  memoryBlockCard: {
+    flex: 1,
+    margin: 8,
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    minHeight: 160,
+    maxWidth: '100%',
+  },
+  memoryBlockCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  memoryBlockCardLabel: {
+    fontSize: 18,
+    fontFamily: 'Lexend_600SemiBold',
+    flex: 1,
+  },
+  memoryBlockCardCount: {
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    marginLeft: 8,
+  },
+  memoryBlockCardPreview: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 20,
+  },
+  memoryEmptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: 80,
+  },
+  memoryEmptyText: {
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    marginTop: 16,
+  },
+  assistantMessageWithCopyContainer: {
+    position: 'relative',
+    flex: 1,
+  },
+  copyButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: 4,
+  },
+  copyButton: {
+    padding: 8,
+    opacity: 0.3,
+    borderRadius: 4,
+  },
+  messageSeparator: {
+    height: 1,
+    backgroundColor: darkTheme.colors.border.primary,
+    marginTop: 16,
+    opacity: 0.8,
   },
 });

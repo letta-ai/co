@@ -84,7 +84,7 @@ const MemoryBlockViewer: React.FC<MemoryBlockViewerProps> = ({
           <View style={styles.headerLeft}>
             <Ionicons name="cube-outline" size={20} color={theme.colors.text.tertiary} />
             <Text style={[styles.headerLabel, { color: theme.colors.text.tertiary }]}>
-              MEMORY
+              KNOWLEDGE
             </Text>
           </View>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -148,7 +148,7 @@ const MemoryBlockViewer: React.FC<MemoryBlockViewerProps> = ({
             <View style={styles.headerLeft}>
               <Ionicons name="cube-outline" size={20} color={theme.colors.text.tertiary} />
               <Text style={[styles.headerLabel, { color: theme.colors.text.tertiary }]}>
-                MEMORY
+                KNOWLEDGE
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>

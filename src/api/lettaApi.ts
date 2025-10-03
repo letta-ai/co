@@ -1065,6 +1065,22 @@ class LettaApiService {
     }
   }
 
+  async closeAllFiles(agentId: string): Promise<string[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('closeAllFiles - agentId:', agentId);
+      const result = await this.client.agents.files.closeAll(agentId);
+      console.log('closeAllFiles - result:', result);
+      return result;
+    } catch (error) {
+      console.error('closeAllFiles - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
   private handleError(error: any): ApiError {
     console.error('=== HANDLE ERROR ===');
     console.error('handleError - Full error object:', error);
