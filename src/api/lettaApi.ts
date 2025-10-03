@@ -1,7 +1,7 @@
 import { LettaClient } from '@letta-ai/letta-client';
-import type { 
-  LettaAgent, 
-  LettaMessage, 
+import type {
+  LettaAgent,
+  LettaMessage,
   Project,
   ListProjectsParams,
   ListProjectsResponse,
@@ -11,8 +11,13 @@ import type {
   SendMessageRequest,
   SendMessageResponse,
   StreamingChunk,
-  ApiError, 
-  MemoryBlock
+  ApiError,
+  MemoryBlock,
+  Passage,
+  ListPassagesParams,
+  CreatePassageRequest,
+  SearchPassagesParams,
+  SearchPassagesResponse
 } from '../types/letta';
 
 class LettaApiService {
@@ -1077,6 +1082,86 @@ class LettaApiService {
       return result;
     } catch (error) {
       console.error('closeAllFiles - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  // Archival Memory (Passages) API
+  async listPassages(agentId: string, params?: ListPassagesParams): Promise<Passage[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('listPassages - agentId:', agentId, 'params:', params);
+      const passages = await this.client.agents.passages.list(agentId, params);
+      console.log('listPassages - result count:', passages?.length || 0);
+      return passages as Passage[];
+    } catch (error) {
+      console.error('listPassages - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async createPassage(agentId: string, data: CreatePassageRequest): Promise<Passage[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('createPassage - agentId:', agentId, 'data:', data);
+      const result = await this.client.agents.passages.create(agentId, data);
+      console.log('createPassage - result:', result);
+      return result as Passage[];
+    } catch (error) {
+      console.error('createPassage - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async searchPassages(agentId: string, params: SearchPassagesParams): Promise<SearchPassagesResponse> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('searchPassages - agentId:', agentId, 'params:', params);
+      const result = await this.client.agents.passages.search(agentId, params);
+      console.log('searchPassages - result count:', result?.count || 0);
+      return result as SearchPassagesResponse;
+    } catch (error) {
+      console.error('searchPassages - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async deletePassage(agentId: string, passageId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('deletePassage - agentId:', agentId, 'passageId:', passageId);
+      await this.client.agents.passages.delete(agentId, passageId);
+      console.log('deletePassage - success');
+    } catch (error) {
+      console.error('deletePassage - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async modifyPassage(agentId: string, passageId: string, data: Partial<CreatePassageRequest>): Promise<Passage> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('modifyPassage - agentId:', agentId, 'passageId:', passageId, 'data:', data);
+      const result = await this.client.agents.passages.modify(agentId, passageId, data);
+      console.log('modifyPassage - result:', result);
+      return result as Passage;
+    } catch (error) {
+      console.error('modifyPassage - error:', error);
       throw this.handleError(error);
     }
   }

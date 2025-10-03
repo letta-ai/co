@@ -35,7 +35,7 @@ import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
 import { darkTheme, lightTheme, CoColors } from './src/theme';
-import type { LettaAgent, LettaMessage, StreamingChunk, MemoryBlock } from './src/types/letta';
+import type { LettaAgent, LettaMessage, StreamingChunk, MemoryBlock, Passage } from './src/types/letta';
 
 // Import web styles for transparent input
 if (Platform.OS === 'web') {
@@ -137,6 +137,17 @@ function CoApp() {
   const [coFolder, setCoFolder] = useState<any | null>(null);
   const [folderFiles, setFolderFiles] = useState<any[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+  // Archival memory state
+  const [passages, setPassages] = useState<Passage[]>([]);
+  const [isLoadingPassages, setIsLoadingPassages] = useState(false);
+  const [passagesError, setPassagesError] = useState<string | null>(null);
+  const [passageSearchQuery, setPassageSearchQuery] = useState('');
+  const [selectedPassage, setSelectedPassage] = useState<Passage | null>(null);
+  const [isCreatingPassage, setIsCreatingPassage] = useState(false);
+  const [isEditingPassage, setIsEditingPassage] = useState(false);
+  const [passageAfterCursor, setPassageAfterCursor] = useState<string | undefined>(undefined);
+  const [hasMorePassages, setHasMorePassages] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [filesError, setFilesError] = useState<string | null>(null);
@@ -793,6 +804,113 @@ function CoApp() {
     }
   };
 
+  // Archival Memory (Passages) functions
+  const loadPassages = async (resetCursor = false) => {
+    if (!coAgent) return;
+
+    setIsLoadingPassages(true);
+    setPassagesError(null);
+    try {
+      const params: any = {
+        limit: 50,
+      };
+
+      if (!resetCursor && passageAfterCursor) {
+        params.after = passageAfterCursor;
+      }
+
+      if (passageSearchQuery) {
+        params.search = passageSearchQuery;
+      }
+
+      const result = await lettaApi.listPassages(coAgent.id, params);
+
+      if (resetCursor) {
+        setPassages(result);
+      } else {
+        setPassages(prev => [...prev, ...result]);
+      }
+
+      setHasMorePassages(result.length === 50);
+      if (result.length > 0) {
+        setPassageAfterCursor(result[result.length - 1].id);
+      }
+    } catch (error: any) {
+      console.error('Failed to load passages:', error);
+      setPassagesError(error.message || 'Failed to load passages');
+    } finally {
+      setIsLoadingPassages(false);
+    }
+  };
+
+  const createPassage = async (text: string, tags?: string[]) => {
+    if (!coAgent) return;
+
+    setIsLoadingPassages(true);
+    try {
+      await lettaApi.createPassage(coAgent.id, { text, tags });
+      await loadPassages(true);
+      Alert.alert('Success', 'Passage created successfully');
+    } catch (error: any) {
+      console.error('Failed to create passage:', error);
+      Alert.alert('Error', error.message || 'Failed to create passage');
+    } finally {
+      setIsLoadingPassages(false);
+    }
+  };
+
+  const deletePassage = async (passageId: string) => {
+    if (!coAgent) return;
+
+    const confirmed = Platform.OS === 'web'
+      ? window.confirm('Are you sure you want to delete this passage?')
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            'Delete Passage',
+            'Are you sure you want to delete this passage?',
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
+
+    if (!confirmed) return;
+
+    try {
+      await lettaApi.deletePassage(coAgent.id, passageId);
+      await loadPassages(true);
+      if (Platform.OS === 'web') {
+        window.alert('Passage deleted successfully');
+      } else {
+        Alert.alert('Success', 'Passage deleted');
+      }
+    } catch (error: any) {
+      console.error('Delete passage error:', error);
+      if (Platform.OS === 'web') {
+        window.alert('Failed to delete passage: ' + (error.message || 'Unknown error'));
+      } else {
+        Alert.alert('Error', 'Failed to delete passage: ' + (error.message || 'Unknown error'));
+      }
+    }
+  };
+
+  const modifyPassage = async (passageId: string, text: string, tags?: string[]) => {
+    if (!coAgent) return;
+
+    setIsLoadingPassages(true);
+    try {
+      await lettaApi.modifyPassage(coAgent.id, passageId, { text, tags });
+      await loadPassages(true);
+      Alert.alert('Success', 'Passage updated successfully');
+    } catch (error: any) {
+      console.error('Failed to modify passage:', error);
+      Alert.alert('Error', error.message || 'Failed to modify passage');
+    } finally {
+      setIsLoadingPassages(false);
+    }
+  };
+
   const initializeCoFolder = async () => {
     if (!coAgent) return;
 
@@ -1066,9 +1184,13 @@ function CoApp() {
 
   useEffect(() => {
     if (coAgent && currentView === 'knowledge') {
-      loadMemoryBlocks();
+      if (knowledgeTab === 'core') {
+        loadMemoryBlocks();
+      } else if (knowledgeTab === 'archival') {
+        loadPassages(true);
+      }
     }
-  }, [coAgent, currentView]);
+  }, [coAgent, currentView, knowledgeTab]);
 
   useEffect(() => {
     if (coAgent && sidebarVisible) {
@@ -2174,6 +2296,121 @@ function CoApp() {
                   />
                 )}
               </>
+            ) : knowledgeTab === 'archival' ? (
+              /* Archival Memory view */
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 12 }}>
+                  <Text style={[styles.memorySectionTitle, { color: theme.colors.text.secondary, marginBottom: 0 }]}>Archival Memory</Text>
+                  <TouchableOpacity
+                    onPress={() => setIsCreatingPassage(true)}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons name="add-circle-outline" size={24} color={theme.colors.text.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Semantic Search bar */}
+                <View style={styles.memorySearchContainer}>
+                  <Ionicons name="search" size={20} color={theme.colors.text.tertiary} style={styles.memorySearchIcon} />
+                  <TextInput
+                    style={[styles.memorySearchInput, {
+                      color: theme.colors.text.primary,
+                      backgroundColor: theme.colors.background.tertiary,
+                      borderColor: theme.colors.border.primary,
+                    }]}
+                    placeholder="Search passages (semantic)..."
+                    placeholderTextColor={theme.colors.text.tertiary}
+                    value={passageSearchQuery}
+                    onChangeText={setPassageSearchQuery}
+                    onSubmitEditing={() => loadPassages(true)}
+                  />
+                  {passageSearchQuery && (
+                    <TouchableOpacity
+                      style={{ position: 'absolute', right: 28, padding: 8 }}
+                      onPress={() => {
+                        setPassageSearchQuery('');
+                        loadPassages(true);
+                      }}
+                    >
+                      <Ionicons name="close-circle" size={20} color={theme.colors.text.tertiary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+                {isLoadingPassages ? (
+                  <View style={styles.memoryLoadingContainer}>
+                    <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+                  </View>
+                ) : passagesError ? (
+                  <Text style={[styles.errorText, { textAlign: 'center', marginTop: 40 }]}>{passagesError}</Text>
+                ) : passages.length === 0 ? (
+                  <View style={styles.memoryEmptyState}>
+                    <Ionicons name="archive-outline" size={64} color={theme.colors.text.tertiary} style={{ opacity: 0.3 }} />
+                    <Text style={[styles.memoryEmptyText, { color: theme.colors.text.tertiary }]}>No archival memories yet</Text>
+                  </View>
+                ) : (
+                  <FlatList
+                    data={passages}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.memoryBlocksContent}
+                    renderItem={({ item }) => (
+                      <View
+                        style={[styles.memoryBlockCard, {
+                          backgroundColor: theme.colors.background.secondary,
+                          borderColor: theme.colors.border.primary,
+                        }]}
+                      >
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <Text style={[styles.memoryBlockCardPreview, { color: theme.colors.text.tertiary, fontSize: 11, flex: 1 }]}>
+                            {new Date(item.created_at).toLocaleString()}
+                          </Text>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setSelectedPassage(item);
+                                setIsEditingPassage(true);
+                              }}
+                              style={{ padding: 4 }}
+                            >
+                              <Ionicons name="create-outline" size={18} color={theme.colors.text.secondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => deletePassage(item.id)}
+                              style={{ padding: 4 }}
+                            >
+                              <Ionicons name="trash-outline" size={18} color={theme.colors.status.error} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                        <Text
+                          style={[styles.memoryBlockCardPreview, { color: theme.colors.text.primary }]}
+                          numberOfLines={6}
+                        >
+                          {item.text}
+                        </Text>
+                        {item.tags && item.tags.length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                            {item.tags.map((tag, idx) => (
+                              <View key={idx} style={{ backgroundColor: theme.colors.background.tertiary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 }}>
+                                <Text style={{ color: theme.colors.text.secondary, fontSize: 11 }}>{tag}</Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </View>
+                    )}
+                    ListFooterComponent={
+                      hasMorePassages ? (
+                        <TouchableOpacity
+                          onPress={() => loadPassages(false)}
+                          style={{ padding: 16, alignItems: 'center' }}
+                        >
+                          <Text style={{ color: theme.colors.text.secondary }}>Load more...</Text>
+                        </TouchableOpacity>
+                      ) : null
+                    }
+                  />
+                )}
+              </>
             ) : isLoadingBlocks ? (
               <View style={styles.memoryLoadingContainer}>
                 <ActivityIndicator size="large" color={theme.colors.text.secondary} />
@@ -2183,16 +2420,7 @@ function CoApp() {
             ) : (
               <FlatList
                 data={memoryBlocks.filter(block => {
-                  // Filter by tab
-                  if (knowledgeTab === 'archival') {
-                    // Archival memory: placeholder - show nothing for now
-                    return false;
-                  } else if (knowledgeTab === 'files') {
-                    // Files: show nothing - files are separate from blocks
-                    return false;
-                  }
                   // Core memory: show all blocks
-
                   // Filter by search query
                   if (memorySearchQuery) {
                     return block.label.toLowerCase().includes(memorySearchQuery.toLowerCase()) ||
@@ -2263,6 +2491,92 @@ function CoApp() {
           isDark={colorScheme === 'dark'}
           isDesktop={isDesktop}
         />
+      )}
+
+      {/* Create/Edit Passage Modal */}
+      {(isCreatingPassage || isEditingPassage) && (
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.colors.background.primary, borderColor: theme.colors.border.primary }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.colors.text.primary }]}>
+                {isCreatingPassage ? 'Create Passage' : 'Edit Passage'}
+              </Text>
+              <TouchableOpacity onPress={() => {
+                setIsCreatingPassage(false);
+                setIsEditingPassage(false);
+                setSelectedPassage(null);
+              }}>
+                <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={[styles.inputLabel, { color: theme.colors.text.secondary }]}>Text</Text>
+              <TextInput
+                style={[styles.textArea, { color: theme.colors.text.primary, backgroundColor: theme.colors.background.secondary, borderColor: theme.colors.border.primary }]}
+                multiline
+                numberOfLines={6}
+                defaultValue={selectedPassage?.text || ''}
+                placeholder="Enter passage text..."
+                placeholderTextColor={theme.colors.text.tertiary}
+                onChangeText={(text) => {
+                  if (selectedPassage) {
+                    setSelectedPassage({ ...selectedPassage, text });
+                  } else {
+                    setSelectedPassage({ text, id: '', created_at: new Date().toISOString() } as Passage);
+                  }
+                }}
+              />
+              <Text style={[styles.inputLabel, { color: theme.colors.text.secondary, marginTop: 16 }]}>Tags (comma-separated)</Text>
+              <TextInput
+                style={[styles.textInput, { color: theme.colors.text.primary, backgroundColor: theme.colors.background.secondary, borderColor: theme.colors.border.primary }]}
+                defaultValue={selectedPassage?.tags?.join(', ') || ''}
+                placeholder="tag1, tag2, tag3"
+                placeholderTextColor={theme.colors.text.tertiary}
+                onChangeText={(text) => {
+                  const tags = text.split(',').map(t => t.trim()).filter(t => t);
+                  if (selectedPassage) {
+                    setSelectedPassage({ ...selectedPassage, tags });
+                  } else {
+                    setSelectedPassage({ text: '', tags, id: '', created_at: new Date().toISOString() } as Passage);
+                  }
+                }}
+              />
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary, { borderColor: theme.colors.border.primary }]}
+                onPress={() => {
+                  setIsCreatingPassage(false);
+                  setIsEditingPassage(false);
+                  setSelectedPassage(null);
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: theme.colors.text.primary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary, { backgroundColor: theme.colors.text.primary }]}
+                onPress={async () => {
+                  if (!selectedPassage?.text) {
+                    Alert.alert('Error', 'Please enter passage text');
+                    return;
+                  }
+                  if (isEditingPassage && selectedPassage.id) {
+                    await modifyPassage(selectedPassage.id, selectedPassage.text, selectedPassage.tags);
+                  } else {
+                    await createPassage(selectedPassage.text, selectedPassage.tags);
+                  }
+                  setIsCreatingPassage(false);
+                  setIsEditingPassage(false);
+                  setSelectedPassage(null);
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: theme.colors.background.primary }]}>
+                  {isCreatingPassage ? 'Create' : 'Save'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       )}
 
       {/* Approval modal */}
@@ -2979,5 +3293,83 @@ const styles = StyleSheet.create({
     backgroundColor: darkTheme.colors.border.primary,
     marginTop: 16,
     opacity: 0.8,
+  },
+  // Modal styles
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2000,
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 600,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontFamily: 'Lexend_500Medium',
+    marginBottom: 8,
+  },
+  textInput: {
+    height: 44,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+  },
+  textArea: {
+    minHeight: 120,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontFamily: 'Lexend_400Regular',
+    textAlignVertical: 'top',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+  },
+  modalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  modalButtonSecondary: {
+    borderWidth: 1,
+  },
+  modalButtonPrimary: {
+    // Background color set dynamically
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontFamily: 'Lexend_500Medium',
   },
 });

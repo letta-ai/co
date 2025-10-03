@@ -262,3 +262,55 @@ export interface StreamingChunk {
   seq_id?: number;
   id?: string;
 }
+
+export interface Passage {
+  id: string;
+  text: string;
+  embedding?: number[];
+  embedding_config?: EmbeddingConfig;
+  created_by_id?: string;
+  last_updated_by_id?: string;
+  created_at: string;
+  updated_at?: string;
+  is_deleted?: boolean;
+  archive_id?: string;
+  source_id?: string;
+  file_id?: string;
+  file_name?: string;
+  metadata?: Record<string, any>;
+  tags?: string[];
+}
+
+export interface ListPassagesParams {
+  after?: string;
+  before?: string;
+  limit?: number;
+  search?: string;
+  ascending?: boolean;
+}
+
+export interface CreatePassageRequest {
+  text: string;
+  tags?: string[];
+  created_at?: string;
+}
+
+export interface SearchPassagesParams {
+  query: string;
+  tags?: string[];
+  tag_match_mode?: 'any' | 'all';
+  top_k?: number;
+  start_datetime?: string;
+  end_datetime?: string;
+}
+
+export interface SearchPassagesResult {
+  timestamp: string;
+  content: string;
+  tags?: string[];
+}
+
+export interface SearchPassagesResponse {
+  results: SearchPassagesResult[];
+  count: number;
+}
