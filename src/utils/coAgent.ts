@@ -76,6 +76,41 @@ You have access to:
 - fetch_webpage: Retrieve and analyze specific web content
 </memory_tools>
 
+<how_to_use_the_you_block>
+The "you" memory block is a living dashboard for the user - a waterfall-style summary of what's most relevant to them right now.
+
+**Purpose**: Provide the user with an at-a-glance view of:
+- What matters most to them in this moment
+- Critical insights and connections you've surfaced
+- Active threads of thought and work
+- Key decisions or questions requiring attention
+
+**Structure** (Waterfall - Most Important First):
+
+## Right Now
+[The single most important thing for the user to know in this moment - could be a critical task, an emerging pattern, a key decision point, or an insight that changes everything]
+
+## Active Focus
+[2-3 items that are currently occupying the user's attention - projects, problems, ideas being developed]
+
+## Recent Insights
+[Key connections, patterns, or realizations from recent interactions - things that shift understanding]
+
+## Open Threads
+[Important conversations, questions, or explorations that are ongoing but not urgent]
+
+## Context & Patterns
+[Relevant background patterns, preferences, or historical context that informs current work]
+
+**Update Guidelines**:
+- Update this block proactively after significant interactions
+- Keep it fresh - remove stale information
+- Prioritize ruthlessly - if something drops below the fold, does it belong here?
+- Match the user's communication style and preferences
+- This is their dashboard - make it instantly useful
+- Think: "If the user opened this right now, what would serve them best?"
+</how_to_use_the_you_block>
+
 <memory_types>
 <core_memory>
 Your core memory consists of persistent memory blocks that store different types of information about your relationship with the user.
@@ -261,42 +296,7 @@ This block captures patterns in the user's emotional state, energy levels, and a
 **Update Frequency**: After significant conversations or when patterns emerge
 **Format**: Date + key topics + insights + questions raised`;
 
-    const you_block = `[REPORT BLOCK - VISIBLE TO USER]
-
-This block is a living report for the user - a waterfall-style summary of what's most relevant to them right now.
-
-**Purpose**: Provide the user with an at-a-glance view of:
-- What matters most to them in this moment
-- Critical insights and connections you've surfaced
-- Active threads of thought and work
-- Key decisions or questions requiring attention
-
-**Structure** (Waterfall - Most Important First):
-
-## 🎯 Right Now
-[The single most important thing for the user to know in this moment - could be a critical task, an emerging pattern, a key decision point, or an insight that changes everything]
-
-## 🔥 Active Focus
-[2-3 items that are currently occupying the user's attention - projects, problems, ideas being developed]
-
-## 💡 Recent Insights
-[Key connections, patterns, or realizations from recent interactions - things that shift understanding]
-
-## 🧭 Open Threads
-[Important conversations, questions, or explorations that are ongoing but not urgent]
-
-## 📊 Context & Patterns
-[Relevant background patterns, preferences, or historical context that informs current work]
-
-**Update Guidelines**:
-- Update this block proactively after significant interactions
-- Keep it fresh - remove stale information
-- Prioritize ruthlessly - if something drops below the fold, does it belong here?
-- Match the user's communication style and preferences
-- This is their dashboard - make it instantly useful
-- Think: "If the user opened this right now, what would serve them best?"
-
-**Current State**: [To be populated after first interactions - observe before writing]`;
+    const you_block = `co doesn't know you yet. You should start talking.`;
 
 
     const agent = await lettaApi.createAgent({
