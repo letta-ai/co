@@ -42,6 +42,18 @@ class LettaApiService {
     }
   }
 
+  async createAgentBlock(agentId: string, block: { label: string; value: string; description?: string; limit?: number }): Promise<MemoryBlock> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      const createdBlock = await this.client.agents.blocks.create(agentId, block);
+      return createdBlock as unknown as MemoryBlock;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   setAuthToken(token: string): void {
     console.log('setAuthToken - Token length:', token ? token.length : 0);
     console.log('setAuthToken - Token preview:', token ? token.substring(0, 10) + '...' : 'null');
@@ -321,6 +333,10 @@ class LettaApiService {
         }),
         // Token streaming provides partial chunks for real-time UX
         streamTokens: messageData.stream_tokens !== false,
+        // Background mode prevents client-side terminations and enables resumption
+        background: true,
+        // Ping events keep connection alive during long operations
+        includePings: true,
       };
 
       // Only add optional params if they're defined
@@ -329,10 +345,6 @@ class LettaApiService {
       }
       if (messageData.max_steps !== undefined) {
         lettaStreamingRequest.maxSteps = messageData.max_steps;
-      }
-      // Optional ping events if requested by caller
-      if ((messageData as any).include_pings === true) {
-        lettaStreamingRequest.includePings = true;
       }
       
       console.log('=== SIMPLIFIED REQUEST ===');
@@ -459,6 +471,82 @@ class LettaApiService {
         console.error('Data object:', JSON.stringify(error.data, null, 2));
       }
 
+      onError(this.handleError(error));
+    }
+  }
+
+  async getActiveRuns(agentIds: string[]): Promise<any[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('getActiveRuns - agentIds:', agentIds);
+
+      const activeRuns = await this.client.runs.active({
+        agentIds,
+        background: true
+      });
+
+      console.log('getActiveRuns - found:', activeRuns?.length || 0);
+      return activeRuns || [];
+    } catch (error) {
+      console.error('getActiveRuns - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async resumeStream(
+    runId: string,
+    startingAfter: number,
+    onChunk: (chunk: StreamingChunk) => void,
+    onComplete: (response: SendMessageResponse) => void,
+    onError: (error: any) => void
+  ): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('resumeStream - runId:', runId, 'startingAfter:', startingAfter);
+
+      const stream = await this.client.runs.stream(runId, {
+        startingAfter,
+        batchSize: 1000  // Fetch historical chunks in larger batches
+      });
+
+      console.log('=== RESUMING STREAM ===');
+      try {
+        for await (const chunk of stream) {
+          console.log('=== RESUMED CHUNK RECEIVED ===');
+          console.log('Raw chunk:', JSON.stringify(chunk, null, 2));
+
+          onChunk({
+            message_type: (chunk as any).message_type || (chunk as any).messageType,
+            content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
+            reasoning: (chunk as any).reasoning || (chunk as any).hiddenReasoning,
+            tool_call: (chunk as any).tool_call || (chunk as any).toolCall,
+            tool_response: (chunk as any).tool_response || (chunk as any).toolResponse || (chunk as any).toolReturn,
+            step: (chunk as any).step || (chunk as any).stepId,
+            run_id: (chunk as any).run_id || (chunk as any).runId,
+            seq_id: (chunk as any).seq_id || (chunk as any).seqId,
+            id: (chunk as any).id || (chunk as any).message_id || (chunk as any).messageId
+          });
+        }
+
+        // Stream completed successfully
+        onComplete({
+          messages: [],
+          usage: undefined
+        });
+      } catch (streamError) {
+        console.error('=== RESUME STREAM ITERATION ERROR ===');
+        console.error('Stream iteration error:', streamError);
+        onError(this.handleError(streamError));
+      }
+    } catch (error) {
+      console.error('=== RESUME STREAM SETUP ERROR ===');
+      console.error('resumeStream setup error:', error);
       onError(this.handleError(error));
     }
   }
@@ -600,13 +688,13 @@ class LettaApiService {
     }
   }
 
-  async listTools(): Promise<any[]> {
+  async listTools(params?: { name?: string; names?: string[] }): Promise<any[]> {
     try {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      
-      const response = await this.client.tools.list();
+
+      const response = await this.client.tools.list(params);
       return response;
     } catch (error) {
       throw this.handleError(error);
@@ -1162,6 +1250,49 @@ class LettaApiService {
       return result as Passage;
     } catch (error) {
       console.error('modifyPassage - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async attachToolToAgent(agentId: string, toolId: string): Promise<LettaAgent> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('attachToolToAgent - agentId:', agentId, 'toolId:', toolId);
+      const result = await this.client.agents.tools.attach(agentId, toolId);
+      console.log('attachToolToAgent - result:', result);
+      return result;
+    } catch (error) {
+      console.error('attachToolToAgent - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async attachToolToAgentByName(agentId: string, toolName: string): Promise<LettaAgent> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('attachToolToAgentByName - agentId:', agentId, 'toolName:', toolName);
+
+      // Find the tool by name using API filtering
+      const tools = await this.listTools({ name: toolName });
+
+      if (!tools || tools.length === 0) {
+        throw new Error(`Tool with name '${toolName}' not found`);
+      }
+
+      const tool = tools[0];
+
+      // Attach the tool by ID
+      const result = await this.client.agents.tools.attach(agentId, tool.id);
+      console.log('attachToolToAgentByName - result:', result);
+      return result;
+    } catch (error) {
+      console.error('attachToolToAgentByName - error:', error);
       throw this.handleError(error);
     }
   }
