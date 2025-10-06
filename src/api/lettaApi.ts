@@ -689,8 +689,8 @@ class LettaApiService {
             tool_response: toolReturn,
           };
 
-          // Attach reasoning to assistant messages
-          if (role === 'assistant' && combinedReasoning) {
+          // Attach reasoning to assistant and tool messages
+          if ((role === 'assistant' || role === 'tool') && combinedReasoning) {
             transformedMessage.reasoning = combinedReasoning;
           }
 

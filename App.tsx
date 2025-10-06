@@ -35,6 +35,7 @@ import MessageContent from './src/components/MessageContent';
 import ExpandableMessageContent from './src/components/ExpandableMessageContent';
 import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
+import ReasoningToggle from './src/components/ReasoningToggle';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
 import MessageInput from './src/components/MessageInput';
 import { createMarkdownStyles } from './src/components/markdownStyles';
@@ -1575,6 +1576,21 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       }
     });
 
+    // Add any unpaired tool calls (tool calls without a matching return yet)
+    toolCallsMap.forEach((toolCall) => {
+      if (!processedIds.has(toolCall.id)) {
+        const reasoning = reasoningBeforeToolCall.get(toolCall.id);
+        groups.push({
+          key: toolCall.id,
+          type: 'toolPair',
+          call: toolCall,
+          ret: undefined,
+          reasoning: reasoning,
+        });
+        processedIds.add(toolCall.id);
+      }
+    });
+
     return groups;
   }, [messages]);
 
@@ -1770,31 +1786,12 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             shouldHaveMinHeight && { minHeight: Math.max(containerHeight * 0.9, 450) }
           ]}>
             {item.reasoning && (
-              <TouchableOpacity
-                onPress={() => toggleReasoning(msg.id)}
-                style={styles.reasoningToggle}
-              >
-                <Text style={styles.reasoningToggleText}>Reasoning</Text>
-                <Ionicons
-                  name={isReasoningExpanded ? "chevron-up" : "chevron-down"}
-                  size={16}
-                  color={darkTheme.colors.text.tertiary}
-                  style={{ marginLeft: 4 }}
-                />
-              </TouchableOpacity>
-            )}
-            {item.reasoning && isReasoningExpanded && (
-              <Animated.View style={[
-                styles.reasoningExpandedContainer,
-                {
-                  borderLeftColor: rainbowAnimValue.interpolate({
-                    inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                    outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-                  }),
-                }
-              ]}>
-                <Text style={styles.reasoningExpandedText}>{item.reasoning}</Text>
-              </Animated.View>
+              <ReasoningToggle
+                reasoning={item.reasoning}
+                messageId={msg.id}
+                isExpanded={isReasoningExpanded}
+                onToggle={() => toggleReasoning(msg.id)}
+              />
             )}
             <ExpandableMessageContent
               content={msg.content}
@@ -2277,52 +2274,42 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               {isStreaming && (
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
                   {/* Always show reasoning section when streaming */}
-                  <TouchableOpacity
-                    onPress={() => toggleReasoning('streaming')}
-                    style={styles.reasoningToggle}
-                  >
-                    {isReasoningStreaming ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
-                        <Animated.Text
-                          style={{
-                            fontSize: 24,
-                            fontFamily: 'Lexend_700Bold',
-                            color: rainbowAnimValue.interpolate({
-                              inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                              outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-                            })
-                          }}
-                        >
-                          co
-                        </Animated.Text>
-                        <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.tertiary }}> is thinking</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.reasoningToggleText}>Reasoning</Text>
-                    )}
-                    {!isReasoningStreaming && (
-                      <Ionicons
-                        name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
-                        size={16}
-                        style={{ marginLeft: 4 }}
-                        color={darkTheme.colors.text.tertiary}
-                      />
-                    )}
-                  </TouchableOpacity>
-                  {expandedReasoning.has('streaming') && streamingReasoning && (
-                    <Animated.View style={[
-                      styles.reasoningExpandedContainer,
-                      {
-                        borderLeftColor: rainbowAnimValue.interpolate({
-                          inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                          outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-                        }),
+                  {streamingReasoning && (
+                    <ReasoningToggle
+                      reasoning={streamingReasoning}
+                      messageId="streaming"
+                      isExpanded={expandedReasoning.has('streaming')}
+                      onToggle={() => toggleReasoning('streaming')}
+                      customToggleContent={
+                        isReasoningStreaming ? (
+                          <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
+                            <Animated.Text
+                              style={{
+                                fontSize: 24,
+                                fontFamily: 'Lexend_700Bold',
+                                color: rainbowAnimValue.interpolate({
+                                  inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                                  outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+                                })
+                              }}
+                            >
+                              co
+                            </Animated.Text>
+                            <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.tertiary }}> is thinking</Text>
+                          </View>
+                        ) : (
+                          <>
+                            <Text style={{ fontSize: 14, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}>Reasoning</Text>
+                            <Ionicons
+                              name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
+                              size={16}
+                              style={{ marginLeft: 4 }}
+                              color={darkTheme.colors.text.tertiary}
+                            />
+                          </>
+                        )
                       }
-                    ]}>
-                      <Text style={styles.reasoningExpandedText}>
-                        {streamingReasoning}
-                      </Text>
-                    </Animated.View>
+                    />
                   )}
                   {streamingStep && (
                     <Text style={styles.streamingStep}>{streamingStep}</Text>
@@ -3126,36 +3113,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontFamily: 'Lexend_400Regular',
     lineHeight: 26,
-  },
-  reasoningToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 4,
-    marginBottom: 4,
-    borderRadius: 6,
-  },
-  reasoningToggleText: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.tertiary,
-  },
-  reasoningExpandedContainer: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    paddingLeft: 16,
-    marginBottom: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: 6,
-    borderLeftWidth: 3,
-    borderLeftColor: '#555555',
-    overflow: 'hidden',
-  },
-  reasoningExpandedText: {
-    fontSize: 14,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.secondary,
-    lineHeight: 20,
-    fontStyle: 'normal',
   },
   reasoningContainer: {
     marginTop: 8,

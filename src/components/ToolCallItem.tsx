@@ -1,7 +1,8 @@
-import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { darkTheme } from '../theme';
+import ReasoningToggle from './ReasoningToggle';
 
 interface ToolCallItemProps {
   callText: string;
@@ -52,24 +53,6 @@ const getToolDisplayName = (toolName: string, callText: string): string => {
 const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning }) => {
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
-  const [reasoningExpanded, setReasoningExpanded] = useState(false);
-  const rainbowAnimValue = useRef(new Animated.Value(0)).current;
-
-  // Animate rainbow gradient when reasoning is expanded
-  useEffect(() => {
-    if (reasoningExpanded) {
-      rainbowAnimValue.setValue(0);
-      const animation = Animated.loop(
-        Animated.timing(rainbowAnimValue, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: false,
-        })
-      );
-      animation.start();
-      return () => animation.stop();
-    }
-  }, [reasoningExpanded]);
 
   // Extract the tool name from callText
   const toolName = useMemo(() => {
@@ -138,39 +121,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
 
   return (
     <View style={styles.container}>
-      {reasoning && (
-        <TouchableOpacity
-          onPress={() => setReasoningExpanded(!reasoningExpanded)}
-          style={styles.reasoningToggle}
-        >
-          <Ionicons
-            name="sparkles"
-            size={16}
-            color={darkTheme.colors.text.secondary}
-            style={{ marginRight: 6 }}
-          />
-          <Text style={styles.reasoningToggleText}>Reasoning</Text>
-          <View style={{ flex: 1 }} />
-          <Ionicons
-            name={reasoningExpanded ? "chevron-up" : "chevron-down"}
-            size={16}
-            color={darkTheme.colors.text.tertiary}
-          />
-        </TouchableOpacity>
-      )}
-      {reasoning && reasoningExpanded && (
-        <Animated.View style={[
-          styles.reasoningExpandedContainer,
-          {
-            borderLeftColor: rainbowAnimValue.interpolate({
-              inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-              outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-            }),
-          }
-        ]}>
-          <Text style={styles.reasoningExpandedText}>{reasoning}</Text>
-        </Animated.View>
-      )}
+      {reasoning && <ReasoningToggle reasoning={reasoning} />}
       <TouchableOpacity
         style={[styles.header, expanded && !resultText && styles.headerExpanded, expanded && resultText && styles.headerExpandedWithResult]}
         onPress={() => setExpanded((e) => !e)}
@@ -214,46 +165,14 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  reasoningToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 8,
-  },
-  reasoningToggleText: {
-    fontSize: 14,
-    fontFamily: 'Lexend_500Medium',
-    color: darkTheme.colors.text.secondary,
-  },
-  reasoningExpandedContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    paddingLeft: 20,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#555555',
-    overflow: 'hidden',
-  },
-  reasoningExpandedText: {
-    fontSize: 14,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.secondary,
-    lineHeight: 22,
-    fontStyle: 'normal',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: darkTheme.colors.background.surface,
+    backgroundColor: '#242424',
     borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: darkTheme.colors.border.primary,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
@@ -287,15 +206,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: darkTheme.colors.background.surface,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderColor: darkTheme.colors.border.primary,
+    backgroundColor: '#242424',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
   resultHeaderExpanded: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
   },
   resultChevron: {
     marginTop: 1,
@@ -305,13 +224,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   resultBox: {
-    backgroundColor: darkTheme.colors.background.tertiary,
+    backgroundColor: '#1E1E1E',
     borderBottomLeftRadius: 10,
     borderBottomRightRadius: 10,
-    borderLeftWidth: StyleSheet.hairlineWidth,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderColor: darkTheme.colors.border.primary,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
