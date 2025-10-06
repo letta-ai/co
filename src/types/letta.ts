@@ -23,6 +23,13 @@ export interface LettaAgent {
   hidden?: boolean;
   timezone?: string;
   enable_sleeptime?: boolean;
+  sleeptime_agent_id?: string;
+  multi_agent_group?: {
+    id: string;
+    manager_type: string;
+    agent_ids: string[];
+    manager_agent_id?: string;
+  };
 }
 
 export interface MemoryBlock {

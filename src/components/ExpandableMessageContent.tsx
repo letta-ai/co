@@ -41,7 +41,7 @@ const ExpandableMessageContent: React.FC<ExpandableMessageContentProps> = ({
   const showToggle = totalEstimatedLines > lineLimit;
 
   if (!showToggle) {
-    return <MessageContent content={content} isUser={isUser} />;
+    return <MessageContent content={content} isUser={isUser} isDark={isDark} />;
   }
 
   const handleToggle = useCallback(() => {
@@ -66,7 +66,7 @@ const ExpandableMessageContent: React.FC<ExpandableMessageContentProps> = ({
         style={styles.toggleButton}
         activeOpacity={0.7}
       >
-        <Text style={styles.toggleText}>
+        <Text style={[styles.toggleText, { color: isDark ? '#000000' : '#FFFFFF' }]}>
           {isExpanded ? 'See less' : 'See more'}
         </Text>
       </TouchableOpacity>
@@ -84,11 +84,10 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   toggleText: {
-    color: '#000000',
     fontSize: 13,
     fontWeight: '500',
     opacity: 0.6,
   },
 });
 
-export default ExpandableMessageContent;
+export default React.memo(ExpandableMessageContent);

@@ -1,3 +1,6 @@
+// Load polyfills first (for React Native stream support)
+import './polyfills';
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

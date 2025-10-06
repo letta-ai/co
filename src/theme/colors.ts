@@ -54,11 +54,11 @@ export const createColorTokens = (isDark: boolean = true) => ({
 
   // Text Colors
   text: {
-    primary: isDark ? CoColors.cream : CoColors.deepBlack,     // Cream text in dark mode
+    primary: isDark ? '#E5E5E5' : CoColors.deepBlack,     // Bright white-ish text in dark mode for better contrast
     secondary: isDark ? CoColors.neutralGray : '#666666',
     tertiary: isDark ? '#888888' : '#999999',
     // Inverse of the canvas: light text on dark, dark text on light
-    inverse: isDark ? CoColors.cream : CoColors.deepBlack,
+    inverse: isDark ? '#E5E5E5' : CoColors.deepBlack,
   },
 
   // Interactive Elements

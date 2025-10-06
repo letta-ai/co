@@ -15,7 +15,7 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
       name: 'Co',
       description: 'Co - A comprehensive knowledge management assistant designed to learn, adapt, and think alongside the user',
       // agentType: Letta.AgentType.LettaV1Agent, // currently pending sleeptime fixes
-      agentType: Letta.AgentType.MemgptV2Agent,
+      // agentType: Letta.AgentType.MemgptV2Agent,
       model: 'anthropic/claude-sonnet-4-5-20250929',
       system: CO_SYSTEM_PROMPT,
       tags: [CO_TAG],
@@ -26,28 +26,44 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
         'web_search',
         'fetch_webpage',
       ],
-      tool_rules: [], // No tool rules
-      enableSleeptime: true
+      toolRules: [], // No tool rules
+      enableSleeptime: true,
     });
 
-    // Retrieve the full agent details to get the sleeptime agent ID
-    const fullAgent = await lettaApi.getAgent(agent.id);
+    console.log('Agent created, finding sleeptime agent via shared memory blocks...');
 
-    // Extract sleeptime agent ID from multi_agent_group
-    const sleeptimeAgentId = fullAgent.multi_agent_group?.agent_ids?.[0];
+    // Get the first memory block ID - both primary and sleeptime agents share the same blocks
+    const blockId = agent.memory?.blocks?.[0]?.id;
 
-    if (sleeptimeAgentId) {
-      console.log('Found sleeptime agent:', sleeptimeAgentId);
-
-      // Attach the archival memory tools to the sleeptime agent
-      await lettaApi.attachToolToAgentByName(sleeptimeAgentId, 'archival_memory_search');
-      await lettaApi.attachToolToAgentByName(sleeptimeAgentId, 'archival_memory_insert');
-
-      // Store the sleeptime agent ID in the agent object
-      fullAgent.sleeptime_agent_id = sleeptimeAgentId;
+    if (!blockId) {
+      console.warn('No memory blocks found on agent. Cannot find sleeptime agent.');
+      return agent;
     }
 
-    return fullAgent;
+    console.log('Using block ID to find agents:', blockId);
+
+    // Get all agents that share this memory block (should be primary + sleeptime)
+    const agentsForBlock = await lettaApi.listAgentsForBlock(blockId);
+    console.log('Agents sharing this block:', agentsForBlock.map(a => ({ id: a.id, name: a.name })));
+
+    // Find the sleeptime agent (the one that's NOT the primary agent)
+    const sleeptimeAgent = agentsForBlock.find(a => a.id !== agent.id);
+
+    if (sleeptimeAgent) {
+      console.log('Found sleeptime agent:', sleeptimeAgent.id, sleeptimeAgent.name);
+
+      // Retrieve full primary agent details and store sleeptime agent ID
+      const fullAgent = await lettaApi.getAgent(agent.id);
+      fullAgent.sleeptime_agent_id = sleeptimeAgent.id;
+
+      // Attach archival memory tools to sleeptime agent
+      await ensureSleeptimeTools(fullAgent);
+
+      return fullAgent;
+    } else {
+      console.warn('No sleeptime agent found sharing memory blocks. Only found:', agentsForBlock.length, 'agent(s)');
+      return agent;
+    }
   } catch (error) {
     console.error('Error creating Co agent:', error);
     throw error;
@@ -55,24 +71,27 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
 }
 
 /**
- * Ensure sleeptime agent has required archival memory tools
+ * Ensure sleeptime agent has required archival memory tools and co_memory block
  */
 export async function ensureSleeptimeTools(agent: LettaAgent): Promise<void> {
   try {
-    const sleeptimeAgentId = agent.multi_agent_group?.agent_ids?.[0];
+    // Try to get sleeptime agent ID from either the custom property or multi_agent_group
+    const sleeptimeAgentId = agent.sleeptime_agent_id || agent.multi_agent_group?.agent_ids?.[0];
 
     if (!sleeptimeAgentId) {
       console.log('No sleeptime agent found for agent:', agent.id);
       return;
     }
 
-    console.log('Ensuring sleeptime agent has archival tools:', sleeptimeAgentId);
+    console.log('Ensuring sleeptime agent has archival tools and co_memory block:', sleeptimeAgentId);
 
-    // Get the sleeptime agent to check its current tools
+    // Get the sleeptime agent to check its current tools and blocks
     const sleeptimeAgent = await lettaApi.getAgent(sleeptimeAgentId);
     const sleeptimeToolNames = sleeptimeAgent.tools?.map(t => t.name) || [];
+    const sleeptimeBlockLabels = sleeptimeAgent.memory?.blocks?.map(b => b.label) || [];
 
     console.log('Current sleeptime tools:', sleeptimeToolNames);
+    console.log('Current sleeptime blocks:', sleeptimeBlockLabels);
 
     // Attach missing tools
     const requiredTools = ['archival_memory_search', 'archival_memory_insert'];
@@ -89,6 +108,32 @@ export async function ensureSleeptimeTools(agent: LettaAgent): Promise<void> {
       } else {
         console.log(`✓ ${toolName} already attached`);
       }
+    }
+
+    // Ensure co_memory block exists
+    if (!sleeptimeBlockLabels.includes('co_memory')) {
+      console.log('Creating co_memory block for sleeptime agent');
+      try {
+        const { CO_MEMORY_BLOCK } = await import('../constants/memoryBlocks');
+
+        // Two-step process: create block, then attach to agent
+        const createdBlock = await lettaApi.createBlock({
+          label: CO_MEMORY_BLOCK.label,
+          value: CO_MEMORY_BLOCK.value,
+          description: CO_MEMORY_BLOCK.description,
+          limit: CO_MEMORY_BLOCK.limit,
+        });
+
+        console.log('✓ Created co_memory block:', createdBlock.id);
+
+        await lettaApi.attachBlockToAgent(sleeptimeAgentId, createdBlock.id!);
+        console.log('✓ Successfully attached co_memory block to sleeptime agent');
+      } catch (error) {
+        console.error('✗ Failed to create/attach co_memory block:', error);
+        throw error;
+      }
+    } else {
+      console.log('✓ co_memory block already exists');
     }
   } catch (error) {
     console.error('Error in ensureSleeptimeTools:', error);
@@ -107,13 +152,28 @@ export async function findOrCreateCo(userName: string): Promise<LettaAgent> {
     if (existingAgent) {
       console.log('Found existing Co agent:', existingAgent.id);
 
-      // Retrieve full agent details to get sleeptime agent ID
+      // Retrieve full agent details
       const fullAgent = await lettaApi.getAgent(existingAgent.id);
-      const sleeptimeAgentId = fullAgent.multi_agent_group?.agent_ids?.[0];
 
-      if (sleeptimeAgentId) {
-        fullAgent.sleeptime_agent_id = sleeptimeAgentId;
-        console.log('Found sleeptime agent for existing Co:', sleeptimeAgentId);
+      // Find sleeptime agent using shared memory blocks (same approach as createCoAgent)
+      const blockId = fullAgent.memory?.blocks?.[0]?.id;
+
+      if (blockId) {
+        console.log('Using block ID to find sleeptime agent:', blockId);
+        const agentsForBlock = await lettaApi.listAgentsForBlock(blockId);
+        console.log('Agents sharing this block:', agentsForBlock.map(a => ({ id: a.id, name: a.name })));
+
+        // Find the sleeptime agent (the one that's NOT the primary agent)
+        const sleeptimeAgent = agentsForBlock.find(a => a.id !== fullAgent.id);
+
+        if (sleeptimeAgent) {
+          fullAgent.sleeptime_agent_id = sleeptimeAgent.id;
+          console.log('Found sleeptime agent for existing Co:', sleeptimeAgent.id);
+        } else {
+          console.warn('No sleeptime agent found sharing memory blocks for existing agent');
+        }
+      } else {
+        console.warn('No memory blocks found on existing agent. Cannot find sleeptime agent.');
       }
 
       // Ensure sleeptime agent has required tools

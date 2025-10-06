@@ -42,6 +42,29 @@ class LettaApiService {
     }
   }
 
+  async createBlock(block: { label: string; value: string; description?: string; limit?: number }): Promise<MemoryBlock> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      const createdBlock = await this.client.blocks.create(block);
+      return createdBlock as unknown as MemoryBlock;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
+  async attachBlockToAgent(agentId: string, blockId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+      await this.client.agents.blocks.attach(agentId, blockId);
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async createAgentBlock(agentId: string, block: { label: string; value: string; description?: string; limit?: number }): Promise<MemoryBlock> {
     try {
       if (!this.client) {
@@ -1293,6 +1316,22 @@ class LettaApiService {
       return result;
     } catch (error) {
       console.error('attachToolToAgentByName - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async listAgentsForBlock(blockId: string): Promise<LettaAgent[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      console.log('listAgentsForBlock - blockId:', blockId);
+      const agents = await this.client.blocks.agents.list(blockId);
+      console.log('listAgentsForBlock - found agents:', agents.length);
+      return agents;
+    } catch (error) {
+      console.error('listAgentsForBlock - error:', error);
       throw this.handleError(error);
     }
   }

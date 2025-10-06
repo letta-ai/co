@@ -17,11 +17,13 @@ import {
   Animated,
   Image,
   KeyboardAvoidingView,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import Markdown from '@ronradtke/react-native-markdown-display';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Lexend_300Light, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import LogoLoader from './src/components/LogoLoader';
@@ -34,6 +36,8 @@ import ExpandableMessageContent from './src/components/ExpandableMessageContent'
 import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
+import MessageInput from './src/components/MessageInput';
+import { createMarkdownStyles } from './src/components/markdownStyles';
 import { darkTheme, lightTheme, CoColors } from './src/theme';
 import type { LettaAgent, LettaMessage, StreamingChunk, MemoryBlock, Passage } from './src/types/letta';
 
@@ -71,6 +75,7 @@ function CoApp() {
   // Co agent state
   const [coAgent, setCoAgent] = useState<LettaAgent | null>(null);
   const [isInitializingCo, setIsInitializingCo] = useState(false);
+  const [isRefreshingCo, setIsRefreshingCo] = useState(false);
 
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
@@ -79,9 +84,11 @@ function CoApp() {
   const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
   const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
-  const [inputText, setInputText] = useState('');
   const [selectedImages, setSelectedImages] = useState<Array<{ uri: string; base64: string; mediaType: string }>>([]);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [hasInputText, setHasInputText] = useState(false);
+  const inputTextRef = useRef<string>('');
+  const [clearInputTrigger, setClearInputTrigger] = useState(0);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
   // Streaming state
@@ -99,9 +106,14 @@ function CoApp() {
 
   // Token buffering for smooth streaming
   const tokenBufferRef = useRef<string>('');
+  const reasoningBufferRef = useRef<string>('');
   const streamingReasoningRef = useRef<string>('');
   const bufferIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Character reveal configuration
+  const CHAR_REVEAL_INTERVAL_MS = 15; // How often to reveal characters (ms)
+  const CHARS_PER_REVEAL = 2; // How many characters to reveal each interval
 
   // HITL approval state
   const [approvalVisible, setApprovalVisible] = useState(false);
@@ -121,13 +133,27 @@ function CoApp() {
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'files'>('files');
-  const [currentView, setCurrentView] = useState<'chat' | 'knowledge'>('chat');
+  const [currentView, setCurrentView] = useState<'you' | 'chat' | 'knowledge'>('chat');
   const [knowledgeTab, setKnowledgeTab] = useState<'core' | 'archival' | 'files'>('core');
   const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<MemoryBlock | null>(null);
   const [memorySearchQuery, setMemorySearchQuery] = useState('');
+  const [youBlockContent, setYouBlockContent] = useState<string>(`## First Conversation
+
+I'm here to understand how you think and help you see what you know.
+
+As we talk, this space will evolve to reflect:
+- What you're focused on right now and why it matters
+- Patterns in how you approach problems
+- Connections between your ideas that might not be obvious
+- The questions you're holding
+
+I'm paying attention not just to what you say, but how you think. Let's start wherever feels natural.`);
+  const [hasYouBlock, setHasYouBlock] = useState<boolean>(false);
+  const [hasCheckedYouBlock, setHasCheckedYouBlock] = useState<boolean>(false);
+  const [isCreatingYouBlock, setIsCreatingYouBlock] = useState<boolean>(false);
   const sidebarAnimRef = useRef(new Animated.Value(0)).current;
   const [developerMode, setDeveloperMode] = useState(true);
   const [headerClickCount, setHeaderClickCount] = useState(0);
@@ -164,6 +190,7 @@ function CoApp() {
   const [inputContainerHeight, setInputContainerHeight] = useState(0);
   const pendingJumpToBottomRef = useRef<boolean>(false);
   const pendingJumpRetriesRef = useRef<number>(0);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   // Load stored API token on mount
   useEffect(() => {
@@ -195,6 +222,7 @@ function CoApp() {
       loadMessages();
     }
   }, [coAgent]);
+
 
   const loadStoredToken = async () => {
     try {
@@ -281,6 +309,17 @@ function CoApp() {
     }
   };
 
+  // Helper function to filter out any message in the top 5 that contains "More human than human"
+  const filterFirstMessage = (msgs: LettaMessage[]): LettaMessage[] => {
+    const checkLimit = Math.min(5, msgs.length);
+    for (let i = 0; i < checkLimit; i++) {
+      if (msgs[i].content.includes('More human than human')) {
+        return [...msgs.slice(0, i), ...msgs.slice(i + 1)];
+      }
+    }
+    return msgs;
+  };
+
   const loadMessages = async (before?: string) => {
     if (!coAgent) return;
 
@@ -299,10 +338,10 @@ function CoApp() {
 
       if (loadedMessages.length > 0) {
         if (before) {
-          setMessages(prev => [...loadedMessages, ...prev]);
+          setMessages(prev => filterFirstMessage([...loadedMessages, ...prev]));
           setEarliestCursor(loadedMessages[0].id);
         } else {
-          setMessages(loadedMessages);
+          setMessages(filterFirstMessage(loadedMessages));
           if (loadedMessages.length > 0) {
             setEarliestCursor(loadedMessages[0].id);
             pendingJumpToBottomRef.current = true;
@@ -328,14 +367,17 @@ function CoApp() {
     }
   };
 
-  const copyToClipboard = async (content: string) => {
+  const copyToClipboard = useCallback(async (content: string, messageId?: string) => {
     try {
       await Clipboard.setStringAsync(content);
-      // Optionally show a brief success feedback
+      if (messageId) {
+        setCopiedMessageId(messageId);
+        setTimeout(() => setCopiedMessageId(null), 2000);
+      }
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
     }
-  };
+  }, []);
 
   const pickImage = async () => {
     try {
@@ -407,16 +449,157 @@ function CoApp() {
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const sendMessage = async () => {
-    if ((!inputText.trim() && selectedImages.length === 0) || !coAgent || isSendingMessage) return;
+  // Helper to flush accumulated streaming content into a message
+  const flushStreamingContent = useCallback(() => {
+    const accumulatedMessage = streamingMessage + tokenBufferRef.current;
+    const accumulatedReasoning = streamingReasoningRef.current + reasoningBufferRef.current;
 
-    const messageText = String(inputText || '').trim();
-    const imagesToSend = [...selectedImages];
+    if (accumulatedMessage || accumulatedReasoning) {
+      const newMessage: LettaMessage = {
+        id: streamingMessageId || `msg_${Date.now()}`,
+        role: 'assistant',
+        content: accumulatedMessage,
+        created_at: new Date().toISOString(),
+        reasoning: accumulatedReasoning || undefined,
+      };
+
+      setMessages(prev => [...prev, newMessage]);
+
+      // Clear streaming state
+      setStreamingMessage('');
+      setStreamingReasoning('');
+      tokenBufferRef.current = '';
+      reasoningBufferRef.current = '';
+      streamingReasoningRef.current = '';
+      setStreamingMessageId('');
+    }
+  }, [streamingMessage, streamingMessageId]);
+
+  const handleStreamingChunk = useCallback((chunk: StreamingChunk) => {
+    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content, 'reasoning:', chunk.reasoning);
+
+    // Capture message ID if present
+    if (chunk.id && !streamingMessageId) {
+      setStreamingMessageId(chunk.id);
+    }
+
+    if (chunk.message_type === 'assistant_message' && chunk.content) {
+      // Reasoning is complete, assistant message has started
+      setIsReasoningStreaming(false);
+
+      // Extract text from content if it's an object
+      let contentText = '';
+      if (typeof chunk.content === 'string') {
+        contentText = chunk.content;
+      } else if (typeof chunk.content === 'object' && chunk.content !== null) {
+        // Handle content array from Letta SDK
+        if (Array.isArray(chunk.content)) {
+          contentText = chunk.content
+            .filter((item: any) => item.type === 'text')
+            .map((item: any) => item.text || '')
+            .join('');
+        } else if (chunk.content.text) {
+          contentText = chunk.content.text;
+        }
+      }
+
+      if (contentText) {
+        // Add to buffer instead of directly to state for smooth streaming
+        tokenBufferRef.current += contentText;
+        setStreamingStep('');
+      }
+    } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
+      // Add to buffer for smooth character-by-character reveal
+      reasoningBufferRef.current += chunk.reasoning;
+    } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
+      // Tool call: flush accumulated content, then add tool call as standalone message
+      flushStreamingContent();
+
+      const callObj = chunk.tool_call.function || chunk.tool_call;
+      const toolName = callObj?.name || callObj?.tool_name || 'tool';
+      const args = callObj?.arguments || callObj?.args || {};
+
+      // Format args for display
+      const formatArgsPython = (obj: any): string => {
+        if (!obj || typeof obj !== 'object') return '';
+        return Object.entries(obj)
+          .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+          .join(', ');
+      };
+
+      const toolLine = `${toolName}(${formatArgsPython(args)})`;
+      const stepId = (chunk as any).step ? String((chunk as any).step) : 'no-step';
+
+      setMessages(prev => {
+        const existingId = toolCallMsgIdsRef.current.get(stepId);
+        if (existingId) {
+          // Update existing tool call message
+          return prev.map(m => m.id === existingId ? { ...m, content: toolLine } : m);
+        }
+
+        // Create new tool call message
+        const newId = `toolcall-${stepId}-${Date.now()}`;
+        toolCallMsgIdsRef.current.set(stepId, newId);
+        return [...prev, {
+          id: newId,
+          role: 'tool',
+          content: toolLine,
+          created_at: new Date().toISOString(),
+          message_type: chunk.message_type,
+        }];
+      });
+
+      setStreamingStep(`Calling ${toolName}...`);
+    } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
+      // Tool return: add as standalone message
+      const result = (chunk as any).tool_response || (chunk as any).toolReturn || (chunk as any).result;
+      let resultStr = '';
+      try {
+        resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+      } catch {}
+
+      const stepId = (chunk as any).step ? String((chunk as any).step) : 'no-step';
+
+      setMessages(prev => {
+        const existingId = toolReturnMsgIdsRef.current.get(stepId);
+        if (existingId) {
+          // Update existing tool return message
+          return prev.map(m => m.id === existingId ? { ...m, content: resultStr } : m);
+        }
+
+        // Create new tool return message
+        const newId = `toolret-${stepId}-${Date.now()}`;
+        toolReturnMsgIdsRef.current.set(stepId, newId);
+        return [...prev, {
+          id: newId,
+          role: 'tool',
+          content: resultStr,
+          created_at: new Date().toISOString(),
+          message_type: chunk.message_type,
+        }];
+      });
+
+      setStreamingStep('Processing result...');
+    } else if (chunk.message_type === 'approval_request_message') {
+      // Handle approval request - flush content first
+      flushStreamingContent();
+
+      const callObj = chunk.tool_call?.function || chunk.tool_call;
+      setApprovalData({
+        id: chunk.id,
+        toolName: callObj?.name || callObj?.tool_name,
+        toolArgs: callObj?.arguments || callObj?.args,
+        reasoning: chunk.reasoning,
+      });
+      setApprovalVisible(true);
+    }
+  }, [streamingMessageId, flushStreamingContent]);
+
+  const sendMessage = useCallback(async (messageText: string, imagesToSend: Array<{ uri: string; base64: string; mediaType: string }>) => {
+    if ((!messageText.trim() && imagesToSend.length === 0) || !coAgent || isSendingMessage) return;
 
     console.log('sendMessage called - messageText:', messageText, 'type:', typeof messageText, 'imagesToSend length:', imagesToSend.length);
 
-    setInputText('');
-    setSelectedImages([]);
     setIsSendingMessage(true);
 
     // Immediately add user message to UI (with images if any)
@@ -474,7 +657,9 @@ function CoApp() {
       setStreamingMessageId('');
       setStreamingReasoning('');
       setIsReasoningStreaming(true);
+      setExpandedReasoning(prev => new Set(prev).add('streaming'));
       tokenBufferRef.current = '';
+      reasoningBufferRef.current = '';
       streamingReasoningRef.current = '';
       streamCompleteRef.current = false;
 
@@ -508,24 +693,36 @@ function CoApp() {
         clearInterval(bufferIntervalRef.current);
       }
       bufferIntervalRef.current = setInterval(() => {
+        // Reveal reasoning characters with adaptive speed based on buffer size
+        if (reasoningBufferRef.current.length > 0) {
+          // Speed up if buffer is large: 2 chars normally, up to 10 chars if buffer > 500
+          const speedMultiplier = reasoningBufferRef.current.length > 500 ? 5 :
+                                  reasoningBufferRef.current.length > 200 ? 3 : 1;
+          const reasoningChunkSize = Math.min(CHARS_PER_REVEAL * speedMultiplier, reasoningBufferRef.current.length);
+          const reasoningChunk = reasoningBufferRef.current.slice(0, reasoningChunkSize);
+          reasoningBufferRef.current = reasoningBufferRef.current.slice(reasoningChunkSize);
+          streamingReasoningRef.current += reasoningChunk;
+          setStreamingReasoning(prev => prev + reasoningChunk);
+        }
+
+        // Reveal message characters with adaptive speed based on buffer size
         if (tokenBufferRef.current.length > 0) {
-          // Release 1-3 characters at a time for smooth effect
-          const chunkSize = Math.min(3, tokenBufferRef.current.length);
+          // Speed up if buffer is large: 2 chars normally, up to 10 chars if buffer > 500
+          const speedMultiplier = tokenBufferRef.current.length > 500 ? 5 :
+                                  tokenBufferRef.current.length > 200 ? 3 : 1;
+          const chunkSize = Math.min(CHARS_PER_REVEAL * speedMultiplier, tokenBufferRef.current.length);
           const chunk = tokenBufferRef.current.slice(0, chunkSize);
           tokenBufferRef.current = tokenBufferRef.current.slice(chunkSize);
           setStreamingMessage(prev => prev + chunk);
-        } else if (streamCompleteRef.current) {
+        } else if (streamCompleteRef.current && reasoningBufferRef.current.length === 0) {
           // Buffer is empty and streaming is done - finalize
           if (bufferIntervalRef.current) {
             clearInterval(bufferIntervalRef.current);
             bufferIntervalRef.current = null;
           }
 
+          // Get the final content and add it to messages
           setStreamingMessage(currentContent => {
-            setIsStreaming(false);
-            setIsReasoningStreaming(false);
-            setStreamingStep('');
-
             const finalReasoning = streamingReasoningRef.current || '';
             console.log('Finalizing message with reasoning:', finalReasoning);
 
@@ -538,15 +735,38 @@ function CoApp() {
             };
 
             console.log('Final message object:', finalMessage);
+
+            // Add final message to messages array first
             setMessages(prev => [...prev, finalMessage]);
+
+            // Transfer reasoning expansion state from 'streaming' to the actual message ID
+            setExpandedReasoning(prev => {
+              if (prev.has('streaming')) {
+                const next = new Set(prev);
+                next.delete('streaming');
+                next.add(finalMessage.id);
+                return next;
+              }
+              return prev;
+            });
+
+            // Don't clear yet - keep content visible
+            return currentContent;
+          });
+
+          // Use requestAnimationFrame to ensure final message is rendered before clearing
+          requestAnimationFrame(() => {
+            setIsStreaming(false);
+            setIsReasoningStreaming(false);
+            setStreamingStep('');
+            setStreamingMessage('');
             setStreamingMessageId('');
             setStreamingReasoning('');
+            reasoningBufferRef.current = '';
             streamingReasoningRef.current = '';
-
-            return '';
           });
         }
-      }, 20); // 50 FPS
+      }, CHAR_REVEAL_INTERVAL_MS);
 
       toolCallMsgIdsRef.current.clear();
       toolReturnMsgIdsRef.current.clear();
@@ -657,6 +877,7 @@ function CoApp() {
           setStreamingMessageId('');
           setStreamingReasoning('');
           tokenBufferRef.current = '';
+          reasoningBufferRef.current = '';
           streamingReasoningRef.current = '';
 
           // Create detailed error message
@@ -706,64 +927,25 @@ function CoApp() {
     } finally {
       setIsSendingMessage(false);
     }
-  };
+  }, [coAgent, isSendingMessage, containerHeight, spacerHeightAnim, handleStreamingChunk]);
 
-  const handleStreamingChunk = (chunk: StreamingChunk) => {
-    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content, 'reasoning:', chunk.reasoning);
+  const handleTextChange = useCallback((text: string) => {
+    inputTextRef.current = text;
+    const hasText = text.trim().length > 0;
+    // Only update state when crossing the empty/non-empty boundary
+    setHasInputText(prev => prev !== hasText ? hasText : prev);
+  }, []);
 
-    // Capture message ID if present
-    if (chunk.id && !streamingMessageId) {
-      setStreamingMessageId(chunk.id);
+  const handleSendFromInput = useCallback(() => {
+    const text = inputTextRef.current.trim();
+    if (text || selectedImages.length > 0) {
+      sendMessage(text, selectedImages);
+      setSelectedImages([]);
+      inputTextRef.current = '';
+      setHasInputText(false);
+      setClearInputTrigger(prev => prev + 1);
     }
-
-    if (chunk.message_type === 'assistant_message' && chunk.content) {
-      // Reasoning is complete, assistant message has started
-      setIsReasoningStreaming(false);
-
-      // Extract text from content if it's an object
-      let contentText = '';
-      if (typeof chunk.content === 'string') {
-        contentText = chunk.content;
-      } else if (typeof chunk.content === 'object' && chunk.content !== null) {
-        // Handle content array from Letta SDK
-        if (Array.isArray(chunk.content)) {
-          contentText = chunk.content
-            .filter((item: any) => item.type === 'text')
-            .map((item: any) => item.text || '')
-            .join('');
-        } else if (chunk.content.text) {
-          contentText = chunk.content.text;
-        }
-      }
-
-      if (contentText) {
-        // Add to buffer instead of directly to state for smooth streaming
-        tokenBufferRef.current += contentText;
-        setStreamingStep('');
-      }
-    } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Accumulate reasoning in both ref and state
-      streamingReasoningRef.current += chunk.reasoning;
-      setStreamingReasoning(prev => prev + chunk.reasoning);
-    } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
-      // Handle both formats: with and without .function wrapper
-      const callObj = chunk.tool_call.function || chunk.tool_call;
-      const toolName = callObj?.name || callObj?.tool_name || 'tool';
-      setStreamingStep(`Calling ${toolName}...`);
-    } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
-      setStreamingStep('Processing result...');
-    } else if (chunk.message_type === 'approval_request_message') {
-      // Handle approval request
-      const callObj = chunk.tool_call?.function || chunk.tool_call;
-      setApprovalData({
-        id: chunk.id,
-        toolName: callObj?.name || callObj?.tool_name,
-        toolArgs: callObj?.arguments || callObj?.args,
-        reasoning: chunk.reasoning,
-      });
-      setApprovalVisible(true);
-    }
-  };
+  }, [sendMessage, selectedImages]);
 
   const handleApproval = async (approve: boolean) => {
     if (!approvalData?.id || !coAgent) return;
@@ -797,17 +979,58 @@ function CoApp() {
     try {
       const blocks = await lettaApi.listAgentBlocks(coAgent.id);
       setMemoryBlocks(blocks);
+
+      // Extract the "you" block for the You view
+      const youBlock = blocks.find(block => block.label === 'you');
+      if (youBlock) {
+        setYouBlockContent(youBlock.value);
+        setHasYouBlock(true);
+      } else {
+        setHasYouBlock(false);
+      }
+      setHasCheckedYouBlock(true);
     } catch (error: any) {
       console.error('Failed to load memory blocks:', error);
       setBlocksError(error.message || 'Failed to load memory blocks');
+      setHasCheckedYouBlock(true);
     } finally {
       setIsLoadingBlocks(false);
+    }
+  };
+
+  const createYouBlock = async () => {
+    if (!coAgent) return;
+
+    setIsCreatingYouBlock(true);
+    try {
+      const { YOU_BLOCK } = await import('./src/constants/memoryBlocks');
+      const createdBlock = await lettaApi.createAgentBlock(coAgent.id, {
+        label: YOU_BLOCK.label,
+        value: YOU_BLOCK.value,
+        description: YOU_BLOCK.description,
+        limit: YOU_BLOCK.limit,
+      });
+
+      // Update state
+      setYouBlockContent(createdBlock.value);
+      setHasYouBlock(true);
+      setMemoryBlocks(prev => [...prev, createdBlock]);
+    } catch (error: any) {
+      console.error('Failed to create you block:', error);
+      Alert.alert('Error', error.message || 'Failed to create you block');
+    } finally {
+      setIsCreatingYouBlock(false);
     }
   };
 
   // Archival Memory (Passages) functions
   const loadPassages = async (resetCursor = false) => {
     if (!coAgent) return;
+    if (!coAgent.sleeptime_agent_id) {
+      console.error('No sleeptime agent available for archival memory');
+      setPassagesError('Sleeptime agent not available');
+      return;
+    }
 
     setIsLoadingPassages(true);
     setPassagesError(null);
@@ -824,7 +1047,8 @@ function CoApp() {
         params.search = passageSearchQuery;
       }
 
-      const result = await lettaApi.listPassages(coAgent.id, params);
+      // Use sleeptime agent for archival memory
+      const result = await lettaApi.listPassages(coAgent.sleeptime_agent_id, params);
 
       if (resetCursor) {
         setPassages(result);
@@ -846,10 +1070,15 @@ function CoApp() {
 
   const createPassage = async (text: string, tags?: string[]) => {
     if (!coAgent) return;
+    if (!coAgent.sleeptime_agent_id) {
+      Alert.alert('Error', 'Sleeptime agent not available');
+      return;
+    }
 
     setIsLoadingPassages(true);
     try {
-      await lettaApi.createPassage(coAgent.id, { text, tags });
+      // Use sleeptime agent for archival memory
+      await lettaApi.createPassage(coAgent.sleeptime_agent_id, { text, tags });
       await loadPassages(true);
       Alert.alert('Success', 'Passage created successfully');
     } catch (error: any) {
@@ -862,6 +1091,10 @@ function CoApp() {
 
   const deletePassage = async (passageId: string) => {
     if (!coAgent) return;
+    if (!coAgent.sleeptime_agent_id) {
+      Alert.alert('Error', 'Sleeptime agent not available');
+      return;
+    }
 
     const confirmed = Platform.OS === 'web'
       ? window.confirm('Are you sure you want to delete this passage?')
@@ -879,7 +1112,8 @@ function CoApp() {
     if (!confirmed) return;
 
     try {
-      await lettaApi.deletePassage(coAgent.id, passageId);
+      // Use sleeptime agent for archival memory
+      await lettaApi.deletePassage(coAgent.sleeptime_agent_id, passageId);
       await loadPassages(true);
       if (Platform.OS === 'web') {
         window.alert('Passage deleted successfully');
@@ -898,10 +1132,15 @@ function CoApp() {
 
   const modifyPassage = async (passageId: string, text: string, tags?: string[]) => {
     if (!coAgent) return;
+    if (!coAgent.sleeptime_agent_id) {
+      Alert.alert('Error', 'Sleeptime agent not available');
+      return;
+    }
 
     setIsLoadingPassages(true);
     try {
-      await lettaApi.modifyPassage(coAgent.id, passageId, { text, tags });
+      // Use sleeptime agent for archival memory
+      await lettaApi.modifyPassage(coAgent.sleeptime_agent_id, passageId, { text, tags });
       await loadPassages(true);
       Alert.alert('Success', 'Passage updated successfully');
     } catch (error: any) {
@@ -1223,23 +1462,7 @@ function CoApp() {
     }).start();
   }, [sidebarVisible]);
 
-  // Animate rainbow gradient for "co is thinking", input box, and reasoning sections
-  useEffect(() => {
-    if (isReasoningStreaming || isInputFocused || expandedReasoning.size > 0) {
-      rainbowAnimValue.setValue(0);
-      Animated.loop(
-        Animated.timing(rainbowAnimValue, {
-          toValue: 1,
-          duration: 3000,
-          useNativeDriver: false,
-        })
-      ).start();
-    } else {
-      rainbowAnimValue.stopAnimation();
-    }
-  }, [isReasoningStreaming, isInputFocused, expandedReasoning]);
-
-  const toggleReasoning = (messageId: string) => {
+  const toggleReasoning = useCallback((messageId: string) => {
     setExpandedReasoning(prev => {
       const next = new Set(prev);
       if (next.has(messageId)) {
@@ -1249,9 +1472,9 @@ function CoApp() {
       }
       return next;
     });
-  };
+  }, []);
 
-  const toggleCompaction = (messageId: string) => {
+  const toggleCompaction = useCallback((messageId: string) => {
     setExpandedCompaction(prev => {
       const next = new Set(prev);
       if (next.has(messageId)) {
@@ -1261,7 +1484,7 @@ function CoApp() {
       }
       return next;
     });
-  };
+  }, []);
 
   // Group messages for efficient FlatList rendering
   type MessageGroup =
@@ -1291,11 +1514,6 @@ function CoApp() {
       if (current.reasoning && next.message_type?.includes('tool_call') && next.id) {
         reasoningBeforeToolCall.set(next.id, current.reasoning);
         reasoningMessagesToSkip.add(current.id); // Mark this message to skip
-        console.log('🔗 Found reasoning before tool call:', {
-          toolCallId: next.id,
-          reasoningMsgId: current.id,
-          reasoning: current.reasoning.substring(0, 100) + '...'
-        });
       }
     }
 
@@ -1305,7 +1523,12 @@ function CoApp() {
       // Skip reasoning messages that precede tool calls
       if (reasoningMessagesToSkip.has(msg.id)) {
         processedIds.add(msg.id);
-        console.log('⏭️  Skipping reasoning message that precedes tool call:', msg.id);
+        return;
+      }
+
+      // Filter out system messages
+      if (msg.role === 'system') {
+        processedIds.add(msg.id);
         return;
       }
 
@@ -1327,9 +1550,6 @@ function CoApp() {
         if (toolCall) {
           // Get reasoning from the message that preceded the tool call
           const reasoning = reasoningBeforeToolCall.get(toolCall.id);
-          console.log('📦 Creating tool pair group:');
-          console.log('  toolCall.id:', toolCall.id);
-          console.log('  reasoning from map:', reasoning);
 
           groups.push({
             key: toolCall.id,
@@ -1358,19 +1578,27 @@ function CoApp() {
     return groups;
   }, [messages]);
 
-  const renderMessageGroup = ({ item }: { item: MessageGroup }) => {
+  // Animate rainbow gradient for "co is thinking", input box, reasoning sections, and empty state
+  useEffect(() => {
+    if (isReasoningStreaming || isInputFocused || expandedReasoning.size > 0 || groupedMessages.length === 0) {
+      rainbowAnimValue.setValue(0);
+      Animated.loop(
+        Animated.timing(rainbowAnimValue, {
+          toValue: 1,
+          duration: 3000,
+          useNativeDriver: false,
+        })
+      ).start();
+    } else {
+      rainbowAnimValue.stopAnimation();
+    }
+  }, [isReasoningStreaming, isInputFocused, expandedReasoning, groupedMessages.length]);
+
+  const renderMessageGroup = useCallback(({ item }: { item: MessageGroup }) => {
     if (item.type === 'toolPair') {
       // Extract tool call information from the message
       const toolCall = item.call.tool_call || item.call.tool_calls?.[0];
       let callText = item.call.content || 'Tool call';
-
-      // DEBUG LOGGING
-      console.log('🔧 Tool Pair Debug:');
-      console.log('  item.reasoning:', item.reasoning);
-      console.log('  item.call.reasoning:', item.call.reasoning);
-      console.log('  item.ret?.reasoning:', item.ret?.reasoning);
-      console.log('  item.call keys:', Object.keys(item.call));
-      console.log('  Full item.call:', JSON.stringify(item.call, null, 2));
 
       if (toolCall) {
         // Handle both formats: with and without .function wrapper
@@ -1388,8 +1616,6 @@ function CoApp() {
 
       const resultText = item.ret?.content || undefined;
       const reasoning = item.reasoning || undefined;
-
-      console.log('  Final reasoning value:', reasoning);
 
       return (
         <View key={item.key} style={styles.messageContainer}>
@@ -1454,7 +1680,7 @@ function CoApp() {
                 <Ionicons
                   name={isCompactionExpanded ? 'chevron-up' : 'chevron-down'}
                   size={12}
-                  color={theme.colors.text.tertiary}
+                  color={(colorScheme === 'dark' ? darkTheme : lightTheme).colors.text.tertiary}
                   style={styles.compactionChevron}
                 />
               </TouchableOpacity>
@@ -1548,18 +1774,12 @@ function CoApp() {
                 onPress={() => toggleReasoning(msg.id)}
                 style={styles.reasoningToggle}
               >
-                <Ionicons
-                  name="sparkles"
-                  size={16}
-                  color={darkTheme.colors.text.secondary}
-                  style={{ marginRight: 6 }}
-                />
                 <Text style={styles.reasoningToggleText}>Reasoning</Text>
-                <View style={{ flex: 1 }} />
                 <Ionicons
                   name={isReasoningExpanded ? "chevron-up" : "chevron-down"}
                   size={16}
                   color={darkTheme.colors.text.tertiary}
+                  style={{ marginLeft: 4 }}
                 />
               </TouchableOpacity>
             )}
@@ -1584,15 +1804,15 @@ function CoApp() {
             />
             <View style={styles.copyButtonContainer}>
               <TouchableOpacity
-                onPress={() => copyToClipboard(msg.content)}
+                onPress={() => copyToClipboard(msg.content, msg.id)}
                 style={styles.copyButton}
                 activeOpacity={0.7}
                 testID="copy-button"
               >
                 <Ionicons
-                  name="copy-outline"
+                  name={copiedMessageId === msg.id ? "checkmark-outline" : "copy-outline"}
                   size={16}
-                  color={theme.colors.text.tertiary}
+                  color={copiedMessageId === msg.id ? (colorScheme === 'dark' ? darkTheme : lightTheme).colors.interactive.primary : (colorScheme === 'dark' ? darkTheme : lightTheme).colors.text.tertiary}
                 />
               </TouchableOpacity>
             </View>
@@ -1601,17 +1821,19 @@ function CoApp() {
         );
       }
     }
-  };
+  }, [expandedCompaction, expandedReasoning, groupedMessages, lastMessageNeedsSpace, containerHeight, colorScheme, copiedMessageId, toggleCompaction, toggleReasoning, copyToClipboard]);
 
-  const handleScroll = (e: any) => {
+  const keyExtractor = useCallback((item: MessageGroup) => item.key, []);
+
+  const handleScroll = useCallback((e: any) => {
     const y = e.nativeEvent.contentOffset.y;
     setScrollY(y);
     const threshold = 80;
     const distanceFromBottom = Math.max(0, contentHeight - (y + containerHeight));
     setShowScrollToBottom(distanceFromBottom > threshold);
-  };
+  }, [contentHeight, containerHeight]);
 
-  const handleContentSizeChange = (_w: number, h: number) => {
+  const handleContentSizeChange = useCallback((_w: number, h: number) => {
     setContentHeight(h);
     if (pendingJumpToBottomRef.current && containerHeight > 0 && pendingJumpRetriesRef.current > 0) {
       const offset = Math.max(0, h - containerHeight);
@@ -1620,7 +1842,7 @@ function CoApp() {
       pendingJumpRetriesRef.current -= 1;
       if (pendingJumpRetriesRef.current <= 0) pendingJumpToBottomRef.current = false;
     }
-  };
+  }, [containerHeight]);
 
   const handleMessagesLayout = (e: any) => {
     const h = e.nativeEvent.layout.height;
@@ -1639,31 +1861,13 @@ function CoApp() {
     setShowScrollToBottom(false);
   };
 
-  const handleInputLayout = (e: any) => {
+  const handleInputLayout = useCallback((e: any) => {
     setInputContainerHeight(e.nativeEvent.layout.height || 0);
-  };
+  }, []);
 
-  const inputStyles = useMemo(() => ({
-    width: '100%',
-    height: 48,
-    paddingLeft: 18,
-    paddingRight: 130,
-    paddingTop: 12,
-    paddingBottom: 12,
-    borderRadius: 24,
-    color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-    fontFamily: 'Lexend_400Regular',
-    fontSize: 16,
-    lineHeight: 24,
-    borderWidth: 0,
-    backgroundColor: theme.colors.background.primary,
-    ...(Platform.OS === 'web' && {
-      // @ts-ignore
-      outline: 'none',
-      WebkitAppearance: 'none',
-      MozAppearance: 'none',
-    }),
-  } as const), [colorScheme, theme]);
+  const handleInputFocusChange = useCallback((focused: boolean) => {
+    setIsInputFocused(focused);
+  }, []);
 
   const inputWrapperStyle = useMemo(() => ({
     borderRadius: 24,
@@ -1675,6 +1879,18 @@ function CoApp() {
     shadowRadius: 8,
     elevation: 2,
   }), [colorScheme]);
+
+  const sendButtonStyle = useMemo(() => ({
+    backgroundColor: (!hasInputText && selectedImages.length === 0) || isSendingMessage
+      ? 'transparent'
+      : colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack
+  }), [hasInputText, selectedImages.length, isSendingMessage, colorScheme]);
+
+  const sendIconColor = useMemo(() =>
+    (!hasInputText && selectedImages.length === 0)
+      ? '#444444'
+      : colorScheme === 'dark' ? CoColors.deepBlack : CoColors.pureWhite
+  , [hasInputText, selectedImages.length, colorScheme]);
 
   if (isLoadingToken || !fontsLoaded) {
     return (
@@ -1692,6 +1908,16 @@ function CoApp() {
         isLoading={isConnecting}
         error={connectionError}
       />
+    );
+  }
+
+  if (isRefreshingCo) {
+    return (
+      <SafeAreaView style={[styles.loadingContainer, { backgroundColor: theme.colors.background.primary }]}>
+        <ActivityIndicator size="large" color={theme.colors.interactive.primary} />
+        <Text style={[styles.loadingText, { color: theme.colors.text.secondary }]}>Refreshing co...</Text>
+        <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
+      </SafeAreaView>
     );
   }
 
@@ -1801,6 +2027,7 @@ function CoApp() {
 
                 console.log('Refresh confirmed, starting process...');
                 setSidebarVisible(false);
+                setIsRefreshingCo(true);
                 try {
                   if (coAgent) {
                     console.log('Deleting agent:', coAgent.id);
@@ -1814,6 +2041,7 @@ function CoApp() {
                     console.log('Initializing new co agent...');
                     await initializeCo();
                     console.log('Co agent refreshed successfully');
+                    setIsRefreshingCo(false);
                     if (Platform.OS === 'web') {
                       window.alert('Co agent refreshed successfully');
                     } else {
@@ -1826,6 +2054,7 @@ function CoApp() {
                   console.error('Error message:', error?.message);
                   console.error('Error stack:', error?.stack);
                   console.error('Full error:', error);
+                  setIsRefreshingCo(false);
                   if (Platform.OS === 'web') {
                     window.alert('Failed to refresh co: ' + (error.message || 'Unknown error'));
                   } else {
@@ -1859,78 +2088,161 @@ function CoApp() {
       {/* Main content area */}
       <View style={styles.mainContent}>
         {/* Header */}
-        <View style={[styles.header, { paddingTop: insets.top, backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+        <View style={[
+          styles.header,
+          { paddingTop: insets.top, backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary },
+          groupedMessages.length === 0 && { backgroundColor: 'transparent', borderBottomWidth: 0 }
+        ]}>
           <TouchableOpacity onPress={() => setSidebarVisible(!sidebarVisible)} style={styles.menuButton}>
             <Ionicons name="menu" size={24} color={theme.colors.text.primary} />
           </TouchableOpacity>
 
-          <View style={styles.headerCenter}>
-            <TouchableOpacity
-              onPress={() => {
-                setHeaderClickCount(prev => prev + 1);
+          {groupedMessages.length > 0 && (
+            <>
+              <View style={styles.headerCenter}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setHeaderClickCount(prev => prev + 1);
 
-                if (headerClickTimeoutRef.current) {
-                  clearTimeout(headerClickTimeoutRef.current);
-                }
-
-                headerClickTimeoutRef.current = setTimeout(() => {
-                  if (headerClickCount >= 6) {
-                    setDeveloperMode(!developerMode);
-                    if (Platform.OS === 'web') {
-                      window.alert(developerMode ? 'Developer mode disabled' : 'Developer mode enabled');
-                    } else {
-                      Alert.alert('Developer Mode', developerMode ? 'Disabled' : 'Enabled');
+                    if (headerClickTimeoutRef.current) {
+                      clearTimeout(headerClickTimeoutRef.current);
                     }
-                  }
-                  setHeaderClickCount(0);
-                }, 2000);
+
+                    headerClickTimeoutRef.current = setTimeout(() => {
+                      if (headerClickCount >= 6) {
+                        setDeveloperMode(!developerMode);
+                        if (Platform.OS === 'web') {
+                          window.alert(developerMode ? 'Developer mode disabled' : 'Developer mode enabled');
+                        } else {
+                          Alert.alert('Developer Mode', developerMode ? 'Disabled' : 'Enabled');
+                        }
+                      }
+                      setHeaderClickCount(0);
+                    }, 2000);
+                  }}
+                >
+                  <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.headerSpacer} />
+            </>
+          )}
+        </View>
+
+        {/* View Switcher - hidden when chat is empty */}
+        {groupedMessages.length > 0 && (
+          <View style={[styles.viewSwitcher, { backgroundColor: theme.colors.background.secondary }]}>
+            <TouchableOpacity
+              style={[
+                styles.viewSwitcherButton,
+                currentView === 'you' && { backgroundColor: theme.colors.background.tertiary }
+              ]}
+              onPress={() => {
+                setCurrentView('you');
+                loadMemoryBlocks();
               }}
             >
-              <Text style={[styles.headerTitle, { color: theme.colors.text.primary }]}>co</Text>
+              <Text style={[
+                styles.viewSwitcherText,
+                { color: currentView === 'you' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>You</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.viewSwitcherButton,
+                currentView === 'chat' && { backgroundColor: theme.colors.background.tertiary }
+              ]}
+              onPress={() => setCurrentView('chat')}
+            >
+              <Text style={[
+                styles.viewSwitcherText,
+                { color: currentView === 'chat' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>Chat</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.viewSwitcherButton,
+                currentView === 'knowledge' && { backgroundColor: theme.colors.background.tertiary }
+              ]}
+              onPress={() => {
+                setCurrentView('knowledge');
+                loadMemoryBlocks();
+              }}
+            >
+              <Text style={[
+                styles.viewSwitcherText,
+                { color: currentView === 'knowledge' ? theme.colors.text.primary : theme.colors.text.tertiary }
+              ]}>Knowledge</Text>
             </TouchableOpacity>
           </View>
+        )}
 
-          <View style={styles.headerSpacer} />
-        </View>
-
-        {/* View Switcher */}
-        <View style={[styles.viewSwitcher, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
-          <TouchableOpacity
-            style={[
-              styles.viewSwitcherButton,
-              currentView === 'chat' && { backgroundColor: theme.colors.background.tertiary }
-            ]}
-            onPress={() => setCurrentView('chat')}
-          >
-            <Text style={[
-              styles.viewSwitcherText,
-              { color: currentView === 'chat' ? theme.colors.text.primary : theme.colors.text.tertiary }
-            ]}>Chat</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.viewSwitcherButton,
-              currentView === 'knowledge' && { backgroundColor: theme.colors.background.tertiary }
-            ]}
-            onPress={() => {
-              setCurrentView('knowledge');
-              loadMemoryBlocks();
-            }}
-          >
-            <Text style={[
-              styles.viewSwitcherText,
-              { color: currentView === 'knowledge' ? theme.colors.text.primary : theme.colors.text.tertiary }
-            ]}>Knowledge</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Chat and Knowledge Row */}
+        {/* View Content */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.chatRow}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
         >
-          {currentView === 'chat' ? (
+          {currentView === 'you' ? (
+          /* You View */
+          <View style={styles.memoryViewContainer}>
+            {!hasCheckedYouBlock ? (
+              /* Loading state - checking for You block */
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color={theme.colors.text.primary} />
+              </View>
+            ) : !hasYouBlock ? (
+              /* Empty state - no You block */
+              <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 }}>
+                <Text style={{
+                  fontSize: 24,
+                  fontWeight: 'bold',
+                  color: theme.colors.text.primary,
+                  marginBottom: 40,
+                  textAlign: 'center',
+                }}>
+                  Want to understand yourself?
+                </Text>
+                <TouchableOpacity
+                  onPress={createYouBlock}
+                  disabled={isCreatingYouBlock}
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 40,
+                    backgroundColor: theme.colors.background.tertiary,
+                    borderWidth: 2,
+                    borderColor: theme.colors.border.primary,
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  {isCreatingYouBlock ? (
+                    <ActivityIndicator size="large" color={theme.colors.text.primary} />
+                  ) : (
+                    <Ionicons name="add" size={48} color={theme.colors.text.primary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* You block exists - show content */
+              <ScrollView
+                style={{ flex: 1 }}
+                contentContainerStyle={{
+                  maxWidth: 700,
+                  width: '100%',
+                  alignSelf: 'center',
+                  padding: 20,
+                }}
+              >
+                <Markdown style={createMarkdownStyles({ isUser: false, isDark: colorScheme === 'dark' })}>
+                  {youBlockContent}
+                </Markdown>
+              </ScrollView>
+            )}
+          </View>
+          ) : currentView === 'chat' ? (
           <>
           {/* Messages */}
           <View style={styles.messagesContainer} onLayout={handleMessagesLayout}>
@@ -1938,10 +2250,17 @@ function CoApp() {
           ref={scrollViewRef}
           data={groupedMessages}
           renderItem={renderMessageGroup}
-          keyExtractor={(item) => item.key}
+          keyExtractor={keyExtractor}
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
-          contentContainerStyle={styles.messagesList}
+          windowSize={10}
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={5}
+          updateCellsBatchingPeriod={50}
+          contentContainerStyle={[
+            styles.messagesList,
+            groupedMessages.length === 0 && { flexGrow: 1 }
+          ]}
           ListHeaderComponent={
             hasMoreBefore ? (
               <TouchableOpacity onPress={loadMoreMessages} style={styles.loadMoreButton}>
@@ -1979,26 +2298,18 @@ function CoApp() {
                         <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.tertiary }}> is thinking</Text>
                       </View>
                     ) : (
-                      <>
-                        <Ionicons
-                          name="sparkles"
-                          size={16}
-                          color={darkTheme.colors.text.secondary}
-                          style={{ marginRight: 6 }}
-                        />
-                        <Text style={styles.reasoningToggleText}>Reasoning</Text>
-                        <View style={{ flex: 1 }} />
-                      </>
+                      <Text style={styles.reasoningToggleText}>Reasoning</Text>
                     )}
                     {!isReasoningStreaming && (
                       <Ionicons
                         name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
                         size={16}
+                        style={{ marginLeft: 4 }}
                         color={darkTheme.colors.text.tertiary}
                       />
                     )}
                   </TouchableOpacity>
-                  {expandedReasoning.has('streaming') && (
+                  {expandedReasoning.has('streaming') && streamingReasoning && (
                     <Animated.View style={[
                       styles.reasoningExpandedContainer,
                       {
@@ -2009,7 +2320,7 @@ function CoApp() {
                       }
                     ]}>
                       <Text style={styles.reasoningExpandedText}>
-                        {streamingReasoning || ''}
+                        {streamingReasoning}
                       </Text>
                     </Animated.View>
                   )}
@@ -2028,15 +2339,15 @@ function CoApp() {
                       </View>
                       <View style={styles.copyButtonContainer}>
                         <TouchableOpacity
-                          onPress={() => copyToClipboard(streamingMessage)}
+                          onPress={() => copyToClipboard(streamingMessage, 'streaming')}
                           style={styles.copyButton}
                           activeOpacity={0.7}
                           testID="copy-button"
                         >
                           <Ionicons
-                            name="copy-outline"
+                            name={copiedMessageId === 'streaming' ? "checkmark-outline" : "copy-outline"}
                             size={16}
-                            color={theme.colors.text.tertiary}
+                            color={copiedMessageId === 'streaming' ? theme.colors.interactive.primary : theme.colors.text.tertiary}
                           />
                         </TouchableOpacity>
                       </View>
@@ -2049,14 +2360,10 @@ function CoApp() {
           }
           ListEmptyComponent={
             isLoadingMessages ? (
-              <View style={styles.emptyContainer}>
-                <ActivityIndicator size="large" color={theme.colors.text.secondary} />
-              </View>
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>Start your conversation with Co</Text>
-              </View>
-            )
+                <View style={styles.emptyContainer}>
+                  <ActivityIndicator size="large" color={theme.colors.text.secondary} />
+                </View>
+              ) : null
           }
         />
 
@@ -2074,10 +2381,36 @@ function CoApp() {
 
       {/* Input */}
       <View
-        style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}
+        style={[
+          styles.inputContainer,
+          { paddingBottom: Math.max(insets.bottom, 16) },
+          groupedMessages.length === 0 && styles.inputContainerCentered
+        ]}
         onLayout={handleInputLayout}
       >
         <View style={styles.inputCentered}>
+          {/* Empty state intro - shown above input when chat is empty */}
+          {groupedMessages.length === 0 && (
+            <View style={styles.emptyStateIntro}>
+              <Animated.Text
+                style={{
+                  fontSize: 72,
+                  fontFamily: 'Lexend_700Bold',
+                  color: rainbowAnimValue.interpolate({
+                    inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                    outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
+                  }),
+                  marginBottom: 16,
+                  textAlign: 'center',
+                }}
+              >
+                co
+              </Animated.Text>
+              <Text style={[styles.emptyText, { fontSize: 18, lineHeight: 28, marginBottom: 32 }]}>
+                I'm co, your thinking partner.
+              </Text>
+            </View>
+          )}
           {/* Image preview section */}
           {selectedImages.length > 0 && (
             <View style={styles.imagePreviewContainer}>
@@ -2125,30 +2458,18 @@ function CoApp() {
             >
               <Ionicons name="image-outline" size={20} color="#666666" />
             </TouchableOpacity>
-            <TextInput
-              style={inputStyles}
-              placeholder="What's on your mind?"
-              placeholderTextColor={colorScheme === 'dark' ? '#666666' : '#999999'}
-              value={inputText}
-              onChangeText={setInputText}
-              onFocus={() => setIsInputFocused(true)}
-              onBlur={() => setIsInputFocused(false)}
-              multiline
-              maxLength={4000}
-              editable={!isSendingMessage}
-              autoFocus
+            <MessageInput
+              onTextChange={handleTextChange}
+              onSendMessage={handleSendFromInput}
+              isSendingMessage={isSendingMessage}
+              colorScheme={colorScheme}
+              onFocusChange={handleInputFocusChange}
+              clearTrigger={clearInputTrigger}
             />
             <TouchableOpacity
-              onPress={sendMessage}
-              style={[
-                styles.sendButton,
-                {
-                  backgroundColor: (!inputText.trim() && selectedImages.length === 0) || isSendingMessage
-                    ? 'transparent'
-                    : colorScheme === 'dark' ? CoColors.pureWhite : CoColors.deepBlack
-                },
-              ]}
-              disabled={(!inputText.trim() && selectedImages.length === 0) || isSendingMessage}
+              onPress={handleSendFromInput}
+              style={[styles.sendButton, sendButtonStyle]}
+              disabled={(!hasInputText && selectedImages.length === 0) || isSendingMessage}
             >
               {isSendingMessage ? (
                 <ActivityIndicator size="small" color={colorScheme === 'dark' ? '#fff' : '#000'} />
@@ -2156,11 +2477,7 @@ function CoApp() {
                 <Ionicons
                   name="arrow-up"
                   size={20}
-                  color={
-                    (!inputText.trim() && selectedImages.length === 0)
-                      ? '#444444'
-                      : colorScheme === 'dark' ? CoColors.deepBlack : CoColors.pureWhite
-                  }
+                  color={sendIconColor}
                 />
               )}
             </TouchableOpacity>
@@ -2168,7 +2485,7 @@ function CoApp() {
         </View>
       </View>
       </>
-      ) : (
+      ) : currentView === 'knowledge' ? (
         /* Knowledge View */
         <View style={styles.memoryViewContainer}>
           {/* Knowledge Tabs */}
@@ -2469,7 +2786,7 @@ function CoApp() {
             )}
           </View>
         </View>
-      )}
+      ) : null}
 
         {/* Knowledge block viewer - right pane on desktop */}
         {isDesktop && selectedBlock && (
@@ -2705,15 +3022,21 @@ const styles = StyleSheet.create({
   },
   viewSwitcher: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-    borderBottomWidth: 1,
+    paddingVertical: 4,
+    maxWidth: 400,
+    alignSelf: 'center',
+    width: '100%',
   },
   viewSwitcherButton: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 8,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   viewSwitcherText: {
     fontSize: 14,
@@ -2807,25 +3130,23 @@ const styles = StyleSheet.create({
   reasoningToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderRadius: 8,
+    paddingVertical: 4,
+    marginBottom: 4,
+    borderRadius: 6,
   },
   reasoningToggleText: {
-    fontSize: 14,
-    fontFamily: 'Lexend_500Medium',
-    color: darkTheme.colors.text.secondary,
+    fontSize: 12,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
   },
   reasoningExpandedContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    paddingLeft: 20,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    borderRadius: 8,
-    borderLeftWidth: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingLeft: 16,
+    marginBottom: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    borderRadius: 6,
+    borderLeftWidth: 3,
     borderLeftColor: '#555555',
     overflow: 'hidden',
   },
@@ -2833,7 +3154,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Lexend_400Regular',
     color: darkTheme.colors.text.secondary,
-    lineHeight: 22,
+    lineHeight: 20,
     fontStyle: 'normal',
   },
   reasoningContainer: {
@@ -2908,6 +3229,16 @@ const styles = StyleSheet.create({
     paddingTop: 16,
     paddingHorizontal: 16,
     alignItems: 'center',
+  },
+  inputContainerCentered: {
+    top: 0,
+    bottom: 'auto',
+    justifyContent: 'center',
+    height: '100%',
+  },
+  emptyStateIntro: {
+    alignItems: 'center',
+    marginBottom: 0,
   },
   inputCentered: {
     position: 'relative',

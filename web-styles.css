@@ -6,12 +6,10 @@ html, body {
   touch-action: manipulation;
 }
 
-/* Force transparent background on input */
+/* Input styling */
 textarea,
 input[type="text"],
 .input-transparent {
-  background: transparent !important;
-  background-color: transparent !important;
   -webkit-appearance: none;
   /* Prevent iOS zoom on focus - minimum 16px font */
   font-size: 16px !important;
@@ -22,35 +20,15 @@ input[type="text"],
 
 textarea:focus,
 input[type="text"]:focus {
-  outline: 2px solid rgba(255, 255, 255, 0.3) !important;
-  outline-offset: -2px !important;
+  outline: none !important;
   border: none !important;
-  box-shadow: none !important;
-}
-
-/* Light mode - use black outline */
-@media (prefers-color-scheme: light) {
-  textarea:focus,
-  input[type="text"]:focus {
-    outline: 2px solid rgba(0, 0, 0, 0.2) !important;
-    outline-offset: -2px !important;
-  }
 }
 
 /* Override any blue focus styles */
 textarea:focus-visible,
 input[type="text"]:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.3) !important;
-  outline-offset: -2px !important;
+  outline: none !important;
   border: none !important;
-}
-
-@media (prefers-color-scheme: light) {
-  textarea:focus-visible,
-  input[type="text"]:focus-visible {
-    outline: 2px solid rgba(0, 0, 0, 0.2) !important;
-    outline-offset: -2px !important;
-  }
 }
 
 /* Force user message text color based on app theme */
@@ -75,4 +53,25 @@ input[type="text"]:focus-visible {
 /* Apply blink animation to typing cursor - web only */
 .cursor-blink {
   animation: blink 1s infinite;
+}
+
+/* Copy button hover effect - web only */
+/* Target copy button by testID */
+[data-testid="copy-button"]:hover {
+  opacity: 0.7 !important;
+  transition: opacity 0.2s ease;
+}
+
+/* Fallback: Target copy button by its unique style combination */
+[style*="padding: 8px"][style*="opacity: 0.3"][style*="borderRadius: 4px"]:hover,
+[style*="padding:8px"][style*="opacity:0.3"][style*="borderRadius:4px"]:hover {
+  opacity: 0.7 !important;
+  transition: opacity 0.2s ease;
+}
+
+/* More specific targeting - include parent container selector */
+[style*="justifyContent: flex-end"] [style*="padding: 8px"][style*="opacity: 0.3"]:hover,
+[style*="justifyContent:flex-end"] [style*="padding:8px"][style*="opacity:0.3"]:hover {
+  opacity: 0.7 !important;
+  transition: opacity 0.2s ease;
 }

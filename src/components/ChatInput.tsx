@@ -74,13 +74,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     minHeight: 40,
+    borderWidth: 0,
   },
   textInput: {
     flex: 1,
     fontSize: 16,
     color: darkTheme.colors.text.primary,
+    backgroundColor: 'transparent',
     maxHeight: 100,
     paddingVertical: 8,
+    borderWidth: 0,
+    outline: 'none',
   },
   disabledInput: {
     opacity: 0.6,
@@ -99,4 +103,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default ChatInput;
+export default React.memo(ChatInput);

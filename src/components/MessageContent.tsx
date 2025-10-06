@@ -11,7 +11,7 @@ interface MessageContentProps {
 }
 
 const MessageContent: React.FC<MessageContentProps> = ({ content, isUser, isDark = true }) => {
-  const markdownStyles = createMarkdownStyles({ isUser, isDark });
+  const markdownStyles = React.useMemo(() => createMarkdownStyles({ isUser, isDark }), [isUser, isDark]);
 
   // Normalize common escaped sequences that sometimes arrive double-escaped
   const normalized = React.useMemo(() => {
@@ -37,4 +37,4 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, isUser, isDark
   return <Markdown style={markdownStyles}>{normalized}</Markdown>;
 };
 
-export default MessageContent;
+export default React.memo(MessageContent);
