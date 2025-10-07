@@ -480,6 +480,24 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
   const handleStreamingChunk = useCallback((chunk: StreamingChunk) => {
     console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content, 'reasoning:', chunk.reasoning);
 
+    // Handle error chunks
+    if ((chunk as any).error) {
+      console.error('Error chunk received:', (chunk as any).error);
+      setIsStreaming(false);
+      setIsSendingMessage(false);
+      setStreamingMessage('');
+      setStreamingReasoning('');
+      setIsReasoningStreaming(false);
+      return;
+    }
+
+    // Handle stop_reason chunks
+    if (chunk.message_type === 'stop_reason') {
+      console.log('Stop reason received:', (chunk as any).stopReason || (chunk as any).stop_reason);
+      streamCompleteRef.current = true;
+      return;
+    }
+
     // Capture message ID if present
     if (chunk.id && !streamingMessageId) {
       setStreamingMessageId(chunk.id);
