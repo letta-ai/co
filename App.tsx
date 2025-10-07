@@ -2360,6 +2360,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           data={groupedMessages}
           renderItem={renderMessageGroup}
           keyExtractor={keyExtractor}
+          extraData={{ showCompaction, expandedReasoning, expandedCompaction, copiedMessageId }}
           onScroll={handleScroll}
           onContentSizeChange={handleContentSizeChange}
           windowSize={10}
