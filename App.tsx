@@ -135,8 +135,11 @@ function CoApp() {
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
   const [sidebarVisible, setSidebarVisible] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState<'files'>('files');
-  const [currentView, setCurrentView] = useState<'you' | 'chat' | 'knowledge'>('chat');
+  const [currentView, setCurrentView] = useState<'you' | 'chat' | 'knowledge' | 'settings'>('chat');
   const [knowledgeTab, setKnowledgeTab] = useState<'core' | 'archival' | 'files'>('core');
+
+  // Settings
+  const [showCompaction, setShowCompaction] = useState(true);
   const [memoryBlocks, setMemoryBlocks] = useState<MemoryBlock[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
   const [blocksError, setBlocksError] = useState<string | null>(null);
@@ -1774,6 +1777,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         }
 
         if (isCompactionAlert) {
+          // Hide compaction if user has disabled it in settings
+          if (!showCompaction) {
+            return null;
+          }
+
           // Render compaction alert as thin grey expandable line
           const isCompactionExpanded = expandedCompaction.has(msg.id);
 
@@ -2065,6 +2073,16 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           >
             <Ionicons name="library-outline" size={24} color={theme.colors.text.primary} />
             <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Knowledge</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuItem, { borderBottomColor: theme.colors.border.primary }]}
+            onPress={() => {
+              setCurrentView('settings');
+            }}
+          >
+            <Ionicons name="settings-outline" size={24} color={theme.colors.text.primary} />
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Settings</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -2865,6 +2883,31 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 }
               />
             )}
+          </View>
+        </View>
+      ) : currentView === 'settings' ? (
+        /* Settings View */
+        <View style={styles.memoryViewContainer}>
+          <View style={[styles.settingsHeader, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
+            <Text style={[styles.settingsTitle, { color: theme.colors.text.primary }]}>Settings</Text>
+          </View>
+
+          <View style={styles.settingsContent}>
+            {/* Show Compaction Setting */}
+            <View style={[styles.settingItem, { borderBottomColor: theme.colors.border.primary }]}>
+              <View style={styles.settingInfo}>
+                <Text style={[styles.settingLabel, { color: theme.colors.text.primary }]}>Show Compaction</Text>
+                <Text style={[styles.settingDescription, { color: theme.colors.text.secondary }]}>
+                  Display compaction bars when conversation history is summarized
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.toggle, showCompaction && styles.toggleActive]}
+                onPress={() => setShowCompaction(!showCompaction)}
+              >
+                <View style={[styles.toggleThumb, showCompaction && styles.toggleThumbActive]} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       ) : null}
@@ -3772,5 +3815,60 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     fontFamily: 'Lexend_500Medium',
+  },
+  // Settings styles
+  settingsHeader: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  settingsTitle: {
+    fontSize: 24,
+    fontFamily: 'Lexend_600SemiBold',
+  },
+  settingsContent: {
+    flex: 1,
+  },
+  settingItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+  },
+  settingInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  settingLabel: {
+    fontSize: 16,
+    fontFamily: 'Lexend_500Medium',
+    marginBottom: 4,
+  },
+  settingDescription: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 20,
+  },
+  toggle: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#666',
+    justifyContent: 'center',
+    padding: 2,
+  },
+  toggleActive: {
+    backgroundColor: '#4D96FF',
+  },
+  toggleThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#fff',
+  },
+  toggleThumbActive: {
+    alignSelf: 'flex-end',
   },
 });
