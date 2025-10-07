@@ -129,6 +129,7 @@ function CoApp() {
 
   const toolCallMsgIdsRef = useRef<Map<string, string>>(new Map());
   const toolReturnMsgIdsRef = useRef<Map<string, string>>(new Map());
+  const pendingReasoningRef = useRef<string>(''); // Store reasoning for next tool call
 
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
@@ -513,8 +514,13 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       // Add to buffer for smooth character-by-character reveal
       reasoningBufferRef.current += chunk.reasoning;
     } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
-      // Tool call: flush accumulated content, then add tool call as standalone message
-      flushStreamingContent();
+      // Tool call: save accumulated reasoning for attachment to tool call, don't flush content yet
+      const accumulatedReasoning = streamingReasoningRef.current + reasoningBufferRef.current;
+
+      // Save reasoning for the first tool call
+      if (accumulatedReasoning && !pendingReasoningRef.current) {
+        pendingReasoningRef.current = accumulatedReasoning;
+      }
 
       const callObj = chunk.tool_call.function || chunk.tool_call;
       const toolName = callObj?.name || callObj?.tool_name || 'tool';
@@ -538,17 +544,28 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           return prev.map(m => m.id === existingId ? { ...m, content: toolLine } : m);
         }
 
-        // Create new tool call message
+        // Create new tool call message with reasoning attached to the first tool call
         const newId = `toolcall-${stepId}-${Date.now()}`;
+        const isFirstToolCall = toolCallMsgIdsRef.current.size === 0;
         toolCallMsgIdsRef.current.set(stepId, newId);
+
         return [...prev, {
           id: newId,
           role: 'tool',
           content: toolLine,
           created_at: new Date().toISOString(),
           message_type: chunk.message_type,
+          reasoning: isFirstToolCall ? pendingReasoningRef.current : undefined,
+          step_id: stepId,
         }];
       });
+
+      // Clear reasoning and streaming state after attaching to first tool call
+      if (toolCallMsgIdsRef.current.size === 1 && pendingReasoningRef.current) {
+        setStreamingReasoning('');
+        reasoningBufferRef.current = '';
+        streamingReasoningRef.current = '';
+      }
 
       setStreamingStep(`Calling ${toolName}...`);
     } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
@@ -640,10 +657,15 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       id: `temp-${Date.now()}`,
       role: 'user',
       content: tempMessageContent,
-      date: new Date().toISOString(),
+      created_at: new Date().toISOString(),
     } as LettaMessage;
 
-    setMessages(prev => [...prev, tempUserMessage]);
+    console.log('[USER MESSAGE] Adding temp user message:', tempUserMessage.id, 'content type:', typeof tempUserMessage.content);
+    setMessages(prev => {
+      const newMessages = [...prev, tempUserMessage];
+      console.log('[USER MESSAGE] Messages count after add:', newMessages.length);
+      return newMessages;
+    });
 
     // Scroll to bottom immediately to show user message
     setTimeout(() => {
@@ -771,6 +793,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
       toolCallMsgIdsRef.current.clear();
       toolReturnMsgIdsRef.current.clear();
+      pendingReasoningRef.current = '';
 
       // Build message content based on whether we have images
       let messageContent: any;
@@ -1497,32 +1520,67 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     const toolCallsMap = new Map<string, LettaMessage>();
     const processedIds = new Set<string>();
 
-    messages.forEach(msg => {
+    // Log raw messages
+    console.log('=== MESSAGE GROUPING DEBUG ===');
+    console.log('Raw messages count:', messages.length);
+    messages.forEach((msg, idx) => {
+      console.log(`[${idx}] ${msg.created_at} | ${msg.role} | ${msg.message_type || 'no-type'} | id:${msg.id.substring(0, 8)} | step:${msg.step_id || 'none'}`);
+    });
+
+    // Sort messages by created_at timestamp to ensure correct chronological order
+    const sortedMessages = [...messages].sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeA - timeB;
+    });
+
+    console.log('\nSorted messages:');
+    sortedMessages.forEach((msg, idx) => {
+      console.log(`[${idx}] ${msg.created_at} | ${msg.role} | ${msg.message_type || 'no-type'} | id:${msg.id.substring(0, 8)} | step:${msg.step_id || 'none'}`);
+    });
+
+    sortedMessages.forEach(msg => {
       if (msg.message_type?.includes('tool_call') && msg.step_id) {
+        console.log(`Adding to toolCallsMap: step_id=${msg.step_id}, msg_id=${msg.id.substring(0, 8)}`);
         toolCallsMap.set(msg.step_id, msg);
       }
     });
+
+    console.log(`\nToolCallsMap size: ${toolCallsMap.size}`);
 
     // Build a map to find reasoning messages that precede tool calls
     const reasoningBeforeToolCall = new Map<string, string>();
     const reasoningMessagesToSkip = new Set<string>();
 
-    for (let i = 0; i < messages.length - 1; i++) {
-      const current = messages[i];
-      const next = messages[i + 1];
+    console.log('\nChecking for reasoning messages that precede tool calls:');
+    for (let i = 0; i < sortedMessages.length - 1; i++) {
+      const current = sortedMessages[i];
+      const next = sortedMessages[i + 1];
 
       // If current message has reasoning and next is a tool_call, associate them
+      // BUT only skip the current message if it's NOT a tool_call or tool_return itself
       if (current.reasoning && next.message_type?.includes('tool_call') && next.id) {
-        reasoningBeforeToolCall.set(next.id, current.reasoning);
-        reasoningMessagesToSkip.add(current.id); // Mark this message to skip
+        const isToolMessage = current.message_type?.includes('tool_call') || current.message_type?.includes('tool_return');
+        if (!isToolMessage) {
+          console.log(`Marking to skip: [${i}] ${current.message_type} ${current.id.substring(0, 8)} (has reasoning, precedes tool_call at [${i+1}])`);
+          reasoningBeforeToolCall.set(next.id, current.reasoning);
+          reasoningMessagesToSkip.add(current.id); // Mark this message to skip
+        } else {
+          console.log(`NOT skipping: [${i}] ${current.message_type} ${current.id.substring(0, 8)} (is a tool message, even though it has reasoning)`);
+        }
       }
     }
+    console.log(`Total messages to skip: ${reasoningMessagesToSkip.size}`);
 
-    messages.forEach(msg => {
-      if (processedIds.has(msg.id)) return;
+    sortedMessages.forEach(msg => {
+      if (processedIds.has(msg.id)) {
+        console.log(`Skipping already processed: ${msg.id.substring(0, 8)} ${msg.message_type} step:${msg.step_id || 'none'}`);
+        return;
+      }
 
       // Skip reasoning messages that precede tool calls
       if (reasoningMessagesToSkip.has(msg.id)) {
+        console.log(`Skipping reasoning message: ${msg.id.substring(0, 8)} ${msg.message_type}`);
         processedIds.add(msg.id);
         return;
       }
@@ -1536,22 +1594,26 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       // Filter out login/heartbeat messages
       if (msg.role === 'user' && msg.content) {
         try {
-          const parsed = JSON.parse(msg.content);
+          const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          const parsed = JSON.parse(contentStr);
           if (parsed?.type === 'login' || parsed?.type === 'heartbeat') {
+            console.log(`Filtering out ${parsed.type} message:`, msg.id.substring(0, 8));
             processedIds.add(msg.id);
             return;
           }
         } catch {
-          // Not JSON, keep the message
+          // Not JSON or array content, keep the message
         }
       }
 
       if (msg.message_type?.includes('tool_return') && msg.step_id) {
+        console.log(`Processing tool_return: step_id=${msg.step_id}, has toolCall in map:`, toolCallsMap.has(msg.step_id));
         const toolCall = toolCallsMap.get(msg.step_id);
         if (toolCall) {
-          // Get reasoning from the message that preceded the tool call
-          const reasoning = reasoningBeforeToolCall.get(toolCall.id);
+          // Get reasoning from the message that preceded the tool call, or from the tool call itself
+          const reasoning = reasoningBeforeToolCall.get(toolCall.id) || toolCall.reasoning;
 
+          console.log(`Adding toolPair group: ${toolCall.id.substring(0, 8)} step:${msg.step_id} with reasoning:`, !!reasoning);
           groups.push({
             key: toolCall.id,
             type: 'toolPair',
@@ -1562,10 +1624,13 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           processedIds.add(toolCall.id);
           processedIds.add(msg.id);
           return;
+        } else {
+          console.log(`WARN: tool_return with step_id ${msg.step_id} but no matching tool_call in map!`);
         }
       }
 
       if (!msg.message_type?.includes('tool_call') && !msg.message_type?.includes('tool_return')) {
+        console.log(`Adding message group: ${msg.id.substring(0, 8)} role:${msg.role} reasoning:${!!msg.reasoning}`);
         groups.push({
           key: msg.id,
           type: 'message',
@@ -1579,7 +1644,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     // Add any unpaired tool calls (tool calls without a matching return yet)
     toolCallsMap.forEach((toolCall) => {
       if (!processedIds.has(toolCall.id)) {
-        const reasoning = reasoningBeforeToolCall.get(toolCall.id);
+        const reasoning = reasoningBeforeToolCall.get(toolCall.id) || toolCall.reasoning;
+        console.log(`Adding unpaired toolPair: ${toolCall.id.substring(0, 8)} with reasoning:`, !!reasoning);
         groups.push({
           key: toolCall.id,
           type: 'toolPair',
@@ -1590,6 +1656,16 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         processedIds.add(toolCall.id);
       }
     });
+
+    console.log('\nFinal groups order:');
+    groups.forEach((g, idx) => {
+      if (g.type === 'toolPair') {
+        console.log(`[${idx}] toolPair - ${g.key.substring(0, 8)} reasoning:${!!g.reasoning}`);
+      } else {
+        console.log(`[${idx}] message - ${g.message.role} ${g.key.substring(0, 8)} reasoning:${!!g.reasoning}`);
+      }
+    });
+    console.log('=== END DEBUG ===\n');
 
     return groups;
   }, [messages]);
