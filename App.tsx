@@ -36,6 +36,7 @@ import ExpandableMessageContent from './src/components/ExpandableMessageContent'
 import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
 import ReasoningToggle from './src/components/ReasoningToggle';
+import LiveStatusIndicator from './src/components/LiveStatusIndicator';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
 import MessageInput from './src/components/MessageInput';
 import { createMarkdownStyles } from './src/components/markdownStyles';
@@ -2329,21 +2330,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
                   {/* Show current status when streaming */}
                   {!streamingMessage && (
-                    <Animated.View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 12, opacity: statusFadeAnim }}>
-                      <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.primary }}>(</Text>
-                      <Animated.Text
-                        style={{
-                          fontSize: 24,
-                          fontFamily: 'Lexend_700Bold',
-                          color: rainbowAnimValue.interpolate({
-                            inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                            outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-                          })
-                        }}
-                      >
-                        co
-                      </Animated.Text>
-                      <Text style={{ fontSize: 24, fontFamily: 'Lexend_400Regular', color: darkTheme.colors.text.primary }}> is {currentStreamingStatus})</Text>
+                    <Animated.View style={{ opacity: statusFadeAnim }}>
+                      <LiveStatusIndicator status={currentStreamingStatus} />
                     </Animated.View>
                   )}
 
@@ -2369,22 +2357,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   )}
                   {streamingMessage && (
                     <>
-                      <View style={{ flexDirection: 'row', alignItems: 'baseline', paddingVertical: 4, marginBottom: 8 }}>
-                        <Text style={{ fontSize: 14, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}>(</Text>
-                        <Animated.Text
-                          style={{
-                            fontSize: 14,
-                            fontFamily: 'Lexend_600SemiBold',
-                            color: rainbowAnimValue.interpolate({
-                              inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-                              outputRange: ['#FF6B6B', '#FFD93D', '#6BCF7F', '#4D96FF', '#9D4EDD', '#FF6B6B']
-                            })
-                          }}
-                        >
-                          co
-                        </Animated.Text>
-                        <Text style={{ fontSize: 14, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}> is saying)</Text>
-                      </View>
+                      <LiveStatusIndicator status="saying" />
                       <View style={{ flex: 1 }}>
                         <MessageContent
                           content={streamingMessage}
