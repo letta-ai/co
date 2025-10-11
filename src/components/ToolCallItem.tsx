@@ -8,6 +8,7 @@ interface ToolCallItemProps {
   callText: string;
   resultText?: string;
   reasoning?: string;
+  hasResult?: boolean;
 }
 
 // Extract parameters for contextual display
@@ -23,34 +24,45 @@ const extractParams = (callText: string): Record<string, any> => {
 };
 
 // Map tool names to friendly display messages
-const getToolDisplayName = (toolName: string, callText: string): string => {
+const getToolDisplayName = (toolName: string, callText: string, hasResult: boolean): { present: string; past: string } => {
   const params = extractParams(callText);
 
   if (toolName === 'web_search' && params.query) {
-    return `Searching the web for "${params.query}"`;
+    const query = params.query.length > 50 ? params.query.substring(0, 50) + '...' : params.query;
+    return {
+      present: `co is searching the web for "${query}"`,
+      past: `co searched for "${query}"`
+    };
   }
 
   if (toolName === 'conversation_search' && params.query) {
-    return `Searching conversation history for "${params.query}"`;
+    const query = params.query.length > 50 ? params.query.substring(0, 50) + '...' : params.query;
+    return {
+      present: `co is searching conversation history for "${query}"`,
+      past: `co searched conversation history for "${query}"`
+    };
   }
 
   if (toolName === 'fetch_webpage' && params.url) {
     const url = params.url.length > 50 ? params.url.substring(0, 50) + '...' : params.url;
-    return `Fetching ${url}`;
+    return {
+      present: `co is fetching ${url}`,
+      past: `co fetched ${url}`
+    };
   }
 
-  const displayNames: Record<string, string> = {
-    web_search: 'Searching the web',
-    fetch_webpage: 'Fetching webpage',
-    memory_insert: 'Inserting into memory',
-    memory_replace: 'Updating memory',
-    conversation_search: 'Searching conversation history',
-    send_message: 'Sending message',
+  const displayNames: Record<string, { present: string; past: string }> = {
+    web_search: { present: 'co is searching the web', past: 'co searched the web' },
+    fetch_webpage: { present: 'co is fetching webpage', past: 'co fetched webpage' },
+    memory_insert: { present: 'co is inserting into memory', past: 'co inserted into memory' },
+    memory_replace: { present: 'co is updating memory', past: 'co updated memory' },
+    conversation_search: { present: 'co is searching conversation history', past: 'co searched conversation history' },
+    send_message: { present: 'co is sending message', past: 'co sent message' },
   };
-  return displayNames[toolName] || toolName;
+  return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning, hasResult = false }) => {
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
 
@@ -61,8 +73,9 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
     return m ? m[1] : '';
   }, [callText]);
 
-  // Get friendly display name
-  const displayName = useMemo(() => getToolDisplayName(toolName, callText), [toolName, callText]);
+  // Get friendly display names
+  const displayNames = useMemo(() => getToolDisplayName(toolName, callText, hasResult), [toolName, callText, hasResult]);
+  const displayText = hasResult ? displayNames.past : displayNames.present;
 
   // Try to parse a "name({json})" or "name(k=v, ...)" shape into
   // a nicer multiline representation for readability.
@@ -123,19 +136,19 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
     <View style={styles.container}>
       {reasoning && <ReasoningToggle reasoning={reasoning} />}
       <TouchableOpacity
-        style={[styles.header, expanded && !resultText && styles.headerExpanded, expanded && resultText && styles.headerExpandedWithResult]}
+        style={styles.header}
         onPress={() => setExpanded((e) => !e)}
         activeOpacity={0.7}
       >
+        <Text style={expanded ? styles.callText : styles.displayName} numberOfLines={expanded ? 0 : 1}>
+          {expanded ? prettyCallText : `(${displayText})`}
+        </Text>
         <Ionicons
-          name={expanded ? 'chevron-down' : 'chevron-forward'}
-          size={14}
-          color={darkTheme.colors.text.secondary}
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={darkTheme.colors.text.tertiary}
           style={styles.chevron}
         />
-        <Text style={expanded ? styles.callText : styles.displayName} numberOfLines={expanded ? 0 : 1}>
-          {expanded ? prettyCallText : displayName}
-        </Text>
       </TouchableOpacity>
       {expanded && !!resultText && (
         <TouchableOpacity
@@ -167,30 +180,17 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    backgroundColor: '#242424',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    alignItems: 'center',
+    paddingVertical: 4,
+    marginBottom: 8,
   },
   chevron: {
-    marginTop: 2,
-  },
-  headerExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-  },
-  headerExpandedWithResult: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+    marginLeft: 4,
   },
   displayName: {
-    color: darkTheme.colors.text.primary,
     fontSize: 14,
-    lineHeight: 20,
+    fontFamily: 'Lexend_500Medium',
+    color: darkTheme.colors.text.secondary,
     flexShrink: 1,
   },
   callText: {

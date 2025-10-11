@@ -53,7 +53,7 @@ const ReasoningToggle: React.FC<ReasoningToggleProps> = ({
           customToggleContent
         ) : (
           <>
-            <Text style={styles.reasoningToggleText}>Reasoning</Text>
+            <Text style={styles.reasoningToggleText}>(co thought)</Text>
             {!hideChevron && (
               <Ionicons
                 name={isExpanded ? "chevron-up" : "chevron-down"}
