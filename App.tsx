@@ -2344,10 +2344,10 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                       onToggle={() => toggleReasoning('streaming')}
                       customToggleContent={
                         <>
-                          <Text style={{ fontSize: 14, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}>(co thought)</Text>
+                          <Text style={{ fontSize: 16, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}>(co thought)</Text>
                           <Ionicons
                             name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
-                            size={16}
+                            size={18}
                             style={{ marginLeft: 4 }}
                             color={darkTheme.colors.text.tertiary}
                           />

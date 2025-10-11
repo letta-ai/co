@@ -145,7 +145,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
         </Text>
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={16}
+          size={18}
           color={darkTheme.colors.text.tertiary}
           style={styles.chevron}
         />
@@ -188,7 +188,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   displayName: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Lexend_500Medium',
     color: darkTheme.colors.text.secondary,
     flexShrink: 1,

@@ -49,16 +49,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     paddingVertical: 4,
-    marginBottom: 8,
+    marginBottom: 12,
   },
   text: {
-    fontSize: 14,
-    fontFamily: 'Lexend_500Medium',
-    color: darkTheme.colors.text.secondary,
+    fontSize: 24,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.primary,
   },
   coText: {
-    fontSize: 14,
-    fontFamily: 'Lexend_600SemiBold',
+    fontSize: 24,
+    fontFamily: 'Lexend_700Bold',
   },
 });
 

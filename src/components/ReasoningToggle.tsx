@@ -57,7 +57,7 @@ const ReasoningToggle: React.FC<ReasoningToggleProps> = ({
             {!hideChevron && (
               <Ionicons
                 name={isExpanded ? "chevron-up" : "chevron-down"}
-                size={16}
+                size={18}
                 color={darkTheme.colors.text.tertiary}
                 style={{ marginLeft: 4 }}
               />
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   reasoningToggleText: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: 'Lexend_500Medium',
     color: darkTheme.colors.text.secondary,
   },
