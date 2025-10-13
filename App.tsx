@@ -630,6 +630,9 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           message_type: chunk.message_type,
         }];
       });
+
+      // Reset status back to thinking after tool completes
+      setCurrentStreamingStatus('thinking');
     } else if (chunk.message_type === 'approval_request_message') {
       // Handle approval request - flush content first
       flushStreamingContent();
@@ -1852,7 +1855,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 />
               </TouchableOpacity>
             </View>
-            <View style={styles.messageSeparator} />
           </View>
         );
       }
@@ -2328,14 +2330,16 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             <>
               {isStreaming && (
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
-                  {/* Show current status when streaming */}
-                  {!streamingMessage && (
-                    <Animated.View style={{ opacity: statusFadeAnim }}>
-                      <LiveStatusIndicator status={currentStreamingStatus} />
-                    </Animated.View>
+                  {/* Show live status only when we have reasoning but no message yet */}
+                  {streamingReasoning && !streamingMessage && (
+                    <>
+                      <Animated.View style={{ opacity: statusFadeAnim }}>
+                        <LiveStatusIndicator status="thinking" />
+                      </Animated.View>
+                    </>
                   )}
 
-                  {/* Show completed reasoning toggle */}
+                  {/* Show completed reasoning toggle when message starts */}
                   {streamingReasoning && streamingMessage && (
                     <ReasoningToggle
                       reasoning={streamingReasoning}
@@ -3660,12 +3664,7 @@ const styles = StyleSheet.create({
     opacity: 0.3,
     borderRadius: 4,
   },
-  messageSeparator: {
-    height: 1,
-    backgroundColor: darkTheme.colors.border.primary,
-    marginTop: 16,
-    opacity: 0.8,
-  },
+
   // Modal styles
   modalOverlay: {
     position: 'absolute',
