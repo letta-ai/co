@@ -2143,7 +2143,9 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   {/* Show assistant message if we have it */}
                   {currentStream.assistantMessage && (
                     <>
-                      <LiveStatusIndicator status="saying" />
+                      <View style={currentStream.toolCalls.length > 0 ? { marginTop: 16 } : undefined}>
+                        <LiveStatusIndicator status="saying" />
+                      </View>
                       <View style={{ flex: 1 }}>
                         <MessageContent
                           content={currentStream.assistantMessage}
