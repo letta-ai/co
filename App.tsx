@@ -506,6 +506,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       // Reasoning is complete, assistant message has started
       setIsReasoningStreaming(false);
 
+      // On first assistant message chunk, finalize the previous reasoning
+      if (currentReasoningIdRef.current) {
+        currentReasoningIdRef.current = null;
+      }
+
       // Extract text from content if it's an object
       let contentText = '';
       if (typeof chunk.content === 'string') {
@@ -528,12 +533,12 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         setStreamingStep('');
       }
     } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Accumulate reasoning content
-      streamingReasoningRef.current += chunk.reasoning;
-      setStreamingReasoning(prev => prev + chunk.reasoning);
-
       // Create or update reasoning message
       if (!currentReasoningIdRef.current) {
+        // Starting a NEW reasoning block - reset accumulation
+        streamingReasoningRef.current = chunk.reasoning;
+        setStreamingReasoning(chunk.reasoning);
+
         const reasoningId = `reasoning-${Date.now()}`;
         currentReasoningIdRef.current = reasoningId;
         setMessages(prev => [...prev, {
@@ -545,6 +550,10 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           created_at: new Date().toISOString(),
         }]);
       } else {
+        // Continue accumulating in existing reasoning block
+        streamingReasoningRef.current += chunk.reasoning;
+        setStreamingReasoning(prev => prev + chunk.reasoning);
+
         // Update existing reasoning message
         setMessages(prev => prev.map(m =>
           m.id === currentReasoningIdRef.current
