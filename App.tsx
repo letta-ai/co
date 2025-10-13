@@ -1292,6 +1292,21 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
   const [expandedCompaction, setExpandedCompaction] = useState<Set<string>>(new Set());
   const [expandedToolReturns, setExpandedToolReturns] = useState<Set<string>>(new Set());
 
+  // Auto-expand reasoning blocks by default
+  useEffect(() => {
+    const reasoningMessageIds = messages
+      .filter(msg => msg.reasoning && msg.reasoning.trim().length > 0)
+      .map(msg => msg.id);
+
+    if (reasoningMessageIds.length > 0) {
+      setExpandedReasoning(prev => {
+        const next = new Set(prev);
+        reasoningMessageIds.forEach(id => next.add(id));
+        return next;
+      });
+    }
+  }, [messages]);
+
   // Animate sidebar
   useEffect(() => {
     Animated.timing(sidebarAnimRef, {
