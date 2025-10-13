@@ -96,7 +96,7 @@ function CoApp() {
   // Simplified streaming state - everything in one place
   const [currentStream, setCurrentStream] = useState({
     reasoning: '',
-    toolCalls: [] as Array<{name: string, args: string}>,
+    toolCalls: [] as Array<{id: string, name: string, args: string}>,
     assistantMessage: '',
   });
   const [isStreaming, setIsStreaming] = useState(false);
@@ -468,10 +468,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         reasoning: prev.reasoning + chunk.reasoning
       }));
     } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
-      // Add tool call to list
+      // Add tool call to list (deduplicate by ID)
       const callObj = chunk.tool_call.function || chunk.tool_call;
       const toolName = callObj?.name || callObj?.tool_name || 'tool';
       const args = callObj?.arguments || callObj?.args || {};
+      const toolCallId = chunk.id || `tool_${toolName}_${Date.now()}`;
 
       const formatArgsPython = (obj: any): string => {
         if (!obj || typeof obj !== 'object') return '';
@@ -482,10 +483,17 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
       const toolLine = `${toolName}(${formatArgsPython(args)})`;
 
-      setCurrentStream(prev => ({
-        ...prev,
-        toolCalls: [...prev.toolCalls, { name: toolName, args: toolLine }]
-      }));
+      setCurrentStream(prev => {
+        // Check if this tool call ID already exists
+        const exists = prev.toolCalls.some(tc => tc.id === toolCallId);
+        if (exists) {
+          return prev; // Don't add duplicates
+        }
+        return {
+          ...prev,
+          toolCalls: [...prev.toolCalls, { id: toolCallId, name: toolName, args: toolLine }]
+        };
+      });
     } else if (chunk.message_type === 'assistant_message' && chunk.content) {
       // Accumulate assistant message
       let contentText = '';
@@ -2126,8 +2134,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   )}
 
                   {/* Show tool calls if we have any */}
-                  {currentStream.toolCalls.map((toolCall, idx) => (
-                    <View key={idx} style={styles.messageContainer}>
+                  {currentStream.toolCalls.map((toolCall) => (
+                    <View key={toolCall.id} style={styles.messageContainer}>
                       <ToolCallItem
                         callText={toolCall.args}
                         hasResult={false}
