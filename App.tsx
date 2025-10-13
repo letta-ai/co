@@ -1626,25 +1626,27 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 onToggle={() => toggleReasoning(msg.id)}
               />
             )}
-            <ExpandableMessageContent
-              content={msg.content}
-              isUser={isUser}
-              isDark={colorScheme === 'dark'}
-              lineLimit={20}
-            />
-            <View style={styles.copyButtonContainer}>
-              <TouchableOpacity
-                onPress={() => copyToClipboard(msg.content, msg.id)}
-                style={styles.copyButton}
-                activeOpacity={0.7}
-                testID="copy-button"
-              >
-                <Ionicons
-                  name={copiedMessageId === msg.id ? "checkmark-outline" : "copy-outline"}
-                  size={16}
-                  color={copiedMessageId === msg.id ? (colorScheme === 'dark' ? darkTheme : lightTheme).colors.interactive.primary : (colorScheme === 'dark' ? darkTheme : lightTheme).colors.text.tertiary}
-                />
-              </TouchableOpacity>
+            <View style={{ position: 'relative' }}>
+              <ExpandableMessageContent
+                content={msg.content}
+                isUser={isUser}
+                isDark={colorScheme === 'dark'}
+                lineLimit={20}
+              />
+              <View style={styles.copyButtonContainer}>
+                <TouchableOpacity
+                  onPress={() => copyToClipboard(msg.content, msg.id)}
+                  style={styles.copyButton}
+                  activeOpacity={0.7}
+                  testID="copy-button"
+                >
+                  <Ionicons
+                    name={copiedMessageId === msg.id ? "checkmark-outline" : "copy-outline"}
+                    size={16}
+                    color={copiedMessageId === msg.id ? (colorScheme === 'dark' ? darkTheme : lightTheme).colors.interactive.primary : (colorScheme === 'dark' ? darkTheme : lightTheme).colors.text.tertiary}
+                  />
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         );
@@ -3427,9 +3429,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   copyButtonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: 4,
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    zIndex: 10,
   },
   copyButton: {
     padding: 8,
