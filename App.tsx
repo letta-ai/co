@@ -2125,14 +2125,9 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
                   {/* Streaming Block - show all current stream content */}
 
-                  {/* Show reasoning if we have it */}
-                  {currentStream.reasoning && (
-                    <ReasoningToggle
-                      reasoning={currentStream.reasoning}
-                      messageId="streaming"
-                      isExpanded={expandedReasoning.has('streaming')}
-                      onToggle={() => toggleReasoning('streaming')}
-                    />
+                  {/* Show thinking indicator while reasoning is streaming */}
+                  {currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
+                    <LiveStatusIndicator status="thinking" />
                   )}
 
                   {/* Show tool calls if we have any */}
