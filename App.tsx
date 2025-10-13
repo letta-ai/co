@@ -93,23 +93,18 @@ function CoApp() {
   const [clearInputTrigger, setClearInputTrigger] = useState(0);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
 
-  // Streaming state
-  const [streamingMessage, setStreamingMessage] = useState<string>('');
+  // Simplified streaming state - everything in one place
+  const [currentStream, setCurrentStream] = useState({
+    reasoning: '',
+    toolCalls: [] as Array<{name: string, args: string}>,
+    assistantMessage: '',
+  });
   const [isStreaming, setIsStreaming] = useState(false);
-  const [streamingStep, setStreamingStep] = useState<string>('');
-  const [streamingMessageId, setStreamingMessageId] = useState<string>('');
-  const [streamingReasoning, setStreamingReasoning] = useState<string>('');
-  const [isReasoningStreaming, setIsReasoningStreaming] = useState(false);
   const [lastMessageNeedsSpace, setLastMessageNeedsSpace] = useState(false);
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
-  const streamCompleteRef = useRef(false);
   const rainbowAnimValue = useRef(new Animated.Value(0)).current;
   const [isInputFocused, setIsInputFocused] = useState(false);
-  const [currentStreamingStatus, setCurrentStreamingStatus] = useState<string>('thinking');
   const statusFadeAnim = useRef(new Animated.Value(0)).current;
-
-  // Streaming state
-  const streamingReasoningRef = useRef<string>('');
   const scrollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // HITL approval state
@@ -122,10 +117,6 @@ function CoApp() {
   } | null>(null);
   const [approvalReason, setApprovalReason] = useState('');
   const [isApproving, setIsApproving] = useState(false);
-
-  const toolCallMsgIdsRef = useRef<Map<string, string>>(new Map());
-  const toolReturnMsgIdsRef = useRef<Map<string, string>>(new Map());
-  const currentReasoningIdRef = useRef<string | null>(null);
 
   // Layout state for responsive design
   const [screenData, setScreenData] = useState(Dimensions.get('window'));
@@ -451,31 +442,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     setSelectedImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Helper to flush accumulated streaming content into a message
-  const flushStreamingContent = useCallback(() => {
-    const accumulatedMessage = streamingMessage;
-    const accumulatedReasoning = streamingReasoningRef.current;
-
-    if (accumulatedMessage || accumulatedReasoning) {
-      const newMessage: LettaMessage = {
-        id: streamingMessageId || `msg_${Date.now()}`,
-        role: 'assistant',
-        message_type: 'assistant_message',
-        content: accumulatedMessage,
-        created_at: new Date().toISOString(),
-        reasoning: accumulatedReasoning || undefined,
-      };
-
-      setMessages(prev => [...prev, newMessage]);
-
-      // Clear streaming state
-      setStreamingMessage('');
-      setStreamingReasoning('');
-      streamingReasoningRef.current = '';
-      setStreamingMessageId('');
-    }
-  }, [streamingMessage, streamingMessageId]);
-
   const handleStreamingChunk = useCallback((chunk: StreamingChunk) => {
     console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content, 'reasoning:', chunk.reasoning);
 
@@ -484,92 +450,29 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       console.error('Error chunk received:', (chunk as any).error);
       setIsStreaming(false);
       setIsSendingMessage(false);
-      setStreamingMessage('');
-      setStreamingReasoning('');
-      setIsReasoningStreaming(false);
+      setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
       return;
     }
 
     // Handle stop_reason chunks
-    if (chunk.message_type === 'stop_reason') {
+    if ((chunk as any).message_type === 'stop_reason') {
       console.log('Stop reason received:', (chunk as any).stopReason || (chunk as any).stop_reason);
-      streamCompleteRef.current = true;
       return;
     }
 
-    // Capture message ID if present
-    if (chunk.id && !streamingMessageId) {
-      setStreamingMessageId(chunk.id);
-    }
-
-    if (chunk.message_type === 'assistant_message' && chunk.content) {
-      // Reasoning is complete, assistant message has started
-      setIsReasoningStreaming(false);
-
-      // On first assistant message chunk, finalize the previous reasoning
-      if (currentReasoningIdRef.current) {
-        currentReasoningIdRef.current = null;
-      }
-
-      // Extract text from content if it's an object
-      let contentText = '';
-      if (typeof chunk.content === 'string') {
-        contentText = chunk.content;
-      } else if (typeof chunk.content === 'object' && chunk.content !== null) {
-        // Handle content array from Letta SDK
-        if (Array.isArray(chunk.content)) {
-          contentText = chunk.content
-            .filter((item: any) => item.type === 'text')
-            .map((item: any) => item.text || '')
-            .join('');
-        } else if (chunk.content.text) {
-          contentText = chunk.content.text;
-        }
-      }
-
-      if (contentText) {
-        // Display content immediately for maximum speed
-        setStreamingMessage(prev => prev + contentText);
-        setStreamingStep('');
-      }
-    } else if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Create or update reasoning message
-      if (!currentReasoningIdRef.current) {
-        // Starting a NEW reasoning block - reset accumulation
-        streamingReasoningRef.current = chunk.reasoning;
-        setStreamingReasoning(chunk.reasoning);
-
-        const reasoningId = `reasoning-${Date.now()}`;
-        currentReasoningIdRef.current = reasoningId;
-        setMessages(prev => [...prev, {
-          id: reasoningId,
-          role: 'assistant',
-          message_type: 'reasoning_message',
-          content: '',
-          reasoning: streamingReasoningRef.current,
-          created_at: new Date().toISOString(),
-        }]);
-      } else {
-        // Continue accumulating in existing reasoning block
-        streamingReasoningRef.current += chunk.reasoning;
-        setStreamingReasoning(prev => prev + chunk.reasoning);
-
-        // Update existing reasoning message
-        setMessages(prev => prev.map(m =>
-          m.id === currentReasoningIdRef.current
-            ? { ...m, reasoning: streamingReasoningRef.current }
-            : m
-        ));
-      }
+    // Simple accumulation - no message creation during streaming
+    if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
+      // Accumulate reasoning
+      setCurrentStream(prev => ({
+        ...prev,
+        reasoning: prev.reasoning + chunk.reasoning
+      }));
     } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
-      // Clear reasoning tracking when we hit a tool call
-      currentReasoningIdRef.current = null;
-
+      // Add tool call to list
       const callObj = chunk.tool_call.function || chunk.tool_call;
       const toolName = callObj?.name || callObj?.tool_name || 'tool';
       const args = callObj?.arguments || callObj?.args || {};
 
-      // Format args for display
       const formatArgsPython = (obj: any): string => {
         if (!obj || typeof obj !== 'object') return '';
         return Object.entries(obj)
@@ -578,74 +481,39 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       };
 
       const toolLine = `${toolName}(${formatArgsPython(args)})`;
-      const stepId = (chunk as any).step ? String((chunk as any).step) : 'no-step';
 
-      // Update streaming status based on tool name
-      const statusMap: Record<string, string> = {
-        'web_search': 'searching the web',
-        'conversation_search': 'searching conversation history',
-        'fetch_webpage': 'fetching webpage',
-        'memory_insert': 'inserting into memory',
-        'memory_replace': 'updating memory',
-        'send_message': 'sending message',
-      };
-      setCurrentStreamingStatus(statusMap[toolName] || `calling ${toolName}`);
-
-      setMessages(prev => {
-        const existingId = toolCallMsgIdsRef.current.get(stepId);
-        if (existingId) {
-          // Update existing tool call message
-          return prev.map(m => m.id === existingId ? { ...m, content: toolLine } : m);
+      setCurrentStream(prev => ({
+        ...prev,
+        toolCalls: [...prev.toolCalls, { name: toolName, args: toolLine }]
+      }));
+    } else if (chunk.message_type === 'assistant_message' && chunk.content) {
+      // Accumulate assistant message
+      let contentText = '';
+      const content = chunk.content as any;
+      if (typeof content === 'string') {
+        contentText = content;
+      } else if (typeof content === 'object' && content !== null) {
+        if (Array.isArray(content)) {
+          contentText = content
+            .filter((item: any) => item.type === 'text')
+            .map((item: any) => item.text || '')
+            .join('');
+        } else if (content.text) {
+          contentText = content.text;
         }
+      }
 
-        // Create new tool call message
-        const newId = `toolcall-${stepId}-${Date.now()}`;
-        toolCallMsgIdsRef.current.set(stepId, newId);
-
-        return [...prev, {
-          id: newId,
-          role: 'tool',
-          content: toolLine,
-          created_at: new Date().toISOString(),
-          message_type: chunk.message_type,
-          step_id: stepId,
-        }];
-      });
+      if (contentText) {
+        setCurrentStream(prev => ({
+          ...prev,
+          assistantMessage: prev.assistantMessage + contentText
+        }));
+      }
     } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
-      // Tool return: add as standalone message
-      const result = (chunk as any).tool_response || (chunk as any).toolReturn || (chunk as any).result;
-      let resultStr = '';
-      try {
-        resultStr = typeof result === 'string' ? result : JSON.stringify(result);
-      } catch {}
-
-      const stepId = (chunk as any).step ? String((chunk as any).step) : 'no-step';
-
-      setMessages(prev => {
-        const existingId = toolReturnMsgIdsRef.current.get(stepId);
-        if (existingId) {
-          // Update existing tool return message
-          return prev.map(m => m.id === existingId ? { ...m, content: resultStr } : m);
-        }
-
-        // Create new tool return message
-        const newId = `toolret-${stepId}-${Date.now()}`;
-        toolReturnMsgIdsRef.current.set(stepId, newId);
-        return [...prev, {
-          id: newId,
-          role: 'tool',
-          content: resultStr,
-          created_at: new Date().toISOString(),
-          message_type: chunk.message_type,
-        }];
-      });
-
-      // Reset status back to thinking after tool completes
-      setCurrentStreamingStatus('thinking');
+      // Ignore tool returns during streaming - we'll get them from server
+      return;
     } else if (chunk.message_type === 'approval_request_message') {
-      // Handle approval request - flush content first
-      flushStreamingContent();
-
+      // Handle approval request
       const callObj = chunk.tool_call?.function || chunk.tool_call;
       setApprovalData({
         id: chunk.id,
@@ -655,7 +523,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       });
       setApprovalVisible(true);
     }
-  }, [streamingMessageId, flushStreamingContent]);
+  }, []);
 
   const sendMessage = useCallback(async (messageText: string, imagesToSend: Array<{ uri: string; base64: string; mediaType: string }>) => {
     if ((!messageText.trim() && imagesToSend.length === 0) || !coAgent || isSendingMessage) return;
@@ -720,15 +588,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     try {
       setIsStreaming(true);
       setLastMessageNeedsSpace(true);
-      setStreamingMessage('');
-      setStreamingStep('');
-      setStreamingMessageId('');
-      setStreamingReasoning('');
-      setIsReasoningStreaming(true);
-      setExpandedReasoning(prev => new Set(prev).add('streaming'));
-      streamingReasoningRef.current = '';
-      streamCompleteRef.current = false;
-      setCurrentStreamingStatus('thinking');
+      // Clear streaming state
+      setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
 
       // Fade in the status indicator
       statusFadeAnim.setValue(0);
@@ -762,11 +623,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           scrollIntervalRef.current = null;
         }
       }, 400);
-
-
-      toolCallMsgIdsRef.current.clear();
-      toolReturnMsgIdsRef.current.clear();
-      currentReasoningIdRef.current = null;
 
       // Build message content based on whether we have images
       let messageContent: any;
@@ -830,67 +686,14 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         },
         async (response) => {
           console.log('Stream complete');
-          streamCompleteRef.current = true;
-
-          // Finalize messages immediately
-          const finalReasoning = streamingReasoningRef.current || '';
-          console.log('Finalizing with reasoning:', finalReasoning);
-
-          // Only create reasoning message if we haven't already created one during streaming
-          if (finalReasoning && !currentReasoningIdRef.current) {
-            const reasoningMessage: LettaMessage = {
-              id: `reasoning-final-${Date.now()}`,
-              role: 'assistant',
-              message_type: 'reasoning_message',
-              content: '',
-              reasoning: finalReasoning,
-              created_at: new Date().toISOString(),
-            };
-            setMessages(prev => [...prev, reasoningMessage]);
-
-            // Transfer reasoning expansion state
-            setExpandedReasoning(prev => {
-              if (prev.has('streaming')) {
-                const next = new Set(prev);
-                next.delete('streaming');
-                next.add(reasoningMessage.id);
-                return next;
-              }
-              return prev;
-            });
-          }
-
-          // Create assistant message if there's actual content
-          setStreamingMessage(currentContent => {
-            if (currentContent && currentContent.trim()) {
-              const finalMessage: LettaMessage = {
-                id: streamingMessageId || `msg_${Date.now()}`,
-                role: 'assistant',
-                message_type: 'assistant_message',
-                content: currentContent,
-                created_at: new Date().toISOString(),
-              };
-
-              console.log('Final assistant message object:', finalMessage);
-              setMessages(prev => [...prev, finalMessage]);
-            } else {
-              console.log('Skipping empty assistant message');
-            }
-
-            return currentContent;
-          });
+          console.log('[STREAM COMPLETE] Clearing state and reloading messages');
 
           // Clear streaming state
-          requestAnimationFrame(() => {
-            setIsStreaming(false);
-            setIsReasoningStreaming(false);
-            setStreamingStep('');
-            setStreamingMessage('');
-            setStreamingMessageId('');
-            setStreamingReasoning('');
-            streamingReasoningRef.current = '';
-            currentReasoningIdRef.current = null; // Clear so reasoning message becomes visible
-          });
+          setIsStreaming(false);
+          setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+
+          // Reload messages from server to get finalized versions
+          loadMessages();
         },
         (error) => {
           console.error('=== APP STREAMING ERROR CALLBACK ===');
@@ -920,15 +723,9 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
           // Reset spacer animation
           spacerHeightAnim.setValue(0);
-          streamCompleteRef.current = false;
 
           setIsStreaming(false);
-          setIsReasoningStreaming(false);
-          setStreamingMessage('');
-          setStreamingStep('');
-          setStreamingMessageId('');
-          setStreamingReasoning('');
-          streamingReasoningRef.current = '';
+          setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
 
           // Create detailed error message
           let errorMsg = 'Failed to send message';
@@ -1588,7 +1385,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
   // Animate rainbow gradient for "co is thinking", input box, reasoning sections, and empty state
   useEffect(() => {
-    if (isReasoningStreaming || isInputFocused || expandedReasoning.size > 0 || displayMessages.length === 0) {
+    if (isStreaming || isInputFocused || expandedReasoning.size > 0 || displayMessages.length === 0) {
       rainbowAnimValue.setValue(0);
       Animated.loop(
         Animated.timing(rainbowAnimValue, {
@@ -1600,7 +1397,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     } else {
       rainbowAnimValue.stopAnimation();
     }
-  }, [isReasoningStreaming, isInputFocused, expandedReasoning, displayMessages.length]);
+  }, [isStreaming, isInputFocused, expandedReasoning, displayMessages.length]);
 
   const renderMessage = useCallback(({ item }: { item: LettaMessage }) => {
       const msg = item;
@@ -1613,14 +1410,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
       if (isSystem) return null;
 
-      // Handle reasoning messages - don't show if it's the currently streaming one
+      // Handle reasoning messages
       if (isReasoning) {
-        // Hide the reasoning message if it's currently being streamed
-        if (msg.id === currentReasoningIdRef.current) {
-          return null;
-        }
-
-        console.log('[RENDER] Rendering reasoning message:', msg.id, 'reasoning:', msg.reasoning?.substring(0, 50));
         const isReasoningExpanded = expandedReasoning.has(msg.id);
 
         return (
@@ -2321,62 +2112,47 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           ListFooterComponent={
             <>
               {isStreaming && (
-                <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim }]}>
-                  {/* Show live status only when we have reasoning but no message yet */}
-                  {streamingReasoning && !streamingMessage && (
-                    <>
-                      <Animated.View style={{ opacity: statusFadeAnim }}>
-                        <LiveStatusIndicator status="thinking" />
-                      </Animated.View>
-                    </>
-                  )}
+                <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
+                  {/* Streaming Block - show all current stream content */}
 
-                  {/* Show completed reasoning toggle when message starts */}
-                  {streamingReasoning && streamingMessage && (
+                  {/* Show reasoning if we have it */}
+                  {currentStream.reasoning && (
                     <ReasoningToggle
-                      reasoning={streamingReasoning}
+                      reasoning={currentStream.reasoning}
                       messageId="streaming"
                       isExpanded={expandedReasoning.has('streaming')}
                       onToggle={() => toggleReasoning('streaming')}
-                      customToggleContent={
-                        <>
-                          <Text style={{ fontSize: 16, fontFamily: 'Lexend_500Medium', color: darkTheme.colors.text.secondary }}>(co thought)</Text>
-                          <Ionicons
-                            name={expandedReasoning.has('streaming') ? "chevron-up" : "chevron-down"}
-                            size={18}
-                            style={{ marginLeft: 4 }}
-                            color={darkTheme.colors.text.tertiary}
-                          />
-                        </>
-                      }
                     />
                   )}
-                  {streamingMessage && (
+
+                  {/* Show tool calls if we have any */}
+                  {currentStream.toolCalls.map((toolCall, idx) => (
+                    <View key={idx} style={styles.messageContainer}>
+                      <ToolCallItem
+                        callText={toolCall.args}
+                        hasResult={false}
+                      />
+                    </View>
+                  ))}
+
+                  {/* Show assistant message if we have it */}
+                  {currentStream.assistantMessage && (
                     <>
                       <LiveStatusIndicator status="saying" />
                       <View style={{ flex: 1 }}>
                         <MessageContent
-                          content={streamingMessage}
+                          content={currentStream.assistantMessage}
                           isUser={false}
                           isDark={colorScheme === 'dark'}
                         />
                       </View>
-                      <View style={styles.copyButtonContainer}>
-                        <TouchableOpacity
-                          onPress={() => copyToClipboard(streamingMessage, 'streaming')}
-                          style={styles.copyButton}
-                          activeOpacity={0.7}
-                          testID="copy-button"
-                        >
-                          <Ionicons
-                            name={copiedMessageId === 'streaming' ? "checkmark-outline" : "copy-outline"}
-                            size={16}
-                            color={copiedMessageId === 'streaming' ? theme.colors.interactive.primary : theme.colors.text.tertiary}
-                          />
-                        </TouchableOpacity>
-                      </View>
                       <View style={styles.messageSeparator} />
                     </>
+                  )}
+
+                  {/* Show thinking indicator if nothing else to show */}
+                  {!currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
+                    <LiveStatusIndicator status="thinking" />
                   )}
                 </Animated.View>
               )}
@@ -3202,12 +2978,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Lexend_400Regular',
   },
-  streamingStep: {
-    fontSize: 12,
-    fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.secondary,
-    fontStyle: 'italic',
-    marginBottom: 8,
+  messageSeparator: {
+    height: 16,
   },
   emptyContainer: {
     flex: 1,
