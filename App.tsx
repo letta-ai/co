@@ -1067,11 +1067,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
   // Archival Memory (Passages) functions
   const loadPassages = async (resetCursor = false) => {
     if (!coAgent) return;
-    if (!coAgent.sleeptime_agent_id) {
-      console.error('No sleeptime agent available for archival memory');
-      setPassagesError('Sleeptime agent not available');
-      return;
-    }
 
     setIsLoadingPassages(true);
     setPassagesError(null);
@@ -1088,8 +1083,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         params.search = passageSearchQuery;
       }
 
-      // Use sleeptime agent for archival memory
-      const result = await lettaApi.listPassages(coAgent.sleeptime_agent_id, params);
+      // Use primary agent for archival memory
+      const result = await lettaApi.listPassages(coAgent.id, params);
 
       if (resetCursor) {
         setPassages(result);
@@ -1111,15 +1106,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
   const createPassage = async (text: string, tags?: string[]) => {
     if (!coAgent) return;
-    if (!coAgent.sleeptime_agent_id) {
-      Alert.alert('Error', 'Sleeptime agent not available');
-      return;
-    }
 
     setIsLoadingPassages(true);
     try {
-      // Use sleeptime agent for archival memory
-      await lettaApi.createPassage(coAgent.sleeptime_agent_id, { text, tags });
+      // Use primary agent for archival memory
+      await lettaApi.createPassage(coAgent.id, { text, tags });
       await loadPassages(true);
       Alert.alert('Success', 'Passage created successfully');
     } catch (error: any) {
@@ -1132,10 +1123,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
   const deletePassage = async (passageId: string) => {
     if (!coAgent) return;
-    if (!coAgent.sleeptime_agent_id) {
-      Alert.alert('Error', 'Sleeptime agent not available');
-      return;
-    }
 
     const confirmed = Platform.OS === 'web'
       ? window.confirm('Are you sure you want to delete this passage?')
@@ -1153,8 +1140,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     if (!confirmed) return;
 
     try {
-      // Use sleeptime agent for archival memory
-      await lettaApi.deletePassage(coAgent.sleeptime_agent_id, passageId);
+      // Use primary agent for archival memory
+      await lettaApi.deletePassage(coAgent.id, passageId);
       await loadPassages(true);
       if (Platform.OS === 'web') {
         window.alert('Passage deleted successfully');
@@ -1173,15 +1160,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
   const modifyPassage = async (passageId: string, text: string, tags?: string[]) => {
     if (!coAgent) return;
-    if (!coAgent.sleeptime_agent_id) {
-      Alert.alert('Error', 'Sleeptime agent not available');
-      return;
-    }
 
     setIsLoadingPassages(true);
     try {
-      // Use sleeptime agent for archival memory
-      await lettaApi.modifyPassage(coAgent.sleeptime_agent_id, passageId, { text, tags });
+      // Use primary agent for archival memory
+      await lettaApi.modifyPassage(coAgent.id, passageId, { text, tags });
       await loadPassages(true);
       Alert.alert('Success', 'Passage updated successfully');
     } catch (error: any) {
