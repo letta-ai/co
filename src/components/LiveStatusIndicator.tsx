@@ -3,7 +3,7 @@ import { View, Text, Animated, StyleSheet } from 'react-native';
 import { darkTheme } from '../theme';
 
 interface LiveStatusIndicatorProps {
-  status: string; // e.g., "thinking", "searching the web", "saying"
+  status: string; // e.g., "thinking", "searching the web", "saying", "thought"
 }
 
 const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => {
@@ -23,6 +23,10 @@ const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => 
     return () => animation.stop();
   }, []);
 
+  // Special cases for past tense verbs (don't use "is")
+  const isPastTense = status === 'thought';
+  const displayText = isPastTense ? status : `is ${status}`;
+
   return (
     <View style={styles.container}>
       <Text style={styles.text}>(</Text>
@@ -39,7 +43,7 @@ const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => 
       >
         co
       </Animated.Text>
-      <Text style={styles.text}> is {status})</Text>
+      <Text style={styles.text}> {displayText})</Text>
     </View>
   );
 };

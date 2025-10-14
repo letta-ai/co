@@ -479,13 +479,24 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       return;
     }
 
-    // Simple accumulation - no message creation during streaming
+    // Simple accumulation - reset accumulators when switching to a new message type
     if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Accumulate reasoning
-      setCurrentStream(prev => ({
-        ...prev,
-        reasoning: prev.reasoning + chunk.reasoning
-      }));
+      // Accumulate reasoning, but reset if we're coming from assistant message or tool call
+      setCurrentStream(prev => {
+        // If we have assistant message or tool calls, this is a NEW reasoning block - reset
+        if (prev.assistantMessage || prev.toolCalls.length > 0) {
+          return {
+            reasoning: chunk.reasoning,
+            toolCalls: [],
+            assistantMessage: ''
+          };
+        }
+        // Otherwise, continue accumulating reasoning
+        return {
+          ...prev,
+          reasoning: prev.reasoning + chunk.reasoning
+        };
+      });
     } else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
       // Add tool call to list (deduplicate by ID)
       const callObj = chunk.tool_call.function || chunk.tool_call;
@@ -531,10 +542,21 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       }
 
       if (contentText) {
-        setCurrentStream(prev => ({
-          ...prev,
-          assistantMessage: prev.assistantMessage + contentText
-        }));
+        setCurrentStream(prev => {
+          // If we have reasoning but no assistant message, this is a NEW assistant message - clear reasoning
+          if (prev.reasoning && !prev.assistantMessage) {
+            return {
+              reasoning: '',
+              toolCalls: [],
+              assistantMessage: contentText
+            };
+          }
+          // Otherwise, continue accumulating assistant message
+          return {
+            ...prev,
+            assistantMessage: prev.assistantMessage + contentText
+          };
+        });
       }
     } else if (chunk.message_type === 'tool_return_message' || chunk.message_type === 'tool_response') {
       // Ignore tool returns during streaming - we'll get them from server
@@ -2207,16 +2229,14 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
                   {/* Streaming Block - show all current stream content */}
 
-                  {/* Show thinking indicator while reasoning is streaming (no other content yet) */}
-                  {currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
-                    <LiveStatusIndicator status="thinking" />
-                  )}
-
-                  {/* Show reasoning content if we have it (always visible once it starts) */}
+                  {/* Show reasoning with status indicator if we have it */}
                   {currentStream.reasoning && (
-                    <View style={styles.reasoningStreamingContainer}>
-                      <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
-                    </View>
+                    <>
+                      <LiveStatusIndicator status="thought" />
+                      <View style={styles.reasoningStreamingContainer}>
+                        <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
+                      </View>
+                    </>
                   )}
 
                   {/* Show tool calls if we have any */}
