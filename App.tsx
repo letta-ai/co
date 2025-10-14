@@ -2160,14 +2160,16 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
                   {/* Streaming Block - show all current stream content */}
 
-                  {/* Show thinking indicator and reasoning while reasoning is streaming */}
+                  {/* Show thinking indicator while reasoning is streaming (no other content yet) */}
                   {currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
-                    <>
-                      <LiveStatusIndicator status="thinking" />
-                      <View style={styles.reasoningStreamingContainer}>
-                        <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
-                      </View>
-                    </>
+                    <LiveStatusIndicator status="thinking" />
+                  )}
+
+                  {/* Show reasoning content if we have it (always visible once it starts) */}
+                  {currentStream.reasoning && (
+                    <View style={styles.reasoningStreamingContainer}>
+                      <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
+                    </View>
                   )}
 
                   {/* Show tool calls if we have any */}
