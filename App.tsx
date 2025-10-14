@@ -309,7 +309,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
     return msgs;
   };
 
-  const loadMessages = async (before?: string) => {
+  const loadMessages = async (before?: string, limit?: number) => {
     if (!coAgent) return;
 
     try {
@@ -321,7 +321,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
       const loadedMessages = await lettaApi.listMessages(coAgent.id, {
         before: before || undefined,
-        limit: before ? PAGE_SIZE : INITIAL_LOAD_LIMIT,
+        limit: limit || (before ? PAGE_SIZE : INITIAL_LOAD_LIMIT),
         use_assistant_message: true,
       });
 
@@ -341,7 +341,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             }, 100);
           }
         }
-        setHasMoreBefore(loadedMessages.length === (before ? PAGE_SIZE : INITIAL_LOAD_LIMIT));
+        setHasMoreBefore(loadedMessages.length === (limit || (before ? PAGE_SIZE : INITIAL_LOAD_LIMIT)));
       } else if (before) {
         // No more messages to load before
         setHasMoreBefore(false);
@@ -691,14 +691,42 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         },
         async (response) => {
           console.log('Stream complete');
-          console.log('[STREAM COMPLETE] Reloading messages from server');
+          console.log('[STREAM COMPLETE] Fetching finalized messages from server');
 
-          // Wait for server to finalize messages, then reload and clear streaming state
+          // Wait for server to finalize messages
           setTimeout(async () => {
-            await loadMessages();
-            // Clear streaming state after messages are loaded
-            setIsStreaming(false);
-            setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+            try {
+              // Fetch recent messages to get finalized versions
+              const recentMessages = await lettaApi.listMessages(coAgent.id, {
+                limit: 10,
+                use_assistant_message: true,
+              });
+
+              if (recentMessages.length > 0) {
+                setMessages(prev => {
+                  // Create a map of existing messages by ID
+                  const messageMap = new Map(prev.map(msg => [msg.id, msg]));
+
+                  // Add/update with recent messages
+                  recentMessages.forEach(msg => {
+                    messageMap.set(msg.id, msg);
+                  });
+
+                  // Convert back to array and sort by timestamp
+                  const merged = Array.from(messageMap.values()).sort((a, b) => {
+                    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+                  });
+
+                  return filterFirstMessage(merged);
+                });
+              }
+            } catch (error) {
+              console.error('Failed to fetch finalized messages:', error);
+            } finally {
+              // Clear streaming state after attempting to load
+              setIsStreaming(false);
+              setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+            }
           }, 300);
         },
         (error) => {
