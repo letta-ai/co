@@ -693,6 +693,9 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           console.log('Stream complete');
           console.log('[STREAM COMPLETE] Fetching finalized messages from server');
 
+          // Reset spacer animation immediately to remove the gap
+          spacerHeightAnim.setValue(0);
+
           // Wait for server to finalize messages
           setTimeout(async () => {
             try {
