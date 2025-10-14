@@ -586,124 +586,45 @@ class LettaApiService {
       const response = await this.client.agents.messages.list(agentId, params);
       console.log('listMessages - response count:', response?.length || 0);
 
-      // Group messages by run_id and step_id to associate reasoning with assistant messages
-      const groupedMessages = new Map<string, any[]>();
+      // Simple transformation - just convert format, no grouping or attaching
+      const transformedMessages: LettaMessage[] = response.map((message: any) => {
+        const type = message.messageType as string;
+        const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
+        const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
-      // First pass: group messages by run_id + step_id
-      response.forEach((message: any) => {
-        const key = `${message.runId || 'no-run'}-${message.stepId || 'no-step'}`;
-        if (!groupedMessages.has(key)) {
-          groupedMessages.set(key, []);
+        let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
+        if (type === 'user_message') {
+          role = 'user';
+        } else if (type === 'system_message') {
+          role = 'system';
+        } else if (type === 'assistant_message' || type === 'reasoning_message') {
+          role = 'assistant';
+        } else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') {
+          role = 'tool';
         }
-        groupedMessages.get(key)!.push(message);
+
+        // Get content - for reasoning messages, content is the reasoning text
+        let content: string = message.content || message.reasoning || '';
+
+        return {
+          id: message.id,
+          role,
+          content,
+          created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
+          tool_calls: message.tool_calls,
+          message_type: type,
+          sender_id: message.senderId,
+          step_id: message.stepId || message.step_id,
+          run_id: message.runId,
+          tool_call: toolCall,
+          tool_response: toolReturn,
+          // For reasoning messages, store reasoning
+          reasoning: type === 'reasoning_message' ? (message.reasoning || message.content) : undefined,
+        };
       });
 
-      // Second pass: process groups to combine reasoning with assistant messages
-      const transformedMessages: LettaMessage[] = [];
-
-      for (const [key, messageGroup] of groupedMessages) {
-        // Sort messages in the group by creation time or message order
-        messageGroup.sort((a, b) => {
-          if (a.date && b.date) {
-            return new Date(a.date).getTime() - new Date(b.date).getTime();
-          }
-          return 0;
-        });
-
-        // Find reasoning and assistant messages in this group
-        const reasoningMessages = messageGroup.filter((m: any) => m.messageType === 'reasoning_message');
-        const otherMessages = messageGroup.filter(m => m.messageType !== 'reasoning_message');
-
-        // Combine reasoning content
-        const combinedReasoning = reasoningMessages
-          .map(m => m.reasoning || m.content || '')
-          .filter(r => r.trim())
-          .join(' ');
-
-        // Process other messages and attach reasoning to assistant messages
-        otherMessages.forEach((message: any) => {
-          // Filter out heartbeat messages from user messages
-          if (message.messageType === 'user_message' && typeof message.content === 'string') {
-            try {
-              const parsed = JSON.parse(message.content);
-              if (parsed?.type === 'heartbeat') {
-                return; // Skip heartbeat messages
-              }
-            } catch {
-              // Keep message if content is not valid JSON
-            }
-          }
-
-          // Map messageType to role and content for our components
-          const type = message.messageType as string;
-          const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
-          const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
-
-          let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
-          if (type === 'user_message') {
-            role = 'user';
-          } else if (type === 'system_message') {
-            role = 'system';
-          } else if (type === 'assistant_message' || type === 'reasoning_message') {
-            role = 'assistant';
-          } else if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_response' || type === 'tool_return_message' || type === 'tool_message') {
-            role = 'tool';
-          }
-
-          // Derive a readable content string for tool steps
-          let content: string = message.content || '';
-          if ((!content || typeof content !== 'string') && type) {
-            if (type === 'tool_call' || type === 'tool_call_message' || type === 'tool_message') {
-              const callObj = toolCall?.function ? toolCall.function : toolCall;
-              const name = callObj?.name || callObj?.tool_name || 'tool';
-              const argsRaw = callObj?.arguments ?? callObj?.args ?? {};
-              let args = '';
-              try {
-                if (typeof argsRaw === 'string') {
-                  args = argsRaw;
-                } else {
-                  args = JSON.stringify(argsRaw);
-                }
-              } catch { args = String(argsRaw); }
-              content = `${name}(${args})`;
-            } else if (type === 'tool_response' || type === 'tool_return_message') {
-              if (toolReturn != null) {
-                try { content = typeof toolReturn === 'string' ? toolReturn : JSON.stringify(toolReturn); }
-                catch { content = String(toolReturn); }
-              }
-            }
-          }
-
-          const transformedMessage: LettaMessage = {
-            id: message.id,
-            role,
-            content,
-            created_at: message.date ? message.date.toISOString() : new Date().toISOString(),
-            tool_calls: message.tool_calls,
-            message_type: type,
-            sender_id: message.senderId,
-            step_id: message.stepId || message.step_id,
-            run_id: message.runId,
-            // Pass through tool details for UI reassembly
-            tool_call: toolCall,
-            tool_response: toolReturn,
-          };
-
-          // Attach reasoning to assistant and tool messages
-          if ((role === 'assistant' || role === 'tool') && combinedReasoning) {
-            transformedMessage.reasoning = combinedReasoning;
-          }
-
-          transformedMessages.push(transformedMessage);
-        });
-      }
-
-      // Sort final messages by creation time
-      transformedMessages.sort((a, b) => {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      });
-
-      console.log('listMessages - transformed messages:', transformedMessages.slice(0, 2));
+      console.log('listMessages - transformed count:', transformedMessages.length);
+      console.log('listMessages - first 2:', transformedMessages.slice(0, 2));
       return transformedMessages;
     } catch (error) {
       console.error('listMessages - error:', error);
@@ -999,9 +920,9 @@ class LettaApiService {
       }
       console.log('listFolders - params:', params);
 
-      // If searching by name, use direct API call (SDK pagination is broken)
+      // If searching by name, paginate through SDK to find it
       if (params?.name) {
-        console.log('listFolders - searching for folder with name via direct API:', params.name);
+        console.log('listFolders - searching for folder with name via SDK pagination:', params.name);
         let allFolders: any[] = [];
         let after: string | undefined = undefined;
         let pageCount = 0;
@@ -1010,42 +931,32 @@ class LettaApiService {
         do {
           console.log(`listFolders - requesting page ${pageCount + 1} with after cursor:`, after);
 
-          // Build query params
-          const queryParams = new URLSearchParams({
-            limit: '50',
+          const page = await this.client.folders.list({
+            limit: 50,
             ...(after && { after })
           });
 
-          const response = await fetch(`https://api.letta.com/v1/folders?${queryParams}`, {
-            headers: {
-              'Authorization': `Bearer ${this.token}`,
-              'Content-Type': 'application/json'
-            }
-          });
+          // Convert response to array if needed
+          const folders = Array.isArray(page) ? page : [];
 
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-          }
+          console.log(`listFolders - page ${pageCount + 1}: ${folders.length} folders`);
+          console.log(`listFolders - page ${pageCount + 1} first 3 names:`, folders.slice(0, 3).map(f => f.name));
 
-          const page = await response.json();
-          console.log(`listFolders - page ${pageCount + 1}: ${page.length} folders`);
-          console.log(`listFolders - page ${pageCount + 1} first 3 names:`, page.slice(0, 3).map(f => f.name));
-
-          allFolders = allFolders.concat(page);
+          allFolders = allFolders.concat(folders);
           pageCount++;
 
           // Stop if we found the folder we're looking for
-          const found = page.find(f => f.name === params.name);
+          const found = folders.find(f => f.name === params.name);
           if (found) {
             console.log('listFolders - found folder:', found);
             return [found];
           }
 
           // Check if there are more pages
-          if (page.length < 50) {
+          if (folders.length < 50) {
             after = undefined;
           } else {
-            after = page[page.length - 1]?.id;
+            after = folders[folders.length - 1]?.id;
           }
 
         } while (after && pageCount < maxPages);
