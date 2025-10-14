@@ -81,6 +81,15 @@ function CoApp() {
 
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
+
+  // Debug logging for messages state changes
+  useEffect(() => {
+    console.log('[MESSAGES STATE] Changed, now have', messages.length, 'messages');
+    if (messages.length > 0) {
+      console.log('[MESSAGES STATE] First:', messages[0]?.id?.substring(0, 8), messages[0]?.message_type);
+      console.log('[MESSAGES STATE] Last:', messages[messages.length - 1]?.id?.substring(0, 8), messages[messages.length - 1]?.message_type);
+    }
+  }, [messages]);
   const PAGE_SIZE = 50;
   const INITIAL_LOAD_LIMIT = 100; // Increased to show more history by default
   const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
@@ -325,12 +334,20 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         use_assistant_message: true,
       });
 
+      console.log('[LOAD MESSAGES] Received', loadedMessages.length, 'messages from server');
+      console.log('[LOAD MESSAGES] First message:', loadedMessages[0]?.id, loadedMessages[0]?.message_type);
+      console.log('[LOAD MESSAGES] Last message:', loadedMessages[loadedMessages.length - 1]?.id, loadedMessages[loadedMessages.length - 1]?.message_type);
+
       if (loadedMessages.length > 0) {
         if (before) {
+          const filtered = filterFirstMessage([...loadedMessages, ...prev]);
+          console.log('[LOAD MESSAGES] After filtering (load more):', filtered.length);
           setMessages(prev => filterFirstMessage([...loadedMessages, ...prev]));
           setEarliestCursor(loadedMessages[0].id);
         } else {
-          setMessages(filterFirstMessage(loadedMessages));
+          const filtered = filterFirstMessage(loadedMessages);
+          console.log('[LOAD MESSAGES] After filtering (initial load):', filtered.length, 'from', loadedMessages.length);
+          setMessages(filtered);
           if (loadedMessages.length > 0) {
             setEarliestCursor(loadedMessages[0].id);
             pendingJumpToBottomRef.current = true;
