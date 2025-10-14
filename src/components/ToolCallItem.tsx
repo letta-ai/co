@@ -150,7 +150,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
           style={styles.chevron}
         />
       </TouchableOpacity>
-      {expanded && !!resultText && (
+      {!!resultText && (
         <TouchableOpacity
           style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded]}
           onPress={() => setResultExpanded((e) => !e)}
@@ -165,7 +165,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
           <Text style={styles.resultLabel}>Result</Text>
         </TouchableOpacity>
       )}
-      {expanded && resultExpanded && !!resultText && (
+      {resultExpanded && !!resultText && (
         <View style={styles.resultBox}>
           <Text style={styles.resultText}>{formattedResult}</Text>
         </View>

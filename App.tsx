@@ -1496,24 +1496,36 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         );
       }
 
-      // Handle tool calls
+      // Handle tool calls - find and render with their result
       if (isToolCall) {
+        // Find the corresponding tool return (next message in the list)
+        const msgIndex = displayMessages.findIndex(m => m.id === msg.id);
+        const nextMsg = msgIndex >= 0 && msgIndex < displayMessages.length - 1 ? displayMessages[msgIndex + 1] : null;
+        const toolReturn = nextMsg && nextMsg.message_type === 'tool_return_message' ? nextMsg : null;
+
         return (
           <View style={styles.messageContainer}>
             <ToolCallItem
               callText={msg.content}
-              resultText={undefined}
-              reasoning={undefined}
-              hasResult={toolCallHasResult.get(msg.id) || false}
+              resultText={toolReturn?.content}
+              reasoning={msg.reasoning}
+              hasResult={!!toolReturn}
             />
           </View>
         );
       }
 
-      // Handle tool returns - just show the result text
+      // Skip tool returns - they're rendered with their tool call
       if (isToolReturn) {
-        const isExpanded = expandedToolReturns.has(msg.id);
+        // Check if previous message is a tool call
+        const msgIndex = displayMessages.findIndex(m => m.id === msg.id);
+        const prevMsg = msgIndex > 0 ? displayMessages[msgIndex - 1] : null;
+        if (prevMsg && prevMsg.message_type === 'tool_call_message') {
+          return null; // Already rendered with the tool call
+        }
 
+        // Orphaned tool return (no matching tool call) - render it standalone
+        const isExpanded = expandedToolReturns.has(msg.id);
         return (
           <View style={styles.messageContainer}>
             <View style={styles.toolReturnContainer}>
@@ -1527,7 +1539,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   size={12}
                   color={darkTheme.colors.text.tertiary}
                 />
-                <Text style={styles.toolReturnLabel}>Result</Text>
+                <Text style={styles.toolReturnLabel}>Result (orphaned)</Text>
               </TouchableOpacity>
               {isExpanded && (
                 <View style={styles.toolReturnContent}>
