@@ -18,11 +18,13 @@ import {
   Image,
   KeyboardAvoidingView,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as SystemUI from 'expo-system-ui';
 import Markdown from '@ronradtke/react-native-markdown-display';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Lexend_300Light, Lexend_400Regular, Lexend_500Medium, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
@@ -52,6 +54,32 @@ function CoApp() {
   const insets = useSafeAreaInsets();
   const systemColorScheme = useColorScheme();
   const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(systemColorScheme || 'dark');
+
+  // Set Android system UI colors
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      SystemUI.setBackgroundColorAsync(darkTheme.colors.background.primary);
+    }
+  }, []);
+
+  // Keyboard height tracking for Android
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   const [fontsLoaded] = useFonts({
     Lexend_300Light,
@@ -1536,6 +1564,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               messageId={msg.id}
               isExpanded={isReasoningExpanded}
               onToggle={() => toggleReasoning(msg.id)}
+              isDark={colorScheme === 'dark'}
             />
           </View>
         );
@@ -1555,6 +1584,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               resultText={toolReturn?.content}
               reasoning={msg.reasoning}
               hasResult={!!toolReturn}
+              isDark={colorScheme === 'dark'}
             />
           </View>
         );
@@ -1743,8 +1773,10 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 messageId={msg.id}
                 isExpanded={isReasoningExpanded}
                 onToggle={() => toggleReasoning(msg.id)}
+                isDark={colorScheme === 'dark'}
               />
             )}
+            <Text style={[styles.assistantLabel, { color: theme.colors.text.primary }]}>(co said)</Text>
             <View style={{ position: 'relative' }}>
               <ExpandableMessageContent
                 content={msg.content}
@@ -1924,7 +1956,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             }}
           >
             <Ionicons name="library-outline" size={24} color={theme.colors.text.primary} />
-            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Knowledge</Text>
+            <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>Memory</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -2134,19 +2166,19 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               <Text style={[
                 styles.viewSwitcherText,
                 { color: currentView === 'knowledge' ? theme.colors.text.primary : theme.colors.text.tertiary }
-              ]}>Knowledge</Text>
+              ]}>Memory</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* View Content */}
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.chatRow}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
         >
           {/* You View */}
-          <View style={[styles.memoryViewContainer, { display: currentView === 'you' ? 'flex' : 'none' }]}>
+          <View style={[styles.memoryViewContainer, { display: currentView === 'you' ? 'flex' : 'none', backgroundColor: theme.colors.background.primary }]}>
             {!hasCheckedYouBlock ? (
               /* Loading state - checking for You block */
               <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -2223,7 +2255,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           removeClippedSubviews={false}
           maxToRenderPerBatch={20}
           updateCellsBatchingPeriod={50}
-          initialNumToRender={50}
+          initialNumToRender={100}
           contentContainerStyle={[
             styles.messagesList,
             displayMessages.length === 0 && { flexGrow: 1 }
@@ -2250,7 +2282,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                     if (block.type === 'reasoning') {
                       return (
                         <React.Fragment key={`completed-${index}`}>
-                          <LiveStatusIndicator status="thought" />
+                          <LiveStatusIndicator status="thought" isDark={colorScheme === 'dark'} />
                           <View style={styles.reasoningStreamingContainer}>
                             <Text style={styles.reasoningStreamingText}>{block.content}</Text>
                           </View>
@@ -2259,7 +2291,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                     } else if (block.type === 'assistant_message') {
                       return (
                         <React.Fragment key={`completed-${index}`}>
-                          <LiveStatusIndicator status="saying" />
+                          <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
                           <View style={{ flex: 1 }}>
                             <MessageContent
                               content={block.content}
@@ -2290,6 +2322,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                       <ToolCallItem
                         callText={toolCall.args}
                         hasResult={false}
+                        isDark={colorScheme === 'dark'}
                       />
                     </View>
                   ))}
@@ -2298,7 +2331,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   {currentStream.assistantMessage && (
                     <>
                       <View style={currentStream.toolCalls.length > 0 ? { marginTop: 16 } : undefined}>
-                        <LiveStatusIndicator status="saying" />
+                        <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <MessageContent
@@ -2313,7 +2346,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
                   {/* Show thinking indicator if nothing else to show */}
                   {completedStreamBlocks.length === 0 && !currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
-                    <LiveStatusIndicator status="thinking" />
+                    <LiveStatusIndicator status="thinking" isDark={colorScheme === 'dark'} />
                   )}
                 </Animated.View>
               )}
@@ -2344,7 +2377,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       <View
         style={[
           styles.inputContainer,
-          { paddingBottom: Math.max(insets.bottom, 16) },
+          {
+            paddingBottom: Platform.OS === 'android'
+              ? (keyboardHeight > 0 ? keyboardHeight + 40 : 40)
+              : Math.max(insets.bottom, 16)
+          },
           displayMessages.length === 0 && styles.inputContainerCentered
         ]}
         onLayout={handleInputLayout}
@@ -2448,7 +2485,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       </View>
 
       {/* Knowledge View */}
-      <View style={[styles.memoryViewContainer, { display: currentView === 'knowledge' ? 'flex' : 'none' }]}>
+      <View style={[styles.memoryViewContainer, { display: currentView === 'knowledge' ? 'flex' : 'none', backgroundColor: theme.colors.background.primary }]}>
           {/* Knowledge Tabs */}
           <View style={[styles.knowledgeTabs, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
             <TouchableOpacity
@@ -2749,7 +2786,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         </View>
 
       {/* Settings View */}
-      <View style={[styles.memoryViewContainer, { display: currentView === 'settings' ? 'flex' : 'none' }]}>
+      <View style={[styles.memoryViewContainer, { display: currentView === 'settings' ? 'flex' : 'none', backgroundColor: theme.colors.background.primary }]}>
           <View style={[styles.settingsHeader, { backgroundColor: theme.colors.background.secondary, borderBottomColor: theme.colors.border.primary }]}>
             <Text style={[styles.settingsTitle, { color: theme.colors.text.primary }]}>Settings</Text>
           </View>
@@ -2963,9 +3000,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <CoApp />
-    </SafeAreaProvider>
+    <View style={{ flex: 1, backgroundColor: darkTheme.colors.background.primary }}>
+      <SafeAreaProvider style={{ flex: 1, backgroundColor: darkTheme.colors.background.primary }}>
+        <CoApp />
+      </SafeAreaProvider>
+    </View>
   );
 }
 
@@ -3074,6 +3113,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     width: '100%',
+  },
+  assistantLabel: {
+    fontSize: 16,
+    fontFamily: 'Lexend_500Medium',
+    marginBottom: 8,
   },
   messageBubble: {
     maxWidth: 600,
