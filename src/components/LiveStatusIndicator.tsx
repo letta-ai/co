@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
-import { darkTheme } from '../theme';
+import { darkTheme, lightTheme } from '../theme';
 
 interface LiveStatusIndicatorProps {
   status: string; // e.g., "thinking", "searching the web", "saying", "thought"
+  isDark?: boolean;
 }
 
-const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => {
+const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status, isDark = true }) => {
+  const theme = isDark ? darkTheme : lightTheme;
   const rainbowAnimValue = useRef(new Animated.Value(0)).current;
 
   // Animate rainbow gradient
@@ -29,7 +31,7 @@ const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => 
 
   return (
     <View style={styles.container}>
-      <Text style={styles.text}>(</Text>
+      <Text style={[styles.text, { color: theme.colors.text.primary }]}>(</Text>
       <Animated.Text
         style={[
           styles.coText,
@@ -43,7 +45,7 @@ const LiveStatusIndicator: React.FC<LiveStatusIndicatorProps> = ({ status }) => 
       >
         co
       </Animated.Text>
-      <Text style={styles.text}> {displayText})</Text>
+      <Text style={[styles.text, { color: theme.colors.text.primary }]}> {displayText})</Text>
     </View>
   );
 };
@@ -58,7 +60,6 @@ const styles = StyleSheet.create({
   text: {
     fontSize: 24,
     fontFamily: 'Lexend_400Regular',
-    color: darkTheme.colors.text.primary,
   },
   coText: {
     fontSize: 24,

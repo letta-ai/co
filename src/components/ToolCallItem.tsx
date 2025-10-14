@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { darkTheme } from '../theme';
+import { darkTheme, lightTheme } from '../theme';
 import ReasoningToggle from './ReasoningToggle';
 
 interface ToolCallItemProps {
@@ -9,6 +9,7 @@ interface ToolCallItemProps {
   resultText?: string;
   reasoning?: string;
   hasResult?: boolean;
+  isDark?: boolean;
 }
 
 // Extract parameters for contextual display
@@ -62,7 +63,8 @@ const getToolDisplayName = (toolName: string, callText: string, hasResult: boole
   return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning, hasResult = false }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning, hasResult = false, isDark = true }) => {
+  const theme = isDark ? darkTheme : lightTheme;
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
 
@@ -134,40 +136,40 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
 
   return (
     <View style={styles.container}>
-      {reasoning && <ReasoningToggle reasoning={reasoning} />}
+      {reasoning && <ReasoningToggle reasoning={reasoning} isDark={isDark} />}
       <TouchableOpacity
         style={styles.header}
         onPress={() => setExpanded((e) => !e)}
         activeOpacity={0.7}
       >
-        <Text style={expanded ? styles.callText : styles.displayName} numberOfLines={expanded ? 0 : 1}>
+        <Text style={[expanded ? styles.callText : styles.displayName, { color: expanded ? theme.colors.text.primary : theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
           {expanded ? prettyCallText : `(${displayText})`}
         </Text>
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={18}
-          color={darkTheme.colors.text.tertiary}
+          color={theme.colors.text.tertiary}
           style={styles.chevron}
         />
       </TouchableOpacity>
       {!!resultText && (
         <TouchableOpacity
-          style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded]}
+          style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded, { backgroundColor: theme.colors.background.secondary, borderColor: theme.colors.border.primary }]}
           onPress={() => setResultExpanded((e) => !e)}
           activeOpacity={0.7}
         >
           <Ionicons
             name={resultExpanded ? 'chevron-down' : 'chevron-forward'}
             size={12}
-            color={darkTheme.colors.text.tertiary}
+            color={theme.colors.text.tertiary}
             style={styles.resultChevron}
           />
-          <Text style={styles.resultLabel}>Result</Text>
+          <Text style={[styles.resultLabel, { color: theme.colors.text.tertiary }]}>Result</Text>
         </TouchableOpacity>
       )}
       {resultExpanded && !!resultText && (
-        <View style={styles.resultBox}>
-          <Text style={styles.resultText}>{formattedResult}</Text>
+        <View style={[styles.resultBox, { backgroundColor: theme.colors.background.tertiary, borderColor: theme.colors.border.primary }]}>
+          <Text style={[styles.resultText, { color: theme.colors.text.primary }]}>{formattedResult}</Text>
         </View>
       )}
     </View>
@@ -190,12 +192,14 @@ const styles = StyleSheet.create({
   displayName: {
     fontSize: 16,
     fontFamily: 'Lexend_500Medium',
-    color: darkTheme.colors.text.secondary,
     flexShrink: 1,
   },
   callText: {
-    color: darkTheme.colors.text.primary,
-    fontFamily: 'Menlo',
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
     fontSize: 13,
     lineHeight: 18,
     flexShrink: 1,
@@ -206,10 +210,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#242424',
     borderLeftWidth: 1,
     borderRightWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 8,
     paddingHorizontal: 10,
   },
@@ -220,26 +222,26 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   resultLabel: {
-    color: darkTheme.colors.text.tertiary,
     fontSize: 12,
   },
   resultBox: {
-    backgroundColor: '#1E1E1E',
     borderBottomLeftRadius: 10,
     borderBottomRightRadius: 10,
     borderLeftWidth: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 10,
     paddingHorizontal: 12,
   },
   resultText: {
-    color: darkTheme.colors.text.primary,
     fontSize: 14,
     lineHeight: 20,
     whiteSpace: 'pre-wrap' as any,
-    fontFamily: 'Menlo',
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
   },
 });
 

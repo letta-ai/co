@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TextInput, StyleSheet, Platform } from 'react-native';
 
 interface MessageInputProps {
@@ -19,6 +19,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
   clearTrigger,
 }) => {
   const [inputText, setInputText] = useState('');
+  const inputRef = useRef<any>(null);
 
   useEffect(() => {
     if (clearTrigger > 0) {
@@ -46,11 +47,23 @@ const MessageInput: React.FC<MessageInputProps> = ({
     }
   ], [colorScheme]);
 
+  const handleContentSizeChange = React.useCallback((event: any) => {
+    if (Platform.OS !== 'web') {
+      // Native platforms can use onContentSizeChange
+      const contentHeight = event.nativeEvent.contentSize.height;
+      const newHeight = Math.min(Math.max(contentHeight, 40), 120);
+      if (inputRef.current) {
+        inputRef.current.setNativeProps({ style: { height: newHeight } });
+      }
+    }
+  }, []);
+
   const handleFocus = React.useCallback(() => onFocusChange(true), [onFocusChange]);
   const handleBlur = React.useCallback(() => onFocusChange(false), [onFocusChange]);
 
   return (
     <TextInput
+      ref={inputRef}
       style={inputStyle}
       placeholder="What's on your mind?"
       placeholderTextColor={colorScheme === 'dark' ? '#666666' : '#999999'}
@@ -63,6 +76,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
       editable={!isSendingMessage}
       autoFocus
       onSubmitEditing={handleSubmit}
+      onContentSizeChange={handleContentSizeChange}
     />
   );
 };
@@ -70,11 +84,12 @@ const MessageInput: React.FC<MessageInputProps> = ({
 const styles = StyleSheet.create({
   textInput: {
     width: '100%',
-    height: 48,
+    minHeight: 40,
+    maxHeight: 120,
     paddingLeft: 18,
     paddingRight: 130,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingTop: 8,
+    paddingBottom: 8,
     borderRadius: 24,
     fontSize: 16,
     lineHeight: 24,
@@ -84,6 +99,8 @@ const styles = StyleSheet.create({
       outline: 'none',
       WebkitAppearance: 'none',
       MozAppearance: 'none',
+      resize: 'none',
+      overflowY: 'auto',
     }),
   },
 });

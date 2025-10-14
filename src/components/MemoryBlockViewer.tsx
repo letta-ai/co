@@ -106,7 +106,7 @@ const MemoryBlockViewer: React.FC<MemoryBlockViewerProps> = ({
                 {block.description}
               </Text>
             )}
-            <View style={styles.divider} />
+            <View style={[styles.divider, { backgroundColor: theme.colors.border.primary }]} />
             <MessageContent content={block.value} isUser={false} isDark={isDark} />
           </View>
         </ScrollView>
@@ -170,7 +170,7 @@ const MemoryBlockViewer: React.FC<MemoryBlockViewerProps> = ({
                   {block.description}
                 </Text>
               )}
-              <View style={styles.divider} />
+              <View style={[styles.divider, { backgroundColor: theme.colors.border.primary }]} />
               <MessageContent content={block.value} isUser={false} isDark={isDark} />
             </View>
           </ScrollView>
