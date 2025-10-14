@@ -342,9 +342,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           }
         }
         setHasMoreBefore(loadedMessages.length === (before ? PAGE_SIZE : INITIAL_LOAD_LIMIT));
-      } else {
+      } else if (before) {
+        // No more messages to load before
         setHasMoreBefore(false);
       }
+      // If no messages and not loading before, keep existing messages (don't clear)
     } catch (error: any) {
       console.error('Failed to load messages:', error);
       Alert.alert('Error', 'Failed to load messages: ' + (error.message || 'Unknown error'));
@@ -599,13 +601,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       // Clear streaming state
       setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
 
-      // Fade in the status indicator
-      statusFadeAnim.setValue(0);
-      Animated.timing(statusFadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }).start();
+      // Make status indicator immediately visible
+      statusFadeAnim.setValue(1);
 
       // Animate spacer growing to push user message up (push previous content out of view)
       const targetHeight = Math.max(containerHeight * 0.9, 450);
@@ -694,14 +691,15 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         },
         async (response) => {
           console.log('Stream complete');
-          console.log('[STREAM COMPLETE] Clearing state and reloading messages');
+          console.log('[STREAM COMPLETE] Reloading messages from server');
 
-          // Clear streaming state
-          setIsStreaming(false);
-          setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
-
-          // Reload messages from server to get finalized versions
-          loadMessages();
+          // Wait for server to finalize messages, then reload and clear streaming state
+          setTimeout(async () => {
+            await loadMessages();
+            // Clear streaming state after messages are loaded
+            setIsStreaming(false);
+            setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+          }, 300);
         },
         (error) => {
           console.error('=== APP STREAMING ERROR CALLBACK ===');
