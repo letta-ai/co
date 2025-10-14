@@ -1445,12 +1445,19 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       return true;
     });
 
-    console.log('[DISPLAY] Total messages:', filtered.length);
-    filtered.forEach((msg, idx) => {
+    // Limit to most recent messages to avoid rendering issues with large history
+    // Keep enough for smooth scrolling but not so many that initial render is slow
+    const MAX_DISPLAY_MESSAGES = 100;
+    const limited = filtered.length > MAX_DISPLAY_MESSAGES
+      ? filtered.slice(-MAX_DISPLAY_MESSAGES)  // Take LAST N messages (most recent)
+      : filtered;
+
+    console.log('[DISPLAY] Total messages:', limited.length, filtered.length > MAX_DISPLAY_MESSAGES ? `(limited from ${filtered.length})` : '');
+    limited.forEach((msg, idx) => {
       console.log(`[DISPLAY ${idx}] ${msg.message_type} - ${msg.id.substring(0, 8)} - reasoning: ${!!msg.reasoning}`);
     });
 
-    return filtered;
+    return limited;
   }, [messages]);
 
   // Animate rainbow gradient for "co is thinking", input box, reasoning sections, and empty state
