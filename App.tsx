@@ -2160,9 +2160,14 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
                   {/* Streaming Block - show all current stream content */}
 
-                  {/* Show thinking indicator while reasoning is streaming */}
+                  {/* Show thinking indicator and reasoning while reasoning is streaming */}
                   {currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
-                    <LiveStatusIndicator status="thinking" />
+                    <>
+                      <LiveStatusIndicator status="thinking" />
+                      <View style={styles.reasoningStreamingContainer}>
+                        <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
+                      </View>
+                    </>
                   )}
 
                   {/* Show tool calls if we have any */}
@@ -3470,6 +3475,24 @@ const styles = StyleSheet.create({
     padding: 8,
     opacity: 0.3,
     borderRadius: 4,
+  },
+  reasoningStreamingContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingLeft: 20,
+    marginBottom: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#555555',
+    overflow: 'hidden',
+  },
+  reasoningStreamingText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.secondary,
+    lineHeight: 22,
+    fontStyle: 'normal',
   },
 
   // Modal styles
