@@ -586,12 +586,51 @@ class LettaApiService {
       const response = await this.client.agents.messages.list(agentId, params);
       console.log('listMessages - response count:', response?.length || 0);
 
-      // Simple transformation - just convert format, no grouping or attaching
+      /**
+       * MESSAGE TRANSFORMATION ARCHITECTURE
+       *
+       * This transformation is intentionally simple: we return ALL messages from the API
+       * without filtering, grouping, or combining them. The UI handles rendering based on
+       * message_type. This prevents data loss and keeps the logic maintainable.
+       *
+       * CRITICAL: API Message Structure
+       *
+       * The Letta API returns messages with different structures based on message_type:
+       *
+       * 1. TOOL CALL MESSAGES (type: 'tool_call_message')
+       *    - message.content: Often EMPTY or null
+       *    - message.tool_call: { name: string, arguments: string (JSON) }
+       *    - We MUST construct content from tool_call.name + tool_call.arguments
+       *    - Example: tool_call = { name: "memory_replace", arguments: "{\"label\":\"you\"...}" }
+       *      → content = "memory_replace({\"label\":\"you\"...})"
+       *
+       * 2. TOOL RETURN MESSAGES (type: 'tool_return_message')
+       *    - message.content: Often EMPTY or null
+       *    - message.tool_return: string | { tool_return: string }
+       *    - We MUST extract content from tool_return field
+       *    - Example: tool_return = "The core memory block has been edited"
+       *      → content = "The core memory block has been edited"
+       *
+       * 3. ASSISTANT/REASONING MESSAGES (type: 'assistant_message' | 'reasoning_message')
+       *    - message.content: Contains the actual text
+       *    - No special handling needed
+       *
+       * 4. USER/SYSTEM MESSAGES (type: 'user_message' | 'system_message')
+       *    - message.content: Contains the actual text
+       *    - No special handling needed
+       *
+       * WHY THIS MATTERS:
+       * If we don't construct content from tool_call/tool_return fields, tool messages will
+       * display as empty blocks like "tool({})" which is meaningless to the user.
+       */
       const transformedMessages: LettaMessage[] = response.map((message: any) => {
         const type = message.messageType as string;
+
+        // Extract tool call/return data (try multiple field name variants for SDK compatibility)
         const toolCall = message.tool_call || message.toolCall || (message.tool_calls && message.tool_calls[0]);
         const toolReturn = message.tool_response || message.toolResponse || message.tool_return || message.toolReturn;
 
+        // Map message type to role
         let role: 'user' | 'assistant' | 'system' | 'tool' = 'assistant';
         if (type === 'user_message') {
           role = 'user';
@@ -603,17 +642,17 @@ class LettaApiService {
           role = 'tool';
         }
 
-        // Get content - construct from tool call if needed
+        // Start with content from API (may be empty for tool messages)
         let content: string = message.content || message.reasoning || '';
 
-        // For tool call messages, construct content from tool_call data if content is empty
+        // CONSTRUCT content for tool call messages (if content is empty)
         if ((type === 'tool_call_message' || type === 'tool_call') && !content && toolCall) {
           const name = toolCall.name || 'tool';
           const args = toolCall.arguments || '{}';
           content = `${name}(${args})`;
         }
 
-        // For tool return messages, use the tool_return or tool_response value
+        // EXTRACT content for tool return messages (if content is empty)
         if ((type === 'tool_return_message' || type === 'tool_response') && !content && toolReturn) {
           content = typeof toolReturn === 'string' ? toolReturn : (toolReturn.tool_return || toolReturn.content || '');
         }
