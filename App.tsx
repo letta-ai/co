@@ -108,6 +108,11 @@ function CoApp() {
     toolCalls: [] as Array<{id: string, name: string, args: string}>,
     assistantMessage: '',
   });
+  // Store completed stream blocks (reasoning, assistant messages, tool calls that have finished)
+  const [completedStreamBlocks, setCompletedStreamBlocks] = useState<Array<{
+    type: 'reasoning' | 'assistant_message',
+    content: string
+  }>>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [lastMessageNeedsSpace, setLastMessageNeedsSpace] = useState(false);
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
@@ -470,6 +475,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       setIsStreaming(false);
       setIsSendingMessage(false);
       setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+      setCompletedStreamBlocks([]);
       return;
     }
 
@@ -479,12 +485,15 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       return;
     }
 
-    // Simple accumulation - reset accumulators when switching to a new message type
+    // Accumulate content - when switching message types, save previous content to completed blocks
     if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      // Accumulate reasoning, but reset if we're coming from assistant message or tool call
       setCurrentStream(prev => {
-        // If we have assistant message or tool calls, this is a NEW reasoning block - reset
-        if (prev.assistantMessage || prev.toolCalls.length > 0) {
+        // If we have assistant message, this is a NEW reasoning block - save assistant message first
+        if (prev.assistantMessage) {
+          setCompletedStreamBlocks(blocks => [...blocks, {
+            type: 'assistant_message',
+            content: prev.assistantMessage
+          }]);
           return {
             reasoning: chunk.reasoning,
             toolCalls: [],
@@ -543,8 +552,12 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
       if (contentText) {
         setCurrentStream(prev => {
-          // If we have reasoning but no assistant message, this is a NEW assistant message - clear reasoning
+          // If we have reasoning, this is a NEW assistant message - save reasoning first
           if (prev.reasoning && !prev.assistantMessage) {
+            setCompletedStreamBlocks(blocks => [...blocks, {
+              type: 'reasoning',
+              content: prev.reasoning
+            }]);
             return {
               reasoning: '',
               toolCalls: [],
@@ -639,6 +652,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
       setLastMessageNeedsSpace(true);
       // Clear streaming state
       setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+      setCompletedStreamBlocks([]);
 
       // Make status indicator immediately visible
       statusFadeAnim.setValue(1);
@@ -769,6 +783,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               // Clear streaming state after attempting to load
               setIsStreaming(false);
               setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+              setCompletedStreamBlocks([]);
             }
           }, 500);
         },
@@ -803,6 +818,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
           setIsStreaming(false);
           setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
+          setCompletedStreamBlocks([]);
 
           // Create detailed error message
           let errorMsg = 'Failed to send message';
@@ -2227,9 +2243,38 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             <>
               {isStreaming && (
                 <Animated.View style={[styles.assistantFullWidthContainer, { minHeight: spacerHeightAnim, opacity: statusFadeAnim }]}>
-                  {/* Streaming Block - show all current stream content */}
+                  {/* Streaming Block - show completed blocks + current stream content */}
 
-                  {/* Show reasoning with status indicator if we have it */}
+                  {/* Show completed blocks first (in chronological order) */}
+                  {completedStreamBlocks.map((block, index) => {
+                    if (block.type === 'reasoning') {
+                      return (
+                        <React.Fragment key={`completed-${index}`}>
+                          <LiveStatusIndicator status="thought" />
+                          <View style={styles.reasoningStreamingContainer}>
+                            <Text style={styles.reasoningStreamingText}>{block.content}</Text>
+                          </View>
+                        </React.Fragment>
+                      );
+                    } else if (block.type === 'assistant_message') {
+                      return (
+                        <React.Fragment key={`completed-${index}`}>
+                          <LiveStatusIndicator status="saying" />
+                          <View style={{ flex: 1 }}>
+                            <MessageContent
+                              content={block.content}
+                              isUser={false}
+                              isDark={colorScheme === 'dark'}
+                            />
+                          </View>
+                          <View style={styles.messageSeparator} />
+                        </React.Fragment>
+                      );
+                    }
+                    return null;
+                  })}
+
+                  {/* Show current reasoning being accumulated */}
                   {currentStream.reasoning && (
                     <>
                       <LiveStatusIndicator status="thought" />
@@ -2241,7 +2286,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
                   {/* Show tool calls if we have any */}
                   {currentStream.toolCalls.map((toolCall) => (
-                    <View key={toolCall.id} style={styles.messageContainer}>
+                    <View key={toolCall.id}>
                       <ToolCallItem
                         callText={toolCall.args}
                         hasResult={false}
@@ -2249,7 +2294,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                     </View>
                   ))}
 
-                  {/* Show assistant message if we have it */}
+                  {/* Show current assistant message being accumulated */}
                   {currentStream.assistantMessage && (
                     <>
                       <View style={currentStream.toolCalls.length > 0 ? { marginTop: 16 } : undefined}>
@@ -2267,7 +2312,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   )}
 
                   {/* Show thinking indicator if nothing else to show */}
-                  {!currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
+                  {completedStreamBlocks.length === 0 && !currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
                     <LiveStatusIndicator status="thinking" />
                   )}
                 </Animated.View>
