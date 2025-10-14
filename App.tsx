@@ -82,7 +82,7 @@ function CoApp() {
   // Message state
   const [messages, setMessages] = useState<LettaMessage[]>([]);
   const PAGE_SIZE = 50;
-  const INITIAL_LOAD_LIMIT = 20;
+  const INITIAL_LOAD_LIMIT = 100; // Increased to show more history by default
   const [earliestCursor, setEarliestCursor] = useState<string | null>(null);
   const [hasMoreBefore, setHasMoreBefore] = useState<boolean>(false);
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
@@ -699,11 +699,15 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           // Wait for server to finalize messages
           setTimeout(async () => {
             try {
-              // Count how many messages we currently have (excluding temp messages)
-              const currentCount = messages.filter(msg => !msg.id.startsWith('temp-')).length;
-              const fetchLimit = Math.max(currentCount + 5, 50); // Fetch at least current count + some buffer
+              // Use setMessages callback to get current state and calculate fetch limit
+              let fetchLimit = 100; // Default minimum increased to be safer
 
-              console.log('[STREAM COMPLETE] Current message count:', currentCount, 'Fetching:', fetchLimit);
+              setMessages(prev => {
+                const currentCount = prev.filter(msg => !msg.id.startsWith('temp-')).length;
+                fetchLimit = Math.max(currentCount + 10, 100); // Fetch more buffer
+                console.log('[STREAM COMPLETE] Current message count:', currentCount, 'Will fetch:', fetchLimit);
+                return prev; // Don't change messages yet
+              });
 
               // Fetch recent messages with enough limit to cover what we had plus new ones
               const recentMessages = await lettaApi.listMessages(coAgent.id, {
@@ -712,10 +716,13 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               });
 
               console.log('[STREAM COMPLETE] Received', recentMessages.length, 'messages from server');
+              console.log('[STREAM COMPLETE] First message ID:', recentMessages[0]?.id);
+              console.log('[STREAM COMPLETE] Last message ID:', recentMessages[recentMessages.length - 1]?.id);
 
               if (recentMessages.length > 0) {
                 // Replace messages entirely with server response (this removes temp messages)
                 setMessages(filterFirstMessage(recentMessages));
+                console.log('[STREAM COMPLETE] Updated messages state');
               }
             } catch (error) {
               console.error('Failed to fetch finalized messages:', error);
