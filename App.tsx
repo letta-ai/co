@@ -696,29 +696,23 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           // Wait for server to finalize messages
           setTimeout(async () => {
             try {
-              // Fetch recent messages to get finalized versions
+              // Count how many messages we currently have (excluding temp messages)
+              const currentCount = messages.filter(msg => !msg.id.startsWith('temp-')).length;
+              const fetchLimit = Math.max(currentCount + 5, 50); // Fetch at least current count + some buffer
+
+              console.log('[STREAM COMPLETE] Current message count:', currentCount, 'Fetching:', fetchLimit);
+
+              // Fetch recent messages with enough limit to cover what we had plus new ones
               const recentMessages = await lettaApi.listMessages(coAgent.id, {
-                limit: 10,
+                limit: fetchLimit,
                 use_assistant_message: true,
               });
 
+              console.log('[STREAM COMPLETE] Received', recentMessages.length, 'messages from server');
+
               if (recentMessages.length > 0) {
-                setMessages(prev => {
-                  // Create a map of existing messages by ID
-                  const messageMap = new Map(prev.map(msg => [msg.id, msg]));
-
-                  // Add/update with recent messages
-                  recentMessages.forEach(msg => {
-                    messageMap.set(msg.id, msg);
-                  });
-
-                  // Convert back to array and sort by timestamp
-                  const merged = Array.from(messageMap.values()).sort((a, b) => {
-                    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
-                  });
-
-                  return filterFirstMessage(merged);
-                });
+                // Replace messages entirely with server response (this removes temp messages)
+                setMessages(filterFirstMessage(recentMessages));
               }
             } catch (error) {
               console.error('Failed to fetch finalized messages:', error);
@@ -727,7 +721,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
               setIsStreaming(false);
               setCurrentStream({ reasoning: '', toolCalls: [], assistantMessage: '' });
             }
-          }, 300);
+          }, 500);
         },
         (error) => {
           console.error('=== APP STREAMING ERROR CALLBACK ===');
