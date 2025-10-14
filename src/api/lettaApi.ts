@@ -603,8 +603,20 @@ class LettaApiService {
           role = 'tool';
         }
 
-        // Get content - for reasoning messages, content is the reasoning text
+        // Get content - construct from tool call if needed
         let content: string = message.content || message.reasoning || '';
+
+        // For tool call messages, construct content from tool_call data if content is empty
+        if ((type === 'tool_call_message' || type === 'tool_call') && !content && toolCall) {
+          const name = toolCall.name || 'tool';
+          const args = toolCall.arguments || '{}';
+          content = `${name}(${args})`;
+        }
+
+        // For tool return messages, use the tool_return or tool_response value
+        if ((type === 'tool_return_message' || type === 'tool_response') && !content && toolReturn) {
+          content = typeof toolReturn === 'string' ? toolReturn : (toolReturn.tool_return || toolReturn.content || '');
+        }
 
         return {
           id: message.id,
