@@ -2174,10 +2174,11 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
             minIndexForVisible: 0,
             autoscrollToTopThreshold: 10,
           }}
-          windowSize={10}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={5}
+          windowSize={50}
+          removeClippedSubviews={false}
+          maxToRenderPerBatch={20}
           updateCellsBatchingPeriod={50}
+          initialNumToRender={50}
           contentContainerStyle={[
             styles.messagesList,
             displayMessages.length === 0 && { flexGrow: 1 }
