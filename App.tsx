@@ -18,7 +18,6 @@ import {
   Image,
   KeyboardAvoidingView,
   ScrollView,
-  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -60,25 +59,6 @@ function CoApp() {
     if (Platform.OS === 'android') {
       SystemUI.setBackgroundColorAsync(darkTheme.colors.background.primary);
     }
-  }, []);
-
-  // Keyboard height tracking for Android
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-
-    const showSubscription = Keyboard.addListener('keyboardDidShow', (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
   }, []);
 
   const [fontsLoaded] = useFonts({
@@ -2176,6 +2156,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.chatRow}
           keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top + 60 : 0}
+          enabled={Platform.OS === 'ios'}
         >
           {/* You View */}
           <View style={[styles.memoryViewContainer, { display: currentView === 'you' ? 'flex' : 'none', backgroundColor: theme.colors.background.primary }]}>
@@ -2258,7 +2239,10 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
           initialNumToRender={100}
           contentContainerStyle={[
             styles.messagesList,
-            displayMessages.length === 0 && { flexGrow: 1 }
+            displayMessages.length === 0 && { flexGrow: 1 },
+            {
+              paddingBottom: 120
+            }
           ]}
           ListHeaderComponent={
             hasMoreBefore ? (
@@ -2378,9 +2362,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         style={[
           styles.inputContainer,
           {
-            paddingBottom: Platform.OS === 'android'
-              ? (keyboardHeight > 0 ? keyboardHeight + 40 : 40)
-              : Math.max(insets.bottom, 16)
+            paddingBottom: Math.max(insets.bottom, 16)
           },
           displayMessages.length === 0 && styles.inputContainerCentered
         ]}
@@ -3097,7 +3079,7 @@ const styles = StyleSheet.create({
     maxWidth: 700,
     width: '100%',
     alignSelf: 'center',
-    paddingBottom: 100, // Space for input at bottom
+    paddingBottom: 180, // Space for input at bottom (accounts for expanded input height)
   },
   messageContainer: {
     paddingHorizontal: 18,
@@ -3222,6 +3204,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingTop: 16,
+    paddingBottom: 24,
     paddingHorizontal: 16,
     alignItems: 'center',
   },
