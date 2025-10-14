@@ -2286,7 +2286,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
                   {/* Show tool calls if we have any */}
                   {currentStream.toolCalls.map((toolCall) => (
-                    <View key={toolCall.id}>
+                    <View key={toolCall.id} style={styles.toolCallStreamingContainer}>
                       <ToolCallItem
                         callText={toolCall.args}
                         hasResult={false}
@@ -3607,6 +3607,11 @@ const styles = StyleSheet.create({
     color: darkTheme.colors.text.secondary,
     lineHeight: 22,
     fontStyle: 'normal',
+  },
+  toolCallStreamingContainer: {
+    paddingLeft: 20,
+    paddingRight: 16,
+    marginBottom: 12,
   },
 
   // Modal styles
