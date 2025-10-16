@@ -145,13 +145,17 @@ export const MessageInputV2: React.FC<MessageInputV2Props> = ({
           style={[
             styles.sendButton,
             (inputText.trim() || selectedImages.length > 0) && !disabled
-              ? { opacity: 1 }
-              : { opacity: 0.5 },
+              ? { opacity: 1, backgroundColor: theme.colors.interactive.primary }
+              : { opacity: 0.4, backgroundColor: 'rgba(239, 160, 78, 0.1)' },
           ]}
           onPress={handleSend}
           disabled={disabled || (!inputText.trim() && selectedImages.length === 0)}
         >
-          <Ionicons name="send" size={20} color={theme.colors.text.primary} />
+          <Ionicons
+            name="send"
+            size={18}
+            color={(inputText.trim() || selectedImages.length > 0) && !disabled ? '#ffffff' : theme.colors.text.tertiary}
+          />
         </TouchableOpacity>
       </View>
     </View>
@@ -190,29 +194,35 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   attachButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   textInput: {
     flex: 1,
-    minHeight: 40,
+    minHeight: 44,
     maxHeight: 120,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    fontSize: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 24,
+    fontSize: 15,
     lineHeight: 20,
     borderWidth: 0,
+    fontFamily: 'Lexend_400Regular',
     ...(Platform.OS === 'web' && {
       // @ts-ignore - outlineStyle is web-only
       outlineStyle: 'none',
     }),
   },
   sendButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(239, 160, 78, 0.1)',
   },
 });
 

@@ -13,7 +13,7 @@ import { useMessages } from '../hooks/useMessages';
 import { useMessageStream } from '../hooks/useMessageStream';
 import { useChatStore } from '../stores/chatStore';
 
-import MessageBubble from '../components/MessageBubble';
+import MessageBubbleV2 from '../components/MessageBubble.v2';
 import MessageInputV2 from '../components/MessageInput.v2';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
 
@@ -53,7 +53,7 @@ export function ChatScreen({ theme }: ChatScreenProps) {
 
   // Render message item
   const renderMessage = ({ item }: { item: any }) => (
-    <MessageBubble message={item} theme={theme} />
+    <MessageBubbleV2 message={item} theme={theme} />
   );
 
   return (
@@ -123,8 +123,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   messagesList: {
-    paddingHorizontal: 16,
     paddingTop: 16,
+    paddingBottom: 16,
   },
   inputContainer: {
     position: 'absolute',
@@ -133,7 +133,8 @@ const styles = StyleSheet.create({
     right: 0,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
 });
