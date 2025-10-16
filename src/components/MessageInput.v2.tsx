@@ -203,9 +203,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     fontSize: 16,
     lineHeight: 20,
+    borderWidth: 0,
     ...(Platform.OS === 'web' && {
-      // @ts-ignore
-      outline: 'none',
+      // @ts-ignore - outlineStyle is web-only
+      outlineStyle: 'none',
     }),
   },
   sendButton: {

@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
-import LottieView from 'lottie-react-native';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
 
 interface LogoLoaderProps {
   // Pass a require('...') or an imported JSON
-  source: any;
+  source?: any;
   loop?: boolean;
   autoPlay?: boolean;
   size?: number; // square size in px
@@ -16,6 +15,28 @@ const LogoLoader: React.FC<LogoLoaderProps> = ({
   autoPlay = true,
   size = 160,
 }) => {
+  // If Lottie is not available or source not provided, use ActivityIndicator
+  if (!source) {
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
+
+  // Dynamically import LottieView only if needed
+  let LottieView: any;
+  try {
+    LottieView = require('lottie-react-native').default;
+  } catch (e) {
+    // Fallback to ActivityIndicator if Lottie is not available
+    return (
+      <View style={styles.container}>
+        <ActivityIndicator size="large" color="#ffffff" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <LottieView
@@ -30,6 +51,7 @@ const LogoLoader: React.FC<LogoLoaderProps> = ({
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },

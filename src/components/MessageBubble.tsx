@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image } from 'react-native';
+import { View, Text, StyleSheet, Image, Platform } from 'react-native';
 import { darkTheme } from '../theme';
 import { LettaMessage } from '../types/letta';
 import MessageContent from './MessageContent';
@@ -130,14 +130,17 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
     padding: 12,
     borderRadius: 16,
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...(Platform.OS === 'android' && { elevation: 1 }),
+    ...(Platform.OS === 'ios' && {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+    }),
+    ...(Platform.OS === 'web' && {
+      // @ts-ignore - boxShadow is web-only
+      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+    }),
   },
   userBubble: {
     backgroundColor: darkTheme.colors.interactive.primary,
