@@ -18,6 +18,7 @@ import {
   Image,
   KeyboardAvoidingView,
   ScrollView,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -59,6 +60,25 @@ function CoApp() {
     if (Platform.OS === 'android') {
       SystemUI.setBackgroundColorAsync(darkTheme.colors.background.primary);
     }
+  }, []);
+
+  // Track keyboard state for Android
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    const showSubscription = Keyboard.addListener('keyboardDidShow', () => {
+      setIsKeyboardVisible(true);
+    });
+    const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
+      setIsKeyboardVisible(false);
+    });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
   }, []);
 
   const [fontsLoaded] = useFonts({
@@ -2362,7 +2382,8 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
         style={[
           styles.inputContainer,
           {
-            paddingBottom: Math.max(insets.bottom, 16)
+            paddingBottom: Math.max(insets.bottom, 16),
+            marginBottom: Platform.OS === 'android' && isKeyboardVisible ? 64 : 0
           },
           displayMessages.length === 0 && styles.inputContainerCentered
         ]}
