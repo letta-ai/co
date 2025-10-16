@@ -1,22 +1,26 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 import { darkTheme } from '../theme';
 import { LettaMessage } from '../types/letta';
+import MessageContent from './MessageContent';
+import ToolCallItem from './ToolCallItem';
 
 interface MessageBubbleProps {
   message: LettaMessage;
+  theme?: any;
 }
 
-const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
+const MessageBubble: React.FC<MessageBubbleProps> = ({ message, theme = darkTheme }) => {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
-  
+  const isTool = message.role === 'tool' || message.message_type?.includes('tool');
+
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
   };
 
@@ -40,25 +44,68 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
     ];
   };
 
+  // Render tool call messages separately
+  if (isTool) {
+    return (
+      <View style={styles.toolContainer}>
+        <ToolCallItem message={message} theme={theme} />
+      </View>
+    );
+  }
+
+  // Render multimodal content (images + text)
+  const renderContent = () => {
+    if (Array.isArray(message.content)) {
+      return (
+        <View>
+          {message.content.map((item: any, index: number) => {
+            if (item.type === 'image' && item.source) {
+              const imageUri = item.source.type === 'base64'
+                ? `data:${item.source.mediaType || 'image/jpeg'};base64,${item.source.data}`
+                : item.source.url;
+
+              return (
+                <Image
+                  key={index}
+                  source={{ uri: imageUri }}
+                  style={styles.messageImage}
+                  resizeMode="cover"
+                />
+              );
+            } else if (item.type === 'text') {
+              return (
+                <Text key={index} style={getTextStyle()}>
+                  {item.text}
+                </Text>
+              );
+            }
+            return null;
+          })}
+        </View>
+      );
+    }
+
+    // Render regular text content
+    if (typeof message.content === 'string') {
+      return (
+        <MessageContent
+          content={message.content}
+          messageType={message.message_type}
+          theme={theme}
+        />
+      );
+    }
+
+    return null;
+  };
+
   return (
     <View style={[styles.container, isUser ? styles.userContainer : styles.assistantContainer]}>
       <View style={getBubbleStyle()}>
-        <Text style={getTextStyle()}>
-          {message.content}
-        </Text>
+        {renderContent()}
         <Text style={styles.timestamp}>
           {formatTime(message.created_at)}
         </Text>
-        {message.tool_calls && message.tool_calls.length > 0 && (
-          <View style={styles.toolCallsContainer}>
-            <Text style={styles.toolCallsTitle}>Tools used:</Text>
-            {message.tool_calls.map((toolCall, index) => (
-              <Text key={index} style={styles.toolCallText}>
-                • {toolCall.function.name}
-              </Text>
-            ))}
-          </View>
-        )}
       </View>
     </View>
   );
@@ -74,6 +121,10 @@ const styles = StyleSheet.create({
   },
   assistantContainer: {
     alignItems: 'flex-start',
+  },
+  toolContainer: {
+    marginVertical: 2,
+    marginHorizontal: 16,
   },
   bubble: {
     maxWidth: '80%',
@@ -117,26 +168,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontStyle: 'italic',
   },
+  messageImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
   timestamp: {
     fontSize: 12,
     marginTop: 4,
     opacity: 0.7,
-  },
-  toolCallsContainer: {
-    marginTop: 8,
-    padding: 8,
-    backgroundColor: darkTheme.colors.background.tertiary,
-    borderRadius: 8,
-  },
-  toolCallsTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 4,
-    opacity: 0.8,
-  },
-  toolCallText: {
-    fontSize: 12,
-    opacity: 0.8,
+    color: darkTheme.colors.text.tertiary,
   },
 });
 
