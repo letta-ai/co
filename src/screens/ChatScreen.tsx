@@ -13,6 +13,7 @@ import { useMessages } from '../hooks/useMessages';
 import { useMessageStream } from '../hooks/useMessageStream';
 import { useChatStore } from '../stores/chatStore';
 import { useMessageInteractions } from '../hooks/useMessageInteractions';
+import { useScrollToBottom } from '../hooks/useScrollToBottom';
 
 import MessageBubbleEnhanced from '../components/MessageBubble.enhanced';
 import MessageInputEnhanced from '../components/MessageInputEnhanced';
@@ -25,7 +26,6 @@ interface ChatScreenProps {
 
 export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
-  const scrollViewRef = useRef<FlatList<any>>(null);
 
   // Hooks
   const { messages, isLoadingMessages, loadMoreMessages, hasMoreBefore, isLoadingMore } = useMessages();
@@ -40,6 +40,13 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
     toggleToolReturn,
     copyToClipboard,
   } = useMessageInteractions();
+
+  // Scroll management
+  const { scrollViewRef, scrollToBottom, onContentSizeChange } = useScrollToBottom({
+    scrollOnMount: true,
+    delay: 150,
+    animated: false,
+  });
 
   // Filter and sort messages for display
   const displayMessages = React.useMemo(() => {
@@ -80,17 +87,10 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
   const [containerHeight, setContainerHeight] = React.useState(0);
 
-  // Scroll to bottom
-  const scrollToBottom = () => {
-    setTimeout(() => {
-      scrollViewRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  };
-
   // Handle send message
   const handleSend = async (text: string) => {
     await sendMessage(text, selectedImages);
-    scrollToBottom();
+    scrollToBottom(true); // Animate scroll when sending
   };
 
   // Render message item
@@ -131,6 +131,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
           styles.messagesList,
           { paddingBottom: insets.bottom + 80 },
         ]}
+        onContentSizeChange={onContentSizeChange}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.5}
         initialNumToRender={100}
