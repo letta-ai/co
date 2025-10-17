@@ -16,7 +16,6 @@ import { useMessageInteractions } from '../hooks/useMessageInteractions';
 
 import MessageBubbleEnhanced from '../components/MessageBubble.enhanced';
 import MessageInputEnhanced from '../components/MessageInputEnhanced';
-import LiveStatusIndicator from '../components/LiveStatusIndicator';
 
 interface ChatScreenProps {
   theme: any;
@@ -30,7 +29,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
 
   // Hooks
   const { messages, isLoadingMessages, loadMoreMessages, hasMoreBefore, isLoadingMore } = useMessages();
-  const { isStreaming, isSendingMessage, currentStream, completedStreamBlocks, sendMessage } = useMessageStream();
+  const { isStreaming, isSendingMessage, sendMessage } = useMessageStream();
   const {
     expandedReasoning,
     expandedCompaction,
@@ -143,21 +142,6 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
           autoscrollToTopThreshold: 10,
         }}
       />
-
-      {/* Streaming Indicator */}
-      {isStreaming && (
-        <View style={{ paddingHorizontal: 18, paddingVertical: 8 }}>
-          {currentStream.reasoning && (
-            <LiveStatusIndicator status="thought" isDark={colorScheme === 'dark'} />
-          )}
-          {currentStream.assistantMessage && !currentStream.reasoning && (
-            <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
-          )}
-          {!currentStream.reasoning && !currentStream.assistantMessage && (
-            <LiveStatusIndicator status="thinking" isDark={colorScheme === 'dark'} />
-          )}
-        </View>
-      )}
 
       {/* Spacer for animation */}
       {lastMessageNeedsSpace && <Animated.View style={{ height: spacerHeightAnim }} />}
