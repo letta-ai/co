@@ -15,7 +15,7 @@ import { useChatStore } from '../stores/chatStore';
 import { useMessageInteractions } from '../hooks/useMessageInteractions';
 
 import MessageBubbleEnhanced from '../components/MessageBubble.enhanced';
-import MessageInputV2 from '../components/MessageInput.v2';
+import MessageInputEnhanced from '../components/MessageInputEnhanced';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
 
 interface ChatScreenProps {
@@ -127,7 +127,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
         ref={scrollViewRef}
         data={displayMessages}
         renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => `${item.id}-${item.message_type}`}
         contentContainerStyle={[
           styles.messagesList,
           { paddingBottom: insets.bottom + 80 },
@@ -160,26 +160,22 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
       )}
 
       {/* Spacer for animation */}
-      {lastMessageNeedsSpace && (
-        <Animated.View style={{ height: spacerHeightAnim }} />
-      )}
+      {lastMessageNeedsSpace && <Animated.View style={{ height: spacerHeightAnim }} />}
 
-      {/* Message Input */}
-      <View
-        style={[
-          styles.inputContainer,
-          { backgroundColor: theme.colors.background.secondary },
-        ]}
-      >
-        <MessageInputV2
-          onSend={handleSend}
-          disabled={isSendingMessage || isLoadingMessages}
-          theme={theme}
-          selectedImages={selectedImages}
-          onAddImage={addImage}
-          onRemoveImage={removeImage}
-        />
-      </View>
+      {/* Message Input - Enhanced with rainbow animations */}
+      <MessageInputEnhanced
+        onSend={handleSend}
+        isSendingMessage={isSendingMessage || isLoadingMessages}
+        theme={theme}
+        colorScheme={colorScheme}
+        hasMessages={displayMessages.length > 0}
+        isStreaming={isStreaming}
+        hasExpandedReasoning={expandedReasoning.size > 0}
+        selectedImages={selectedImages}
+        onAddImage={addImage}
+        onRemoveImage={removeImage}
+        disabled={isSendingMessage || isLoadingMessages}
+      />
     </KeyboardAvoidingView>
   );
 }
