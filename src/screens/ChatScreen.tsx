@@ -12,22 +12,64 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useMessages } from '../hooks/useMessages';
 import { useMessageStream } from '../hooks/useMessageStream';
 import { useChatStore } from '../stores/chatStore';
+import { useMessageInteractions } from '../hooks/useMessageInteractions';
 
-import MessageBubbleV2 from '../components/MessageBubble.v2';
+import MessageBubbleEnhanced from '../components/MessageBubble.enhanced';
 import MessageInputV2 from '../components/MessageInput.v2';
 import LiveStatusIndicator from '../components/LiveStatusIndicator';
 
 interface ChatScreenProps {
   theme: any;
+  colorScheme: 'light' | 'dark';
+  showCompaction?: boolean;
 }
 
-export function ChatScreen({ theme }: ChatScreenProps) {
+export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
   const scrollViewRef = useRef<FlatList<any>>(null);
 
   // Hooks
   const { messages, isLoadingMessages, loadMoreMessages, hasMoreBefore, isLoadingMore } = useMessages();
   const { isStreaming, isSendingMessage, currentStream, completedStreamBlocks, sendMessage } = useMessageStream();
+  const {
+    expandedReasoning,
+    expandedCompaction,
+    expandedToolReturns,
+    copiedMessageId,
+    toggleReasoning,
+    toggleCompaction,
+    toggleToolReturn,
+    copyToClipboard,
+  } = useMessageInteractions();
+
+  // Filter and sort messages for display
+  const displayMessages = React.useMemo(() => {
+    // Sort messages chronologically
+    const sorted = [...messages].sort((a, b) => {
+      const timeA = new Date(a.created_at || 0).getTime();
+      const timeB = new Date(b.created_at || 0).getTime();
+      return timeA - timeB;
+    });
+
+    // Filter out system messages and login/heartbeat messages
+    return sorted.filter(msg => {
+      if (msg.message_type === 'system_message') return false;
+
+      if (msg.message_type === 'user_message' && msg.content) {
+        try {
+          const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+          const parsed = JSON.parse(contentStr);
+          if (parsed?.type === 'login' || parsed?.type === 'heartbeat') {
+            return false;
+          }
+        } catch {
+          // Not JSON, keep the message
+        }
+      }
+
+      return true;
+    });
+  }, [messages]);
 
   // Chat store for images
   const selectedImages = useChatStore((state) => state.selectedImages);
@@ -35,8 +77,9 @@ export function ChatScreen({ theme }: ChatScreenProps) {
   const removeImage = useChatStore((state) => state.removeImage);
   const lastMessageNeedsSpace = useChatStore((state) => state.lastMessageNeedsSpace);
 
-  // Animation refs
+  // Animation refs and layout
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
+  const [containerHeight, setContainerHeight] = React.useState(0);
 
   // Scroll to bottom
   const scrollToBottom = () => {
@@ -53,7 +96,23 @@ export function ChatScreen({ theme }: ChatScreenProps) {
 
   // Render message item
   const renderMessage = ({ item }: { item: any }) => (
-    <MessageBubbleV2 message={item} theme={theme} />
+    <MessageBubbleEnhanced
+      message={item}
+      displayMessages={displayMessages}
+      theme={theme}
+      colorScheme={colorScheme}
+      expandedReasoning={expandedReasoning}
+      expandedCompaction={expandedCompaction}
+      expandedToolReturns={expandedToolReturns}
+      copiedMessageId={copiedMessageId}
+      showCompaction={showCompaction}
+      toggleReasoning={toggleReasoning}
+      toggleCompaction={toggleCompaction}
+      toggleToolReturn={toggleToolReturn}
+      copyToClipboard={copyToClipboard}
+      lastMessageNeedsSpace={lastMessageNeedsSpace}
+      containerHeight={containerHeight}
+    />
   );
 
   return (
@@ -61,11 +120,12 @@ export function ChatScreen({ theme }: ChatScreenProps) {
       style={[styles.container, { backgroundColor: theme.colors.background.primary }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
     >
       {/* Messages List */}
       <FlatList
         ref={scrollViewRef}
-        data={messages}
+        data={displayMessages}
         renderItem={renderMessage}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[
@@ -86,11 +146,17 @@ export function ChatScreen({ theme }: ChatScreenProps) {
 
       {/* Streaming Indicator */}
       {isStreaming && (
-        <LiveStatusIndicator
-          currentStream={currentStream}
-          completedStreamBlocks={completedStreamBlocks}
-          theme={theme}
-        />
+        <View style={{ paddingHorizontal: 18, paddingVertical: 8 }}>
+          {currentStream.reasoning && (
+            <LiveStatusIndicator status="thought" isDark={colorScheme === 'dark'} />
+          )}
+          {currentStream.assistantMessage && !currentStream.reasoning && (
+            <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
+          )}
+          {!currentStream.reasoning && !currentStream.assistantMessage && (
+            <LiveStatusIndicator status="thinking" isDark={colorScheme === 'dark'} />
+          )}
+        </View>
       )}
 
       {/* Spacer for animation */}
