@@ -172,6 +172,9 @@ const styles = StyleSheet.create({
   messagesList: {
     paddingTop: 16,
     paddingBottom: 16,
+    maxWidth: 800,
+    width: '100%',
+    alignSelf: 'center',
   },
   inputContainer: {
     position: 'absolute',
