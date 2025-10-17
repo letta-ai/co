@@ -337,10 +337,10 @@ const styles = StyleSheet.create({
   inputContainer: {
     width: '100%',
     paddingHorizontal: 16,
+    alignItems: 'center',
   },
   inputContainerCentered: {
     justifyContent: 'center',
-    alignItems: 'center',
   },
   inputCentered: {
     position: 'relative',
