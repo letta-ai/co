@@ -38,7 +38,6 @@ import ExpandableMessageContent from './src/components/ExpandableMessageContent'
 import AnimatedStreamingText from './src/components/AnimatedStreamingText';
 import ToolCallItem from './src/components/ToolCallItem';
 import ReasoningToggle from './src/components/ReasoningToggle';
-import LiveStatusIndicator from './src/components/LiveStatusIndicator';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
 import MessageInput from './src/components/MessageInput';
 import { createMarkdownStyles } from './src/components/markdownStyles';
@@ -2286,7 +2285,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                     if (block.type === 'reasoning') {
                       return (
                         <React.Fragment key={`completed-${index}`}>
-                          <LiveStatusIndicator status="thought" isDark={colorScheme === 'dark'} />
                           <View style={styles.reasoningStreamingContainer}>
                             <Text style={styles.reasoningStreamingText}>{block.content}</Text>
                           </View>
@@ -2295,7 +2293,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                     } else if (block.type === 'assistant_message') {
                       return (
                         <React.Fragment key={`completed-${index}`}>
-                          <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
                           <View style={{ flex: 1 }}>
                             <MessageContent
                               content={block.content}
@@ -2313,7 +2310,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   {/* Show current reasoning being accumulated */}
                   {currentStream.reasoning && (
                     <>
-                      <LiveStatusIndicator status="thought" />
                       <View style={styles.reasoningStreamingContainer}>
                         <Text style={styles.reasoningStreamingText}>{currentStream.reasoning}</Text>
                       </View>
@@ -2334,9 +2330,6 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
                   {/* Show current assistant message being accumulated */}
                   {currentStream.assistantMessage && (
                     <>
-                      <View style={currentStream.toolCalls.length > 0 ? { marginTop: 16 } : undefined}>
-                        <LiveStatusIndicator status="saying" isDark={colorScheme === 'dark'} />
-                      </View>
                       <View style={{ flex: 1 }}>
                         <MessageContent
                           content={currentStream.assistantMessage}
@@ -2350,7 +2343,7 @@ I'm paying attention not just to what you say, but how you think. Let's start wh
 
                   {/* Show thinking indicator if nothing else to show */}
                   {completedStreamBlocks.length === 0 && !currentStream.reasoning && !currentStream.assistantMessage && currentStream.toolCalls.length === 0 && (
-                    <LiveStatusIndicator status="thinking" isDark={colorScheme === 'dark'} />
+                    <View style={{ paddingVertical: 8 }} />
                   )}
                 </Animated.View>
               )}
