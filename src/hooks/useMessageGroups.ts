@@ -136,17 +136,22 @@ export function useMessageGroups({
       groupedById.get(msg.id)!.push(msg);
     }
 
-    // DEBUG: Log message grouping
-    console.log('[useMessageGroups] Message groups by ID:');
-    for (const [id, msgs] of Array.from(groupedById.entries())) {
-      const types = msgs.map(m => m.message_type).join(', ');
-      console.log(`  ID ${id}: [${types}]`);
-
-      // Check for tool calls/returns
-      const hasToolCall = msgs.some(m => m.message_type === 'tool_call_message');
-      const hasToolReturn = msgs.some(m => m.message_type === 'tool_return_message');
-      if (hasToolCall || hasToolReturn) {
-        console.log(`    -> tool_call: ${hasToolCall}, tool_return: ${hasToolReturn}`);
+    // DEBUG: Log tool call/return linking
+    console.log('[useMessageGroups] Analyzing tool call/return linking:');
+    for (const msg of sorted) {
+      if (msg.message_type === 'tool_call_message') {
+        console.log(`  TOOL CALL ${msg.id}:`, {
+          content: typeof msg.content === 'string' ? msg.content.substring(0, 50) : msg.content,
+          tool_call_id: (msg as any).tool_call_id,
+          tool_call: msg.tool_call,
+        });
+      }
+      if (msg.message_type === 'tool_return_message') {
+        console.log(`  TOOL RETURN ${msg.id}:`, {
+          content: typeof msg.content === 'string' ? msg.content.substring(0, 50) : msg.content,
+          tool_call_id: (msg as any).tool_call_id,
+          status: (msg as any).status,
+        });
       }
     }
 
@@ -157,6 +162,44 @@ export function useMessageGroups({
       const group = createMessageGroup(id, messagesInGroup);
       if (group) {
         groups.push(group);
+      }
+    }
+
+    // Step 4.5: Pair orphaned tool returns with their tool calls
+    // Letta uses different IDs for tool_call_message and tool_return_message,
+    // so we need to link them using tool_call_id
+    const toolCallGroups = new Map<string, MessageGroup>();
+    const orphanedReturns = new Map<string, MessageGroup>();
+
+    // First pass: index tool calls and orphaned returns by tool_call_id
+    for (const group of groups) {
+      if (group.type === 'tool_call') {
+        const toolCallId = extractToolCallId(sorted.find(m => m.id === group.id));
+        if (toolCallId) {
+          toolCallGroups.set(toolCallId, group);
+        }
+      } else if (group.type === 'tool_return_orphaned') {
+        const toolCallId = extractToolCallId(sorted.find(m => m.id === group.id));
+        if (toolCallId) {
+          orphanedReturns.set(toolCallId, group);
+        }
+      }
+    }
+
+    // Second pass: pair tool calls with their returns
+    for (const [toolCallId, returnGroup] of orphanedReturns.entries()) {
+      const callGroup = toolCallGroups.get(toolCallId);
+      if (callGroup && !callGroup.toolReturn) {
+        // Merge the return into the call group
+        callGroup.toolReturn = returnGroup.content;
+
+        // Remove the orphaned return from groups array
+        const returnIndex = groups.findIndex(g => g.id === returnGroup.id);
+        if (returnIndex !== -1) {
+          groups.splice(returnIndex, 1);
+        }
+
+        console.log(`[useMessageGroups] Paired tool call ${callGroup.id} with return ${returnGroup.id} via tool_call_id=${toolCallId}`);
       }
     }
 
@@ -431,6 +474,35 @@ function parseUserContent(content: any): {
   }
 
   return { textContent, images };
+}
+
+/**
+ * Extract tool_call_id from a message (if present)
+ */
+function extractToolCallId(msg: LettaMessage | undefined): string | null {
+  if (!msg) return null;
+
+  // Check for tool_call_id directly on message
+  const msgAny = msg as any;
+  if (msgAny.tool_call_id) {
+    return msgAny.tool_call_id;
+  }
+
+  // Check in tool_call object
+  if (msg.tool_call) {
+    const toolCall = msg.tool_call as any;
+    if (toolCall.id) return toolCall.id;
+    if (toolCall.tool_call_id) return toolCall.tool_call_id;
+  }
+
+  // Check in tool_calls array
+  if (msg.tool_calls && msg.tool_calls.length > 0) {
+    const toolCall = msg.tool_calls[0] as any;
+    if (toolCall.id) return toolCall.id;
+    if (toolCall.tool_call_id) return toolCall.tool_call_id;
+  }
+
+  return null;
 }
 
 /**
