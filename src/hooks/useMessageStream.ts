@@ -221,8 +221,6 @@ export function useMessageStream() {
     isStreaming: chatStore.isStreaming,
     isSendingMessage: chatStore.isSendingMessage,
     currentStream: chatStore.currentStream,
-    completedStreamBlocks: chatStore.completedStreamBlocks,
-
     sendMessage,
   };
 }

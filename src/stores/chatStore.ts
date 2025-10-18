@@ -1,15 +1,16 @@
 import { create } from 'zustand';
 import type { LettaMessage, StreamingChunk } from '../types/letta';
 
+/**
+ * Streaming state for accumulating message chunks
+ *
+ * Used by useMessageGroups to create a temporary streaming MessageGroup
+ * that displays while the agent is responding.
+ */
 interface StreamState {
   reasoning: string;
   toolCalls: Array<{ id: string; name: string; args: string }>;
   assistantMessage: string;
-}
-
-interface CompletedBlock {
-  type: 'reasoning' | 'assistant_message';
-  content: string;
 }
 
 interface ChatState {
@@ -24,7 +25,6 @@ interface ChatState {
   isStreaming: boolean;
   isSendingMessage: boolean;
   currentStream: StreamState;
-  completedStreamBlocks: CompletedBlock[];
 
   // UI state
   hasInputText: boolean;
@@ -46,8 +46,6 @@ interface ChatState {
   updateStreamReasoning: (reasoning: string) => void;
   updateStreamAssistant: (content: string) => void;
   addStreamToolCall: (toolCall: { id: string; name: string; args: string }) => void;
-  completeReasoningBlock: (content: string) => void;
-  completeAssistantBlock: (content: string) => void;
   clearStream: () => void;
 
   // Image actions
@@ -82,7 +80,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     toolCalls: [],
     assistantMessage: '',
   },
-  completedStreamBlocks: [],
 
   hasInputText: false,
   lastMessageNeedsSpace: false,
@@ -125,7 +122,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       isStreaming: true,
       currentStream: { reasoning: '', toolCalls: [], assistantMessage: '' },
-      completedStreamBlocks: [],
       lastMessageNeedsSpace: true,
     });
   },
@@ -134,56 +130,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ isStreaming: false, lastMessageNeedsSpace: false });
   },
 
+  // Accumulate reasoning chunks (useMessageGroups will pair with assistant message)
   updateStreamReasoning: (reasoning) => {
-    set((state) => {
-      // If we have assistant message, save it first and start new reasoning block
-      if (state.currentStream.assistantMessage) {
-        return {
-          completedStreamBlocks: [
-            ...state.completedStreamBlocks,
-            { type: 'assistant_message' as const, content: state.currentStream.assistantMessage },
-          ],
-          currentStream: {
-            reasoning,
-            toolCalls: [],
-            assistantMessage: '',
-          },
-        };
-      }
-      // Otherwise accumulate reasoning
-      return {
-        currentStream: {
-          ...state.currentStream,
-          reasoning: state.currentStream.reasoning + reasoning,
-        },
-      };
-    });
+    set((state) => ({
+      currentStream: {
+        ...state.currentStream,
+        reasoning: state.currentStream.reasoning + reasoning,
+      },
+    }));
   },
 
+  // Accumulate assistant message chunks (useMessageGroups will pair with reasoning)
   updateStreamAssistant: (content) => {
-    set((state) => {
-      // If we have reasoning and no assistant message yet, save reasoning first
-      if (state.currentStream.reasoning && !state.currentStream.assistantMessage) {
-        return {
-          completedStreamBlocks: [
-            ...state.completedStreamBlocks,
-            { type: 'reasoning' as const, content: state.currentStream.reasoning },
-          ],
-          currentStream: {
-            reasoning: '',
-            toolCalls: [],
-            assistantMessage: content,
-          },
-        };
-      }
-      // Otherwise accumulate assistant message
-      return {
-        currentStream: {
-          ...state.currentStream,
-          assistantMessage: state.currentStream.assistantMessage + content,
-        },
-      };
-    });
+    set((state) => ({
+      currentStream: {
+        ...state.currentStream,
+        assistantMessage: state.currentStream.assistantMessage + content,
+      },
+    }));
   },
 
   addStreamToolCall: (toolCall) => {
@@ -201,28 +165,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
   },
 
-  completeReasoningBlock: (content) => {
-    set((state) => ({
-      completedStreamBlocks: [
-        ...state.completedStreamBlocks,
-        { type: 'reasoning' as const, content },
-      ],
-    }));
-  },
-
-  completeAssistantBlock: (content) => {
-    set((state) => ({
-      completedStreamBlocks: [
-        ...state.completedStreamBlocks,
-        { type: 'assistant_message' as const, content },
-      ],
-    }));
-  },
-
   clearStream: () => {
     set({
       currentStream: { reasoning: '', toolCalls: [], assistantMessage: '' },
-      completedStreamBlocks: [],
     });
   },
 

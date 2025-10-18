@@ -56,7 +56,15 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
   const lastMessageNeedsSpace = useChatStore((state) => state.lastMessageNeedsSpace);
   const currentStream = useChatStore((state) => state.currentStream);
 
-  // Group messages by ID (reasoning + assistant, tool_call + tool_return, etc.)
+  /**
+   * Transform raw Letta messages into unified MessageGroup objects.
+   *
+   * This groups messages by ID (reasoning + assistant → single group),
+   * pairs tool calls with returns, and appends a temporary streaming group
+   * while the agent is responding.
+   *
+   * Each MessageGroup has a unique groupKey for FlatList rendering.
+   */
   const messageGroups = useMessageGroups({
     messages,
     isStreaming,

@@ -1,17 +1,25 @@
 /**
  * useMessageGroups Hook
  *
- * Groups raw Letta messages by ID to create unified message groups.
+ * Transforms raw Letta messages into unified MessageGroup objects for rendering.
  *
- * Grouping rules:
- * - Messages with same ID are grouped (e.g., reasoning + assistant)
- * - Tool calls paired with tool returns
- * - User messages with images
- * - Compaction alerts extracted
- * - Streaming messages appended as temporary group
+ * WHAT IT DOES:
+ * - Groups messages by ID (reasoning + assistant share ID → single group)
+ * - Pairs tool calls with tool returns automatically
+ * - Extracts compaction alerts from user messages
+ * - Parses multipart user messages (text + images)
+ * - Appends streaming group as temporary FlatList item
  *
- * This hook is the data transformation layer - rendering components
- * consume MessageGroup instead of raw LettaMessage.
+ * WHY IT EXISTS:
+ * Before: Reasoning and assistant messages were separate FlatList items,
+ *         requiring complex pairing logic in the render component.
+ * After:  One MessageGroup per logical message turn, with reasoning co-located.
+ *
+ * STREAMING BEHAVIOR:
+ * - While streaming: Appends temporary group (id='streaming', groupKey='streaming-assistant')
+ * - Server refresh: Replaces with real messages (different groupKeys prevent flashing)
+ *
+ * This hook is pure - no side effects, just data transformation.
  */
 
 import { useMemo } from 'react';
