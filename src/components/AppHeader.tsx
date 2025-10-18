@@ -1,31 +1,13 @@
 /**
  * AppHeader Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
+ * Application header with menu button and app title.
  *
- * REPLACES: App.tsx.monolithic lines 2083-2124
- * - Header bar with menu button
- * - App title ("co") with developer mode activation (7 clicks)
- * - Conditional rendering based on message count
- *
- * FEATURES:
- * - Menu button to toggle sidebar
- * - Title with hidden developer mode toggle (tap 7 times in 2 seconds)
+ * Features:
+ * - Menu button triggers sidebar drawer
+ * - Hidden developer mode toggle (tap "co" title 7 times in 2 seconds)
  * - Responsive to safe area insets
- * - Theme-aware styling
- * - Hides when no messages (empty state)
- *
- * DEPENDENCIES:
- * - Ionicons
- * - react-native-safe-area-context
- * - Theme system
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - AppSidebar.tsx (triggered by menu button)
- * - BottomNavigation.tsx (view switcher below this)
+ * - Conditionally hides when no messages present
  */
 
 import React, { useRef, useState } from 'react';

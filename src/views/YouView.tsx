@@ -1,40 +1,17 @@
 /**
  * YouView Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
+ * Displays and manages the "You" memory block - the agent's understanding of the user.
  *
- * REPLACES: App.tsx.monolithic lines 2181-2237
- * - Memory blocks viewer ("You" view)
- * - Shows "You" block content in markdown
- * - Create "You" block if it doesn't exist
- * - Loading and empty states
- *
- * FEATURES:
- * - Three states: loading, empty, content
+ * Features three states:
  * - Loading: Shows spinner while checking for You block
- * - Empty: Shows "Want to understand yourself?" with create button
- * - Content: Renders You block markdown
- * - Markdown rendering with custom styles
- * - Responsive max-width (700px)
+ * - Empty: Prompts user to create their You block
+ * - Content: Renders You block markdown with custom styling
  *
- * LOGIC DEPENDENCIES:
- * - Parent must handle:
- *   - Checking if You block exists
- *   - Creating You block
- *   - Loading You block content
- *   - State management (hasCheckedYouBlock, hasYouBlock, youBlockContent)
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - MemoryBlockViewer.tsx (alternative memory block display)
- * - KnowledgeView.tsx (archival memory view)
- *
- * TODO:
- * - Add edit functionality
- * - Add multiple memory blocks support
- * - Add block type badges
+ * Parent component must handle:
+ * - Checking if You block exists
+ * - Creating You block
+ * - Loading You block content
  */
 
 import React from 'react';

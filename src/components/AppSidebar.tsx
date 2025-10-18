@@ -1,45 +1,15 @@
 /**
  * AppSidebar Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
+ * Animated slide-in drawer menu with navigation and settings.
  *
- * REPLACES: App.tsx.monolithic lines 1924-2079
- * - Animated slide-in drawer menu
- * - Navigation to Memory and Settings
- * - Theme toggle (light/dark mode)
- * - Open agent in browser
- * - Refresh Co agent (developer mode only)
- * - Logout button
- *
- * FEATURES:
- * - Animated slide-in from left (0-280px width)
- * - Menu items with icons
- * - Conditional items (developer mode)
- * - Safe area inset support
- * - Theme-aware styling
- *
- * MENU ITEMS:
- * 1. Memory - Navigate to knowledge view
- * 2. Settings - Navigate to settings view
- * 3. Light/Dark Mode Toggle
- * 4. Open in Browser - Opens agent in Letta web app
- * 5. Refresh Co (dev mode only) - Deletes and recreates agent
- * 6. Logout - Signs out user
- *
- * DEPENDENCIES:
- * - React Native Animated API
- * - Ionicons
- * - react-native-safe-area-context
- * - Theme system
- * - Linking (for browser navigation)
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - AppHeader.tsx (menu button triggers this)
- * - SettingsView.tsx (navigated to from Settings item)
- * - KnowledgeView.tsx (navigated to from Memory item)
+ * Menu Items:
+ * - Memory: Navigate to knowledge view
+ * - Settings: Navigate to settings view
+ * - Theme Toggle: Switch between light/dark mode
+ * - Open in Browser: Opens agent in Letta web app
+ * - Refresh Co: Deletes and recreates agent (developer mode only)
+ * - Logout: Signs out user
  */
 
 import React from 'react';
@@ -287,7 +257,11 @@ export function AppSidebar({
 
 const styles = StyleSheet.create({
   sidebarContainer: {
-    height: '100%',
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 1000,
     borderRightWidth: 1,
     overflow: 'hidden',
   },

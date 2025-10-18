@@ -1,37 +1,10 @@
 /**
  * SettingsView Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
+ * Application settings and preferences screen.
  *
- * REPLACES: App.tsx.monolithic lines 2791-2814
- * - Settings screen with app preferences
- * - Show Compaction toggle
- * - Future: More settings can be added here
- *
- * FEATURES:
- * - Show Compaction toggle
- *   - Controls display of compaction bars in chat
- *   - When enabled, shows when conversation history is summarized
- * - Header with title
- * - Expandable for future settings
- *
- * CURRENT SETTINGS:
- * 1. Show Compaction - Toggle compaction visualization
- *
- * FUTURE SETTINGS (Ideas):
- * - Developer mode toggle
- * - Message font size
- * - Auto-scroll behavior
- * - Notification preferences
- * - Data export/import
- * - Account management
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - AppSidebar.tsx (Settings menu item navigates here)
- * - BottomNavigation.tsx (Settings tab navigates here)
+ * Current Settings:
+ * - Show Compaction: Toggle visualization of conversation compaction events
  */
 
 import React from 'react';

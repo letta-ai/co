@@ -1,73 +1,12 @@
 /**
  * KnowledgeView Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
- *
- * REPLACES: App.tsx.monolithic lines 2490-2789
- * - Knowledge management interface with 3 tabs
+ * Knowledge management interface with three tabs:
  * - Core Memory: View and search memory blocks
  * - Archival Memory: Search, create, edit, delete passages
  * - Files: Upload, list, delete files
  *
- * FEATURES:
- * - Tab switcher (Core Memory / Archival Memory / Files)
- * - Search functionality for Core and Archival
- * - File upload/delete
- * - Passage creation/editing/deletion
- * - Load more pagination for passages
- * - Empty states for each tab
- * - Loading states
- * - Error states
- * - Desktop vs mobile layouts (2 columns vs 1)
- *
- * TAB DETAILS:
- *
- * **Core Memory Tab**:
- * - Lists memory blocks (human, persona, system, etc.)
- * - Search by label or value
- * - Click to view details
- * - Shows character count
- * - 2-column grid on desktop
- *
- * **Archival Memory Tab**:
- * - Search passages with query
- * - Create new passages (button in search bar)
- * - Edit/delete existing passages
- * - Shows timestamps and tags
- * - Load more pagination
- * - Clear search button
- *
- * **Files Tab**:
- * - Upload files button
- * - List uploaded files with dates
- * - Delete files
- * - Upload progress indicator
- * - Empty state
- *
- * CALLBACKS NEEDED:
- * - onSelectBlock: (block) => void
- * - onFileUpload: () => void
- * - onFileDelete: (id, name) => void
- * - onPassageCreate: () => void
- * - onPassageEdit: (passage) => void
- * - onPassageDelete: (id) => void
- * - onLoadMorePassages: () => void
- *
- * STATE NEEDED FROM PARENT:
- * - knowledgeTab: 'core' | 'archival' | 'files'
- * - memoryBlocks, isLoadingBlocks, blocksError
- * - passages, isLoadingPassages, passagesError, hasMorePassages
- * - folderFiles, isLoadingFiles, filesError
- * - memorySearchQuery, passageSearchQuery
- * - isUploadingFile, uploadProgress
- * - isDesktop (for 2-column layout)
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - MemoryBlockViewer.tsx (shows block details)
- * - PassageModal.tsx (create/edit passages)
+ * Features responsive layouts (2-column grid on desktop, single column on mobile).
  */
 
 import React from 'react';

@@ -1,39 +1,14 @@
 /**
  * BottomNavigation Component
  *
- * MIGRATION STATUS: ✅ EXTRACTED - Ready for use
+ * View switcher with three navigation tabs: You, Chat, Knowledge.
  *
- * REPLACES: App.tsx.monolithic lines 2126-2176
- * - View switcher tabs (You, Chat, Knowledge, Settings)
- * - Active state styling
- * - Conditional rendering based on message count
- *
- * FEATURES:
- * - 4 navigation tabs: You, Chat, Knowledge, Settings
+ * Features:
  * - Active tab highlighting
- * - Triggers callbacks for view switching
- * - Theme-aware colors
- * - Hides when no messages (empty state)
+ * - Hides when no messages present (empty state)
+ * - Centered layout with max-width constraint
  *
- * CALLBACKS:
- * - onYouPress: Load memory blocks
- * - onChatPress: Switch to chat view
- * - onKnowledgePress: Load knowledge/archival memory
- * - onSettingsPress: Open settings
- *
- * DEPENDENCIES:
- * - Theme system
- * - Lexend fonts
- *
- * USED BY: (not yet integrated)
- * - [ ] App.new.tsx (planned)
- *
- * RELATED COMPONENTS:
- * - AppHeader.tsx (appears above this)
- * - YouView.tsx (shown when "You" is active)
- * - ChatScreen.tsx (shown when "Chat" is active)
- * - KnowledgeView.tsx (shown when "Knowledge" is active)
- * - SettingsView.tsx (shown when "Settings" is active)
+ * Note: Settings is accessed from the sidebar menu, not bottom navigation.
  */
 
 import React from 'react';
@@ -49,7 +24,7 @@ interface BottomNavigationProps {
   onYouPress: () => void;
   onChatPress: () => void;
   onKnowledgePress: () => void;
-  onSettingsPress: () => void;
+  onSettingsPress?: () => void; // Optional - not shown in bottom nav
 }
 
 export function BottomNavigation({
@@ -142,30 +117,6 @@ export function BottomNavigation({
           ]}
         >
           Knowledge
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[
-          styles.viewSwitcherButton,
-          currentView === 'settings' && {
-            backgroundColor: theme.colors.background.tertiary,
-          },
-        ]}
-        onPress={onSettingsPress}
-      >
-        <Text
-          style={[
-            styles.viewSwitcherText,
-            {
-              color:
-                currentView === 'settings'
-                  ? theme.colors.text.primary
-                  : theme.colors.text.tertiary,
-            },
-          ]}
-        >
-          Settings
         </Text>
       </TouchableOpacity>
     </View>
