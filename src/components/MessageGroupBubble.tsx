@@ -11,8 +11,11 @@
  * - tool_return_orphaned: Orphaned tool return (defensive case)
  * - compaction: Memory compaction alerts
  *
- * This component reuses existing sub-components (ReasoningToggle, ToolCallItem,
- * MessageContent, etc.) but provides a clean, unified rendering path.
+ * Features unified message headers with dynamic labels:
+ * - "(co said)" / "(co is saying)" for assistant messages
+ * - "(co thought)" / "(co is thinking)" for reasoning-only messages
+ * - "(co searched the web)" / "(co is searching the web)" for tool calls
+ * - Inline reasoning toggle button (chevron) instead of separate row
  */
 
 import React from 'react';
@@ -22,11 +25,12 @@ import type { MessageGroup } from '../hooks/useMessageGroups';
 import type { Theme } from '../theme';
 
 // Import sub-components (reused from existing architecture)
-import ReasoningToggle from './ReasoningToggle';
 import ToolCallItem from './ToolCallItem';
 import ExpandableMessageContent from './ExpandableMessageContent';
 import CompactionBar from './CompactionBar';
 import OrphanedToolReturn from './OrphanedToolReturn';
+import InlineReasoningButton from './InlineReasoningButton';
+import { getMessageLabel } from '../utils/messageLabels';
 
 interface MessageGroupBubbleProps {
   group: MessageGroup;
@@ -114,25 +118,46 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   // ========================================
   if (group.type === 'tool_call') {
     const isReasoningExpanded = expandedReasoning.has(group.id);
+    const label = getMessageLabel(group);
 
     return (
       <View style={styles.messageContainer}>
-        {/* Optional reasoning toggle */}
-        {group.reasoning && (
-          <ReasoningToggle
-            reasoning={group.reasoning}
-            messageId={group.id}
-            isExpanded={isReasoningExpanded}
-            onToggle={() => toggleReasoning(group.id)}
-            isDark={isDark}
-          />
+        {/* Unified header: label + optional reasoning button */}
+        <View style={styles.messageHeader}>
+          <Text style={[styles.messageLabel, { color: theme.colors.text.primary }]}>
+            {label}
+          </Text>
+          {group.reasoning && (
+            <InlineReasoningButton
+              isExpanded={isReasoningExpanded}
+              onToggle={() => toggleReasoning(group.id)}
+              isDark={isDark}
+            />
+          )}
+        </View>
+
+        {/* Expanded reasoning content */}
+        {group.reasoning && isReasoningExpanded && (
+          <View
+            style={[
+              styles.reasoningExpandedContainer,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+                borderLeftColor: theme.colors.border.primary,
+              },
+            ]}
+          >
+            <Text style={[styles.reasoningExpandedText, { color: theme.colors.text.primary }]}>
+              {group.reasoning}
+            </Text>
+          </View>
         )}
 
         {/* Tool call + return */}
         <ToolCallItem
           callText={group.toolCall?.args || group.content}
           resultText={group.toolReturn}
-          reasoning={undefined} // Already shown above if present
+          reasoning={undefined} // Already shown above
           hasResult={!!group.toolReturn}
           isDark={isDark}
         />
@@ -195,6 +220,7 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   // ========================================
   if (group.type === 'assistant') {
     const isReasoningExpanded = expandedReasoning.has(group.id);
+    const label = getMessageLabel(group);
 
     // Determine if this is the last message (for spacing)
     const shouldHaveMinHeight = lastMessageNeedsSpace;
@@ -207,21 +233,36 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
           group.isStreaming && styles.streamingPulse,
         ]}
       >
-        {/* Reasoning toggle */}
-        {group.reasoning && (
-          <ReasoningToggle
-            reasoning={group.reasoning}
-            messageId={group.id}
-            isExpanded={isReasoningExpanded}
-            onToggle={() => toggleReasoning(group.id)}
-            isDark={isDark}
-          />
-        )}
+        {/* Unified header: label + optional reasoning button */}
+        <View style={styles.messageHeader}>
+          <Text style={[styles.messageLabel, { color: theme.colors.text.primary }]}>
+            {label}
+          </Text>
+          {group.reasoning && (
+            <InlineReasoningButton
+              isExpanded={isReasoningExpanded}
+              onToggle={() => toggleReasoning(group.id)}
+              isDark={isDark}
+            />
+          )}
+        </View>
 
-        {/* "(co said)" label */}
-        <Text style={[styles.assistantLabel, { color: theme.colors.text.primary }]}>
-          (co said)
-        </Text>
+        {/* Expanded reasoning content */}
+        {group.reasoning && isReasoningExpanded && (
+          <View
+            style={[
+              styles.reasoningExpandedContainer,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+                borderLeftColor: theme.colors.border.primary,
+              },
+            ]}
+          >
+            <Text style={[styles.reasoningExpandedText, { color: theme.colors.text.primary }]}>
+              {group.reasoning}
+            </Text>
+          </View>
+        )}
 
         {/* Message content with copy button */}
         <View style={{ position: 'relative' }}>
@@ -297,10 +338,31 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     width: '100%',
   },
-  assistantLabel: {
+  // Unified message header (label + reasoning button)
+  messageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  messageLabel: {
     fontSize: 16,
     fontFamily: 'Lexend_500Medium',
-    marginBottom: 8,
+  },
+  // Reasoning expanded content (from ReasoningToggle)
+  reasoningExpandedContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingLeft: 20,
+    marginBottom: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    overflow: 'hidden',
+  },
+  reasoningExpandedText: {
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
+    lineHeight: 22,
+    fontStyle: 'normal',
   },
   copyButtonContainer: {
     position: 'absolute',

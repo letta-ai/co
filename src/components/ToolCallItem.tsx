@@ -2,12 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { darkTheme, lightTheme } from '../theme';
-import ReasoningToggle from './ReasoningToggle';
 
 interface ToolCallItemProps {
   callText: string;
   resultText?: string;
-  reasoning?: string;
   hasResult?: boolean;
   isDark?: boolean;
 }
@@ -63,7 +61,7 @@ const getToolDisplayName = (toolName: string, callText: string, hasResult: boole
   return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reasoning, hasResult = false, isDark = true }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, isDark = true }) => {
   const theme = isDark ? darkTheme : lightTheme;
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -136,7 +134,6 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, reaso
 
   return (
     <View style={styles.container}>
-      {reasoning && <ReasoningToggle reasoning={reasoning} isDark={isDark} />}
       <TouchableOpacity
         style={styles.header}
         onPress={() => setExpanded((e) => !e)}
