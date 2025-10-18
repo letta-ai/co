@@ -136,6 +136,20 @@ export function useMessageGroups({
       groupedById.get(msg.id)!.push(msg);
     }
 
+    // DEBUG: Log message grouping
+    console.log('[useMessageGroups] Message groups by ID:');
+    for (const [id, msgs] of Array.from(groupedById.entries())) {
+      const types = msgs.map(m => m.message_type).join(', ');
+      console.log(`  ID ${id}: [${types}]`);
+
+      // Check for tool calls/returns
+      const hasToolCall = msgs.some(m => m.message_type === 'tool_call_message');
+      const hasToolReturn = msgs.some(m => m.message_type === 'tool_return_message');
+      if (hasToolCall || hasToolReturn) {
+        console.log(`    -> tool_call: ${hasToolCall}, tool_return: ${hasToolReturn}`);
+      }
+    }
+
     // Step 4: Convert each ID group to MessageGroup
     const groups: MessageGroup[] = [];
 
@@ -154,13 +168,16 @@ export function useMessageGroups({
     });
 
     // Step 6: Append streaming group if active
+    console.log(`[useMessageGroups] isStreaming: ${isStreaming}, streamingState:`, streamingState);
     if (isStreaming && streamingState) {
       const streamingGroup = createStreamingGroup(streamingState);
       if (streamingGroup) {
+        console.log('[useMessageGroups] Adding streaming group:', streamingGroup.groupKey);
         groups.push(streamingGroup);
       }
     }
 
+    console.log(`[useMessageGroups] Final groups: ${groups.length} total`);
     return groups;
   }, [messages, isStreaming, streamingState]);
 }
