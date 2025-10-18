@@ -14,8 +14,9 @@ import { useMessageStream } from '../hooks/useMessageStream';
 import { useChatStore } from '../stores/chatStore';
 import { useMessageInteractions } from '../hooks/useMessageInteractions';
 import { useScrollToBottom } from '../hooks/useScrollToBottom';
+import { useMessageGroups } from '../hooks/useMessageGroups';
 
-import MessageBubbleEnhanced from '../components/MessageBubble.enhanced';
+import MessageGroupBubble from '../components/MessageGroupBubble';
 import MessageInputEnhanced from '../components/MessageInputEnhanced';
 
 interface ChatScreenProps {
@@ -48,40 +49,19 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
     animated: false,
   });
 
-  // Filter and sort messages for display
-  const displayMessages = React.useMemo(() => {
-    // Sort messages chronologically
-    const sorted = [...messages].sort((a, b) => {
-      const timeA = new Date(a.created_at || 0).getTime();
-      const timeB = new Date(b.created_at || 0).getTime();
-      return timeA - timeB;
-    });
-
-    // Filter out system messages and login/heartbeat messages
-    return sorted.filter(msg => {
-      if (msg.message_type === 'system_message') return false;
-
-      if (msg.message_type === 'user_message' && msg.content) {
-        try {
-          const contentStr = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-          const parsed = JSON.parse(contentStr);
-          if (parsed?.type === 'login' || parsed?.type === 'heartbeat') {
-            return false;
-          }
-        } catch {
-          // Not JSON, keep the message
-        }
-      }
-
-      return true;
-    });
-  }, [messages]);
-
-  // Chat store for images
+  // Chat store for images and streaming state
   const selectedImages = useChatStore((state) => state.selectedImages);
   const addImage = useChatStore((state) => state.addImage);
   const removeImage = useChatStore((state) => state.removeImage);
   const lastMessageNeedsSpace = useChatStore((state) => state.lastMessageNeedsSpace);
+  const currentStream = useChatStore((state) => state.currentStream);
+
+  // Group messages by ID (reasoning + assistant, tool_call + tool_return, etc.)
+  const messageGroups = useMessageGroups({
+    messages,
+    isStreaming,
+    streamingState: currentStream,
+  });
 
   // Animation refs and layout
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
@@ -93,26 +73,30 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
     scrollToBottom(true); // Animate scroll when sending
   };
 
-  // Render message item
-  const renderMessage = ({ item }: { item: any }) => (
-    <MessageBubbleEnhanced
-      message={item}
-      displayMessages={displayMessages}
-      theme={theme}
-      colorScheme={colorScheme}
-      expandedReasoning={expandedReasoning}
-      expandedCompaction={expandedCompaction}
-      expandedToolReturns={expandedToolReturns}
-      copiedMessageId={copiedMessageId}
-      showCompaction={showCompaction}
-      toggleReasoning={toggleReasoning}
-      toggleCompaction={toggleCompaction}
-      toggleToolReturn={toggleToolReturn}
-      copyToClipboard={copyToClipboard}
-      lastMessageNeedsSpace={lastMessageNeedsSpace}
-      containerHeight={containerHeight}
-    />
-  );
+  // Render message group
+  const renderMessageGroup = ({ item, index }: { item: any; index: number }) => {
+    // Determine if this is the last group (for spacing)
+    const isLastGroup = index === messageGroups.length - 1;
+
+    return (
+      <MessageGroupBubble
+        group={item}
+        theme={theme}
+        colorScheme={colorScheme}
+        expandedReasoning={expandedReasoning}
+        expandedCompaction={expandedCompaction}
+        expandedToolReturns={expandedToolReturns}
+        copiedMessageId={copiedMessageId}
+        showCompaction={showCompaction}
+        toggleReasoning={toggleReasoning}
+        toggleCompaction={toggleCompaction}
+        toggleToolReturn={toggleToolReturn}
+        copyToClipboard={copyToClipboard}
+        lastMessageNeedsSpace={isLastGroup && lastMessageNeedsSpace}
+        containerHeight={containerHeight}
+      />
+    );
+  };
 
   return (
     <KeyboardAvoidingView
@@ -124,9 +108,9 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
       {/* Messages List */}
       <FlatList
         ref={scrollViewRef}
-        data={displayMessages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => `${item.id}-${item.message_type}`}
+        data={messageGroups}
+        renderItem={renderMessageGroup}
+        keyExtractor={(group) => group.groupKey}
         contentContainerStyle={[
           styles.messagesList,
           { paddingBottom: insets.bottom + 80 },
@@ -153,7 +137,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
         isSendingMessage={isSendingMessage || isLoadingMessages}
         theme={theme}
         colorScheme={colorScheme}
-        hasMessages={displayMessages.length > 0}
+        hasMessages={messageGroups.length > 0}
         isStreaming={isStreaming}
         hasExpandedReasoning={expandedReasoning.size > 0}
         selectedImages={selectedImages}
