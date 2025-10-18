@@ -167,28 +167,36 @@ export function useMessageGroups({
 
     // Step 4.5: Pair orphaned tool returns with their tool calls
     // Letta uses different IDs for tool_call_message and tool_return_message,
-    // so we need to link them using tool_call_id
+    // but they share the same step_id - that's how we link them
     const toolCallGroups = new Map<string, MessageGroup>();
     const orphanedReturns = new Map<string, MessageGroup>();
 
-    // First pass: index tool calls and orphaned returns by tool_call_id
+    // First pass: index tool calls and orphaned returns by step_id
     for (const group of groups) {
       if (group.type === 'tool_call') {
-        const toolCallId = extractToolCallId(sorted.find(m => m.id === group.id));
-        if (toolCallId) {
-          toolCallGroups.set(toolCallId, group);
+        const msg = sorted.find(m => m.id === group.id);
+        const stepId = extractStepId(msg);
+        if (stepId) {
+          toolCallGroups.set(stepId, group);
+          console.log(`[useMessageGroups] Indexed tool call ${group.id} with step_id=${stepId}`);
+        } else {
+          console.log(`[useMessageGroups] WARNING: Tool call ${group.id} has no step_id`);
         }
       } else if (group.type === 'tool_return_orphaned') {
-        const toolCallId = extractToolCallId(sorted.find(m => m.id === group.id));
-        if (toolCallId) {
-          orphanedReturns.set(toolCallId, group);
+        const msg = sorted.find(m => m.id === group.id);
+        const stepId = extractStepId(msg);
+        if (stepId) {
+          orphanedReturns.set(stepId, group);
+          console.log(`[useMessageGroups] Indexed orphaned return ${group.id} with step_id=${stepId}`);
+        } else {
+          console.log(`[useMessageGroups] WARNING: Orphaned return ${group.id} has no step_id`);
         }
       }
     }
 
     // Second pass: pair tool calls with their returns
-    for (const [toolCallId, returnGroup] of orphanedReturns.entries()) {
-      const callGroup = toolCallGroups.get(toolCallId);
+    for (const [stepId, returnGroup] of orphanedReturns.entries()) {
+      const callGroup = toolCallGroups.get(stepId);
       if (callGroup && !callGroup.toolReturn) {
         // Merge the return into the call group
         callGroup.toolReturn = returnGroup.content;
@@ -199,7 +207,7 @@ export function useMessageGroups({
           groups.splice(returnIndex, 1);
         }
 
-        console.log(`[useMessageGroups] Paired tool call ${callGroup.id} with return ${returnGroup.id} via tool_call_id=${toolCallId}`);
+        console.log(`[useMessageGroups] Paired tool call ${callGroup.id} with return ${returnGroup.id} via step_id=${stepId}`);
       }
     }
 
@@ -477,32 +485,14 @@ function parseUserContent(content: any): {
 }
 
 /**
- * Extract tool_call_id from a message (if present)
+ * Extract step_id from a message - this is how Letta links tool calls with their returns
  */
-function extractToolCallId(msg: LettaMessage | undefined): string | null {
+function extractStepId(msg: LettaMessage | undefined): string | null {
   if (!msg) return null;
 
-  // Check for tool_call_id directly on message
   const msgAny = msg as any;
-  if (msgAny.tool_call_id) {
-    return msgAny.tool_call_id;
-  }
-
-  // Check in tool_call object
-  if (msg.tool_call) {
-    const toolCall = msg.tool_call as any;
-    if (toolCall.id) return toolCall.id;
-    if (toolCall.tool_call_id) return toolCall.tool_call_id;
-  }
-
-  // Check in tool_calls array
-  if (msg.tool_calls && msg.tool_calls.length > 0) {
-    const toolCall = msg.tool_calls[0] as any;
-    if (toolCall.id) return toolCall.id;
-    if (toolCall.tool_call_id) return toolCall.tool_call_id;
-  }
-
-  return null;
+  // Letta uses step_id to group tool call and tool return messages
+  return msgAny.step_id || null;
 }
 
 /**

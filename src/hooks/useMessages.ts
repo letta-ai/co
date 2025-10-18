@@ -43,6 +43,14 @@ export function useMessages() {
 
         console.log('[LOAD MESSAGES] Received', loadedMessages.length, 'messages from server');
 
+        // DEBUG: Log raw tool call/return messages
+        const toolMessages = loadedMessages.filter(m =>
+          m.message_type === 'tool_call_message' || m.message_type === 'tool_return_message'
+        );
+        if (toolMessages.length > 0) {
+          console.log('[LOAD MESSAGES] Raw tool messages:', JSON.stringify(toolMessages.slice(0, 4), null, 2));
+        }
+
         if (loadedMessages.length > 0) {
           if (before) {
             // Loading older messages - prepend them
