@@ -78,6 +78,54 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
   const displayNames = useMemo(() => getToolDisplayName(toolName, callText, hasResult), [toolName, callText, hasResult]);
   const displayText = hasResult ? displayNames.past : displayNames.present;
 
+  // Convert JSON arguments to YAML format for better readability
+  const jsonToYaml = (obj: any, indent = 0): string => {
+    const spaces = '  '.repeat(indent);
+
+    if (obj === null) return 'null';
+    if (obj === undefined) return 'undefined';
+    if (typeof obj === 'boolean') return obj.toString();
+    if (typeof obj === 'number') return obj.toString();
+
+    // String handling - use literal block style for multiline strings
+    if (typeof obj === 'string') {
+      if (obj.includes('\n')) {
+        // Multiline string - use literal block style
+        const lines = obj.split('\n');
+        return '|\n' + lines.map(line => spaces + '  ' + line).join('\n');
+      }
+      // Single line string - quote if contains special characters
+      if (obj.match(/[:#{}[\],&*!|>'"@`-]/) || obj.trim() !== obj) {
+        return `"${obj.replace(/"/g, '\\"')}"`;
+      }
+      return obj;
+    }
+
+    // Array handling
+    if (Array.isArray(obj)) {
+      if (obj.length === 0) return '[]';
+      return '\n' + obj.map(item =>
+        spaces + '- ' + jsonToYaml(item, indent + 1).replace(/^\s+/, '')
+      ).join('\n');
+    }
+
+    // Object handling
+    if (typeof obj === 'object') {
+      const entries = Object.entries(obj);
+      if (entries.length === 0) return '{}';
+      return '\n' + entries.map(([key, value]) => {
+        const yamlValue = jsonToYaml(value, indent + 1);
+        // If value starts with newline, it's multiline
+        if (yamlValue.startsWith('\n') || yamlValue.startsWith('|')) {
+          return `${spaces}${key}: ${yamlValue}`;
+        }
+        return `${spaces}${key}: ${yamlValue}`;
+      }).join('\n');
+    }
+
+    return String(obj);
+  };
+
   // Try to parse a "name({json})" or "name(k=v, ...)" shape into
   // a nicer multiline representation for readability.
   const prettyCallText = useMemo(() => {
@@ -89,18 +137,22 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
 
     const looksJsonLike = (s: string) => s.startsWith('{') || s.startsWith('[');
 
-    const toPrettyJson = (s: string): string | null => {
-      try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return null; }
+    const toYaml = (s: string): string | null => {
+      try {
+        const parsed = JSON.parse(s);
+        return jsonToYaml(parsed, 1).trim();
+      } catch {
+        return null;
+      }
     };
 
-    const fromKvToPrettyJson = (s: string): string | null => {
-      // Best-effort conversion of "k=v, x=1" into JSON
+    const fromKvToYaml = (s: string): string | null => {
+      // Best-effort conversion of "k=v, x=1" into YAML
       try {
-        // Wrap in braces and quote keys. Avoid touching quoted strings by a light heuristic:
-        // this will work for our formatted args that already JSON.stringify values.
+        // Wrap in braces and quote keys
         const replaced = s.replace(/([A-Za-z_][A-Za-z0-9_]*)\s*=/g, '"$1": ');
         const wrapped = `{ ${replaced} }`;
-        return toPrettyJson(wrapped);
+        return toYaml(wrapped);
       } catch {
         return null;
       }
@@ -108,18 +160,14 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
 
     const argsPretty =
       looksJsonLike(inside)
-        ? (toPrettyJson(inside) ?? inside)
-        : (fromKvToPrettyJson(inside) ?? inside);
+        ? (toYaml(inside) ?? inside)
+        : (fromKvToYaml(inside) ?? inside);
 
     // If we couldn't improve it, just return the raw text
     if (argsPretty === raw) return raw;
 
     // Compose a friendly multiline signature
-    const indented = argsPretty
-      .split('\n')
-      .map((line) => `  ${line}`)
-      .join('\n');
-    return `${fn}(\n${indented}\n)`;
+    return `${fn}(\n${argsPretty}\n)`;
   }, [callText]);
 
   const formattedResult = useMemo(() => {
@@ -237,7 +285,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderLeftWidth: 1,
     borderRightWidth: 1,
     paddingVertical: 8,
     paddingHorizontal: 10,
@@ -254,7 +301,6 @@ const styles = StyleSheet.create({
   resultBox: {
     borderBottomLeftRadius: 10,
     borderBottomRightRadius: 10,
-    borderLeftWidth: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
     paddingVertical: 10,
