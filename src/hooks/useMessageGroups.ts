@@ -136,25 +136,6 @@ export function useMessageGroups({
       groupedById.get(msg.id)!.push(msg);
     }
 
-    // DEBUG: Log tool call/return linking
-    console.log('[useMessageGroups] Analyzing tool call/return linking:');
-    for (const msg of sorted) {
-      if (msg.message_type === 'tool_call_message') {
-        console.log(`  TOOL CALL ${msg.id}:`, {
-          content: typeof msg.content === 'string' ? msg.content.substring(0, 50) : msg.content,
-          tool_call_id: (msg as any).tool_call_id,
-          tool_call: msg.tool_call,
-        });
-      }
-      if (msg.message_type === 'tool_return_message') {
-        console.log(`  TOOL RETURN ${msg.id}:`, {
-          content: typeof msg.content === 'string' ? msg.content.substring(0, 50) : msg.content,
-          tool_call_id: (msg as any).tool_call_id,
-          status: (msg as any).status,
-        });
-      }
-    }
-
     // Step 4: Convert each ID group to MessageGroup
     const groups: MessageGroup[] = [];
 
@@ -165,31 +146,56 @@ export function useMessageGroups({
       }
     }
 
-    // Step 4.5: Pair orphaned tool returns with their tool calls
+    // Step 4.5: Remove assistant groups that have a tool call in the same step
+    // When reasoning → assistant → tool call happen in the same step, we only want to show the tool call
+    const stepIdToGroups = new Map<string, MessageGroup[]>();
+    for (const group of groups) {
+      const msg = sorted.find(m => m.id === group.id);
+      const stepId = extractStepId(msg);
+      if (stepId) {
+        if (!stepIdToGroups.has(stepId)) {
+          stepIdToGroups.set(stepId, []);
+        }
+        stepIdToGroups.get(stepId)!.push(group);
+      }
+    }
+
+    // Remove assistant groups if there's a tool_call group in the same step
+    const groupsToRemove = new Set<string>();
+    for (const [stepId, stepGroups] of stepIdToGroups.entries()) {
+      const hasToolCall = stepGroups.some(g => g.type === 'tool_call');
+      if (hasToolCall) {
+        // Remove any assistant groups in this step (tool call supersedes)
+        for (const group of stepGroups) {
+          if (group.type === 'assistant') {
+            groupsToRemove.add(group.id);
+          }
+        }
+      }
+    }
+
+    // Filter out the groups marked for removal
+    const filteredGroups = groups.filter(g => !groupsToRemove.has(g.id));
+
+    // Step 4.6: Pair orphaned tool returns with their tool calls
     // Letta uses different IDs for tool_call_message and tool_return_message,
     // but they share the same step_id - that's how we link them
     const toolCallGroups = new Map<string, MessageGroup>();
     const orphanedReturns = new Map<string, MessageGroup>();
 
     // First pass: index tool calls and orphaned returns by step_id
-    for (const group of groups) {
+    for (const group of filteredGroups) {
       if (group.type === 'tool_call') {
         const msg = sorted.find(m => m.id === group.id);
         const stepId = extractStepId(msg);
         if (stepId) {
           toolCallGroups.set(stepId, group);
-          console.log(`[useMessageGroups] Indexed tool call ${group.id} with step_id=${stepId}`);
-        } else {
-          console.log(`[useMessageGroups] WARNING: Tool call ${group.id} has no step_id`);
         }
       } else if (group.type === 'tool_return_orphaned') {
         const msg = sorted.find(m => m.id === group.id);
         const stepId = extractStepId(msg);
         if (stepId) {
           orphanedReturns.set(stepId, group);
-          console.log(`[useMessageGroups] Indexed orphaned return ${group.id} with step_id=${stepId}`);
-        } else {
-          console.log(`[useMessageGroups] WARNING: Orphaned return ${group.id} has no step_id`);
         }
       }
     }
@@ -201,35 +207,30 @@ export function useMessageGroups({
         // Merge the return into the call group
         callGroup.toolReturn = returnGroup.content;
 
-        // Remove the orphaned return from groups array
-        const returnIndex = groups.findIndex(g => g.id === returnGroup.id);
+        // Remove the orphaned return from filtered groups array
+        const returnIndex = filteredGroups.findIndex(g => g.id === returnGroup.id);
         if (returnIndex !== -1) {
-          groups.splice(returnIndex, 1);
+          filteredGroups.splice(returnIndex, 1);
         }
-
-        console.log(`[useMessageGroups] Paired tool call ${callGroup.id} with return ${returnGroup.id} via step_id=${stepId}`);
       }
     }
 
     // Step 5: Sort groups by created_at
-    groups.sort((a, b) => {
+    filteredGroups.sort((a, b) => {
       const timeA = new Date(a.created_at || 0).getTime();
       const timeB = new Date(b.created_at || 0).getTime();
       return timeA - timeB;
     });
 
     // Step 6: Append streaming group if active
-    console.log(`[useMessageGroups] isStreaming: ${isStreaming}, streamingState:`, streamingState);
     if (isStreaming && streamingState) {
       const streamingGroup = createStreamingGroup(streamingState);
       if (streamingGroup) {
-        console.log('[useMessageGroups] Adding streaming group:', streamingGroup.groupKey);
-        groups.push(streamingGroup);
+        filteredGroups.push(streamingGroup);
       }
     }
 
-    console.log(`[useMessageGroups] Final groups: ${groups.length} total`);
-    return groups;
+    return filteredGroups;
   }, [messages, isStreaming, streamingState]);
 }
 

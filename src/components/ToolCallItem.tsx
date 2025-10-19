@@ -8,6 +8,7 @@ interface ToolCallItemProps {
   resultText?: string;
   hasResult?: boolean;
   isDark?: boolean;
+  hideHeader?: boolean; // When true, skip rendering the label header (shown by parent)
 }
 
 // Extract parameters for contextual display
@@ -61,7 +62,7 @@ const getToolDisplayName = (toolName: string, callText: string, hasResult: boole
   return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, isDark = true }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, isDark = true, hideHeader = false }) => {
   const theme = isDark ? darkTheme : lightTheme;
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -134,21 +135,40 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.header}
-        onPress={() => setExpanded((e) => !e)}
-        activeOpacity={0.7}
-      >
-        <Text style={[expanded ? styles.callText : styles.displayName, { color: expanded ? theme.colors.text.primary : theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
-          {expanded ? prettyCallText : `(${displayText})`}
-        </Text>
-        <Ionicons
-          name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={theme.colors.text.tertiary}
-          style={styles.chevron}
-        />
-      </TouchableOpacity>
+      {!hideHeader && (
+        <TouchableOpacity
+          style={styles.header}
+          onPress={() => setExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Text style={[expanded ? styles.callText : styles.displayName, { color: expanded ? theme.colors.text.primary : theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
+            {expanded ? prettyCallText : `(${displayText})`}
+          </Text>
+          <Ionicons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={theme.colors.text.tertiary}
+            style={styles.chevron}
+          />
+        </TouchableOpacity>
+      )}
+      {hideHeader && (
+        <TouchableOpacity
+          style={styles.embeddedHeader}
+          onPress={() => setExpanded((e) => !e)}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={expanded ? 'chevron-down' : 'chevron-forward'}
+            size={14}
+            color={theme.colors.text.tertiary}
+            style={styles.embeddedChevron}
+          />
+          <Text style={[styles.callText, { color: theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
+            {prettyCallText}
+          </Text>
+        </TouchableOpacity>
+      )}
       {!!resultText && (
         <TouchableOpacity
           style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded, { backgroundColor: theme.colors.background.secondary, borderColor: theme.colors.border.primary }]}
@@ -185,6 +205,16 @@ const styles = StyleSheet.create({
   },
   chevron: {
     marginLeft: 4,
+  },
+  embeddedHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 4,
+    marginBottom: 8,
+  },
+  embeddedChevron: {
+    marginRight: 6,
+    marginTop: 2,
   },
   displayName: {
     fontSize: 16,

@@ -116,6 +116,13 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   // ========================================
   // TOOL CALL MESSAGE
   // ========================================
+  // Unified label architecture:
+  // - ONE label at top: "(co updated memory)"
+  // - Optional reasoning section (expandable)
+  // - Tool call details with inline chevron (ToolCallItem with hideHeader={true})
+  // - Result section (expandable)
+  //
+  // This prevents duplicate labels when both reasoning and tool call are present.
   if (group.type === 'tool_call') {
     const isReasoningExpanded = expandedReasoning.has(group.id);
     const label = getMessageLabel(group);
@@ -157,9 +164,9 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
         <ToolCallItem
           callText={group.toolCall?.args || group.content}
           resultText={group.toolReturn}
-          reasoning={undefined} // Already shown above
           hasResult={!!group.toolReturn}
           isDark={isDark}
+          hideHeader={true} // Label already shown in unified header above
         />
       </View>
     );
