@@ -43,10 +43,9 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
   } = useMessageInteractions();
 
   // Scroll management
-  const { scrollViewRef, scrollToBottom, onContentSizeChange } = useScrollToBottom({
+  const { scrollViewRef, scrollToBottom, onContentSizeChange, onScroll } = useScrollToBottom({
     scrollOnMount: true,
     delay: 150,
-    animated: false,
   });
 
   // Chat store for images and streaming state
@@ -75,10 +74,9 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
   const spacerHeightAnim = useRef(new Animated.Value(0)).current;
   const [containerHeight, setContainerHeight] = React.useState(0);
 
-  // Handle send message
+  // Handle send message - no auto-scroll
   const handleSend = async (text: string) => {
     await sendMessage(text, selectedImages);
-    scrollToBottom(true); // Animate scroll when sending
   };
 
   // Render message group
@@ -124,16 +122,14 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
           { paddingBottom: insets.bottom + 80 },
         ]}
         onContentSizeChange={onContentSizeChange}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
         onEndReached={loadMoreMessages}
         onEndReachedThreshold={0.5}
         initialNumToRender={100}
         maxToRenderPerBatch={20}
         windowSize={21}
         removeClippedSubviews={Platform.OS === 'android'}
-        maintainVisibleContentPosition={{
-          minIndexForVisible: 0,
-          autoscrollToTopThreshold: 10,
-        }}
       />
 
       {/* Spacer for animation */}
@@ -146,6 +142,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
         theme={theme}
         colorScheme={colorScheme}
         hasMessages={messageGroups.length > 0}
+        isLoadingMessages={isLoadingMessages}
         isStreaming={isStreaming}
         hasExpandedReasoning={expandedReasoning.size > 0}
         selectedImages={selectedImages}

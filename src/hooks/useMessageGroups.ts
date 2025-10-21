@@ -222,12 +222,10 @@ export function useMessageGroups({
       return timeA - timeB;
     });
 
-    // Step 6: Append streaming group if active
+    // Step 6: Append streaming groups if active
     if (isStreaming && streamingState) {
-      const streamingGroup = createStreamingGroup(streamingState);
-      if (streamingGroup) {
-        filteredGroups.push(streamingGroup);
-      }
+      const streamingGroups = createStreamingGroups(streamingState);
+      filteredGroups.push(...streamingGroups);
     }
 
     return filteredGroups;
@@ -246,9 +244,23 @@ function createMessageGroup(
   // Find message types in this group
   const userMsg = messagesInGroup.find((m) => m.message_type === 'user_message');
   const assistantMsg = messagesInGroup.find((m) => m.message_type === 'assistant_message');
-  const reasoningMsg = messagesInGroup.find((m) => m.message_type === 'reasoning_message');
   const toolCallMsg = messagesInGroup.find((m) => m.message_type === 'tool_call_message');
   const toolReturnMsg = messagesInGroup.find((m) => m.message_type === 'tool_return_message');
+
+  // CRITICAL FIX: When a group has BOTH assistant AND tool_call (with 2 reasoning messages),
+  // the tool call should get the LAST reasoning (the one right before the tool call)
+  const allReasoningMsgs = messagesInGroup.filter((m) => m.message_type === 'reasoning_message');
+  let reasoningMsg: LettaMessage | undefined;
+
+  if (allReasoningMsgs.length === 0) {
+    reasoningMsg = undefined;
+  } else if (allReasoningMsgs.length === 1 || !toolCallMsg) {
+    // Single reasoning OR no tool call → use first reasoning
+    reasoningMsg = allReasoningMsgs[0];
+  } else {
+    // Multiple reasoning messages AND we have a tool call → use LAST reasoning
+    reasoningMsg = allReasoningMsgs[allReasoningMsgs.length - 1];
+  }
 
   // Use first message for metadata
   const firstMsg = messagesInGroup[0];
@@ -295,10 +307,15 @@ function createMessageGroup(
   // ========================================
   if (toolCallMsg) {
     const toolCall = parseToolCall(toolCallMsg);
+    const stepId = extractStepId(toolCallMsg);
+
+    // CRITICAL: Use step_id for groupKey, not message ID
+    // Multiple tool calls can share the same message ID but have different step_ids
+    const groupKey = stepId ? `${stepId}-tool_call` : `${id}-tool_call`;
 
     return {
       id,
-      groupKey: `${id}-tool_call`,
+      groupKey,
       type: 'tool_call',
       content: toolCall.args, // The formatted args string
       reasoning: reasoningMsg?.reasoning,
@@ -362,35 +379,38 @@ function createMessageGroup(
 }
 
 /**
- * Create streaming group from current stream state
+ * Create streaming groups from current stream state
+ * Returns an array because multiple tool calls can be streaming simultaneously
  */
-function createStreamingGroup(state: StreamingState): MessageGroup | null {
+function createStreamingGroups(state: StreamingState): MessageGroup[] {
   const now = new Date().toISOString();
+  const groups: MessageGroup[] = [];
 
-  // Determine type: tool_call if we have tool calls, otherwise assistant
+  // If we have tool calls, create a group for EACH one
   if (state.toolCalls.length > 0) {
-    // For streaming, we'll show all tool calls as one group
-    const primaryCall = state.toolCalls[0];
-    return {
-      id: 'streaming',
-      groupKey: 'streaming-tool_call',
-      type: 'tool_call',
-      content: primaryCall.args,
-      reasoning: state.reasoning || undefined,
-      toolCall: {
-        name: primaryCall.name,
-        args: primaryCall.args,
-      },
-      toolReturn: undefined, // No return yet during streaming
-      created_at: now,
-      role: 'assistant',
-      isStreaming: true,
-    };
+    state.toolCalls.forEach((toolCall, index) => {
+      groups.push({
+        id: 'streaming',
+        groupKey: `streaming-tool_call-${toolCall.id || index}`,
+        type: 'tool_call',
+        content: toolCall.args,
+        reasoning: index === 0 ? state.reasoning || undefined : undefined, // Only first gets reasoning
+        toolCall: {
+          name: toolCall.name,
+          args: toolCall.args,
+        },
+        toolReturn: undefined, // No return yet during streaming
+        created_at: now,
+        role: 'assistant',
+        isStreaming: true,
+      });
+    });
+    return groups;
   }
 
   // Assistant message streaming
   if (state.assistantMessage || state.reasoning) {
-    return {
+    groups.push({
       id: 'streaming',
       groupKey: 'streaming-assistant',
       type: 'assistant',
@@ -399,11 +419,10 @@ function createStreamingGroup(state: StreamingState): MessageGroup | null {
       created_at: now,
       role: 'assistant',
       isStreaming: true,
-    };
+    });
   }
 
-  // No content yet - don't show anything
-  return null;
+  return groups;
 }
 
 /**

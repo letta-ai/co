@@ -37,6 +37,14 @@ export function useMessageStream() {
 
     // Process tool call messages
     else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
+      // CRITICAL FIX: When we get the first tool call, clear reasoning from the previous assistant message
+      // The tool call will have its own reasoning chunks coming
+      const currentToolCallCount = chatStore.currentStream.toolCalls.length;
+      if (currentToolCallCount === 0) {
+        // This is the first tool call - clear accumulated reasoning from assistant phase
+        chatStore.clearStream();
+      }
+
       const callObj = chunk.tool_call.function || chunk.tool_call;
       const toolName = callObj?.name || callObj?.tool_name || 'tool';
       const args = callObj?.arguments || callObj?.args || {};
