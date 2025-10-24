@@ -127,6 +127,7 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   if (group.type === 'tool_call') {
     const isExpanded = expandedReasoning.has(group.id);
     const label = getMessageLabel(group);
+    const [showToolDetails, setShowToolDetails] = React.useState(false);
 
     return (
       <View style={styles.messageContainer}>
@@ -135,11 +136,25 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
           <Text style={[styles.messageLabel, { color: theme.colors.text.primary }]}>
             {label}
           </Text>
-          <InlineReasoningButton
-            isExpanded={isExpanded}
-            onToggle={() => toggleReasoning(group.id)}
-            isDark={isDark}
-          />
+          <View style={styles.headerButtons}>
+            {/* Tool details button */}
+            <TouchableOpacity
+              onPress={() => setShowToolDetails(!showToolDetails)}
+              style={styles.toolDetailsButton}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="information-circle-outline"
+                size={16}
+                color={theme.colors.text.tertiary}
+              />
+            </TouchableOpacity>
+            <InlineReasoningButton
+              isExpanded={isExpanded}
+              onToggle={() => toggleReasoning(group.id)}
+              isDark={isDark}
+            />
+          </View>
         </View>
 
         {/* Expanded content - only show when chevron is clicked */}
@@ -168,6 +183,7 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
               resultText={group.toolReturn}
               hasResult={!!group.toolReturn}
               showResult={showToolResults}
+              showToolDetails={showToolDetails}
               isDark={isDark}
               hideHeader={true} // Label already shown in unified header above
             />
@@ -359,11 +375,23 @@ const styles = StyleSheet.create({
   messageHeader: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 8,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  toolDetailsButton: {
+    padding: 8,
+    opacity: 0.3,
+    borderRadius: 4,
   },
   messageLabel: {
     fontSize: 16,
     fontFamily: 'Lexend_500Medium',
+    flex: 1,
   },
   // Reasoning expanded content (from ReasoningToggle)
   reasoningExpandedContainer: {

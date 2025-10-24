@@ -8,6 +8,7 @@ interface ToolCallItemProps {
   resultText?: string;
   hasResult?: boolean;
   showResult?: boolean; // When false, hide the result section entirely
+  showToolDetails?: boolean; // Controlled by parent - whether to show tool call details
   isDark?: boolean;
   hideHeader?: boolean; // When true, skip rendering the label header (shown by parent)
 }
@@ -63,7 +64,7 @@ const getToolDisplayName = (toolName: string, callText: string, hasResult: boole
   return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, showResult = true, isDark = true, hideHeader = false }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, showResult = true, showToolDetails = false, isDark = true, hideHeader = false }) => {
   const theme = isDark ? darkTheme : lightTheme;
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -201,29 +202,11 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
           />
         </TouchableOpacity>
       )}
-      {hideHeader && (
-        <View style={styles.embeddedContainer}>
-          {/* Details button - bottom right */}
-          <TouchableOpacity
-            style={styles.detailsButton}
-            onPress={() => setExpanded((e) => !e)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name="information-circle-outline"
-              size={16}
-              color={theme.colors.text.tertiary}
-            />
-          </TouchableOpacity>
-
-          {/* Expanded tool call details */}
-          {expanded && (
-            <View style={styles.expandedDetails}>
-              <Text style={[styles.callText, { color: theme.colors.text.primary }]}>
-                {prettyCallText}
-              </Text>
-            </View>
-          )}
+      {hideHeader && showToolDetails && (
+        <View style={styles.expandedDetails}>
+          <Text style={[styles.callText, { color: theme.colors.text.primary }]}>
+            {prettyCallText}
+          </Text>
         </View>
       )}
       {showResult && !!resultText && (
@@ -262,19 +245,6 @@ const styles = StyleSheet.create({
   },
   chevron: {
     marginLeft: 4,
-  },
-  embeddedContainer: {
-    position: 'relative',
-    width: '100%',
-  },
-  detailsButton: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    padding: 8,
-    opacity: 0.3,
-    borderRadius: 4,
-    zIndex: 10,
   },
   expandedDetails: {
     paddingTop: 8,
