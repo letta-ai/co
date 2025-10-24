@@ -32,8 +32,9 @@ export function useMessageStream() {
 
     console.log(`📦 [${chunkType}] ID: ${chunkId?.substring(0, 8)}...`);
 
-    // DETECT NEW MESSAGE: If we see a new reasoning with different ID, finalize current
-    if (chunkType === 'reasoning_message' && chunkId) {
+    // DETECT NEW MESSAGE: If we see a different ID on reasoning OR tool_call, finalize current
+    // This handles both: reasoning → tool_call transitions AND tool_call → reasoning transitions
+    if ((chunkType === 'reasoning_message' || chunkType === 'tool_call_message') && chunkId) {
       if (lastMessageIdRef.current && chunkId !== lastMessageIdRef.current) {
         console.log('🔄 NEW MESSAGE DETECTED - finalizing previous');
         chatStore.finalizeCurrentMessage();

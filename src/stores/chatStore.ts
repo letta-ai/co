@@ -169,11 +169,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Accumulate tool call (delta)
   accumulateToolCall: (messageId, toolName, args) => {
     set((state) => {
+      // If no current message OR different ID, create new
       if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
-        console.error('❌ Tool call for unknown message:', messageId);
-        return {};
+        console.log('🆕 New tool call message started:', messageId.substring(0, 20));
+        return {
+          currentStreamingMessage: {
+            id: messageId,
+            reasoning: '',
+            content: args,
+            type: 'tool_call',
+            toolCallName: toolName,
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
 
+      // Same message, accumulate tool call args
       return {
         currentStreamingMessage: {
           ...state.currentStreamingMessage,
@@ -188,11 +199,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // Accumulate assistant (delta)
   accumulateAssistant: (messageId, content) => {
     set((state) => {
+      // If no current message OR different ID, create new
       if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
-        console.error('❌ Assistant content for unknown message:', messageId);
-        return {};
+        console.log('🆕 New assistant message started:', messageId.substring(0, 20));
+        return {
+          currentStreamingMessage: {
+            id: messageId,
+            reasoning: '',
+            content: content,
+            type: 'assistant',
+            timestamp: new Date().toISOString(),
+          },
+        };
       }
 
+      // Same message, accumulate assistant content
       return {
         currentStreamingMessage: {
           ...state.currentStreamingMessage,
