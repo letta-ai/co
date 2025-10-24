@@ -43,6 +43,16 @@ export function getMessageLabel(group: MessageGroup): string {
   // TOOL CALL MESSAGE
   if (group.type === 'tool_call') {
     const toolName = group.toolCall?.name || 'unknown_tool';
+
+    // Special handling for memory tool with str_replace command
+    if (toolName === 'memory') {
+      // Try to detect str_replace command in the arguments
+      const args = group.toolCall?.args || group.content || '';
+      if (args.includes('str_replace') || args.includes('command: str_replace')) {
+        return isStreaming ? '(co is updating its memory)' : '(co updated its memory)';
+      }
+    }
+
     const action = TOOL_ACTIONS[toolName];
 
     if (action) {
