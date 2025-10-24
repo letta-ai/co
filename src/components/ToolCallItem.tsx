@@ -213,7 +213,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
             style={styles.embeddedChevron}
           />
           <Text style={[styles.callText, { color: theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
-            {prettyCallText}
+            {expanded ? prettyCallText : `${toolName}()`}
           </Text>
         </TouchableOpacity>
       )}
