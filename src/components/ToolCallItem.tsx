@@ -271,7 +271,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    padding: 4,
+    padding: 8,
+    opacity: 0.3,
+    borderRadius: 4,
     zIndex: 10,
   },
   expandedDetails: {
