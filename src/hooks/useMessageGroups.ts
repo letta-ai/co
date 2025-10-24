@@ -71,22 +71,22 @@ export interface MessageGroup {
 }
 
 /**
- * Streaming state interface
+ * Simple streaming message
  */
-export interface StreamingState {
+interface StreamingMessage {
+  id: string;
   reasoning: string;
-  assistantMessage: string;
-  toolCalls: Array<{
-    id: string;
-    name: string;
-    args: string;
-  }>;
+  content: string;
+  type: 'tool_call' | 'assistant' | null;
+  toolCallName?: string;
+  timestamp: string;
 }
 
 interface UseMessageGroupsParams {
   messages: LettaMessage[];
   isStreaming: boolean;
-  streamingState?: StreamingState;
+  currentStreamingMessage: StreamingMessage | null;
+  completedStreamingMessages: StreamingMessage[];
 }
 
 /**
@@ -95,7 +95,8 @@ interface UseMessageGroupsParams {
 export function useMessageGroups({
   messages,
   isStreaming,
-  streamingState,
+  currentStreamingMessage,
+  completedStreamingMessages,
 }: UseMessageGroupsParams): MessageGroup[] {
   return useMemo(() => {
     // Step 1: Filter out system messages and login/heartbeat
@@ -222,14 +223,58 @@ export function useMessageGroups({
       return timeA - timeB;
     });
 
-    // Step 6: Append streaming groups if active
-    if (isStreaming && streamingState) {
-      const streamingGroups = createStreamingGroups(streamingState);
-      filteredGroups.push(...streamingGroups);
+    // Step 6: Add completed streaming messages (finished but stream still active)
+    console.log('📊 Completed streaming messages:', completedStreamingMessages.length);
+    completedStreamingMessages.forEach((msg, index) => {
+      const group: MessageGroup = {
+        id: msg.id,
+        groupKey: `streaming-completed-${msg.id}`,
+        type: msg.type === 'tool_call' ? 'tool_call' : 'assistant',
+        content: msg.content,
+        reasoning: msg.reasoning || undefined,
+        created_at: msg.timestamp,
+        role: 'assistant',
+        isStreaming: false,  // It's done, just not persisted yet
+      };
+
+      if (msg.type === 'tool_call' && msg.toolCallName) {
+        group.toolCall = {
+          name: msg.toolCallName,
+          args: msg.content,
+        };
+      }
+
+      filteredGroups.push(group);
+      console.log(`  ✅ [${index}] ${msg.type}:`, msg.content.substring(0, 40));
+    });
+
+    // Step 7: Add current accumulating message (if any)
+    if (currentStreamingMessage) {
+      const group: MessageGroup = {
+        id: currentStreamingMessage.id,
+        groupKey: `streaming-current-${currentStreamingMessage.id}`,
+        type: currentStreamingMessage.type === 'tool_call' ? 'tool_call' : 'assistant',
+        content: currentStreamingMessage.content,
+        reasoning: currentStreamingMessage.reasoning || undefined,
+        created_at: currentStreamingMessage.timestamp,
+        role: 'assistant',
+        isStreaming: true,  // Still accumulating
+      };
+
+      if (currentStreamingMessage.type === 'tool_call' && currentStreamingMessage.toolCallName) {
+        group.toolCall = {
+          name: currentStreamingMessage.toolCallName,
+          args: currentStreamingMessage.content,
+        };
+      }
+
+      filteredGroups.push(group);
+      console.log('  🔄 Current streaming:', currentStreamingMessage.type, currentStreamingMessage.content.substring(0, 40));
     }
 
+    console.log('📊 FINAL GROUP COUNT:', filteredGroups.length, 'groups');
     return filteredGroups;
-  }, [messages, isStreaming, streamingState]);
+  }, [messages, isStreaming, currentStreamingMessage, completedStreamingMessages]);
 }
 
 /**
@@ -376,53 +421,6 @@ function createMessageGroup(
 
   // Unknown message type - skip
   return null;
-}
-
-/**
- * Create streaming groups from current stream state
- * Returns an array because multiple tool calls can be streaming simultaneously
- */
-function createStreamingGroups(state: StreamingState): MessageGroup[] {
-  const now = new Date().toISOString();
-  const groups: MessageGroup[] = [];
-
-  // If we have tool calls, create a group for EACH one
-  if (state.toolCalls.length > 0) {
-    state.toolCalls.forEach((toolCall, index) => {
-      groups.push({
-        id: 'streaming',
-        groupKey: `streaming-tool_call-${toolCall.id || index}`,
-        type: 'tool_call',
-        content: toolCall.args,
-        reasoning: index === 0 ? state.reasoning || undefined : undefined, // Only first gets reasoning
-        toolCall: {
-          name: toolCall.name,
-          args: toolCall.args,
-        },
-        toolReturn: undefined, // No return yet during streaming
-        created_at: now,
-        role: 'assistant',
-        isStreaming: true,
-      });
-    });
-    return groups;
-  }
-
-  // Assistant message streaming
-  if (state.assistantMessage || state.reasoning) {
-    groups.push({
-      id: 'streaming',
-      groupKey: 'streaming-assistant',
-      type: 'assistant',
-      content: state.assistantMessage,
-      reasoning: state.reasoning || undefined,
-      created_at: now,
-      role: 'assistant',
-      isStreaming: true,
-    });
-  }
-
-  return groups;
 }
 
 /**

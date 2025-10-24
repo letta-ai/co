@@ -2,15 +2,16 @@ import { create } from 'zustand';
 import type { LettaMessage, StreamingChunk } from '../types/letta';
 
 /**
- * Streaming state for accumulating message chunks
- *
- * Used by useMessageGroups to create a temporary streaming MessageGroup
- * that displays while the agent is responding.
+ * Simple streaming message accumulator
+ * One message = reasoning + content (tool_call OR assistant)
  */
-interface StreamState {
+interface StreamingMessage {
+  id: string;  // Message ID from Letta
   reasoning: string;
-  toolCalls: Array<{ id: string; name: string; args: string }>;
-  assistantMessage: string;
+  content: string;
+  type: 'tool_call' | 'assistant' | null;
+  toolCallName?: string;
+  timestamp: string;
 }
 
 interface ChatState {
@@ -21,10 +22,11 @@ interface ChatState {
   earliestCursor: string | null;
   hasMoreBefore: boolean;
 
-  // Streaming state
+  // Streaming state - SIMPLE!
   isStreaming: boolean;
   isSendingMessage: boolean;
-  currentStream: StreamState;
+  currentStreamingMessage: StreamingMessage | null;  // What we're accumulating right now
+  completedStreamingMessages: StreamingMessage[];     // Messages finished but stream still active
 
   // UI state
   hasInputText: boolean;
@@ -40,13 +42,20 @@ interface ChatState {
   prependMessages: (messages: LettaMessage[]) => void;
   clearMessages: () => void;
 
-  // Streaming actions
+  // Streaming actions - SIMPLE!
   startStreaming: () => void;
   stopStreaming: () => void;
-  updateStreamReasoning: (reasoning: string) => void;
-  updateStreamAssistant: (content: string) => void;
-  addStreamToolCall: (toolCall: { id: string; name: string; args: string }) => void;
-  clearStream: () => void;
+
+  // Accumulate into current message
+  accumulateReasoning: (messageId: string, reasoning: string) => void;
+  accumulateToolCall: (messageId: string, toolName: string, args: string) => void;
+  accumulateAssistant: (messageId: string, content: string) => void;
+
+  // Move current to completed (when we detect new message)
+  finalizeCurrentMessage: () => void;
+
+  // Clear all streaming state
+  clearAllStreamingState: () => void;
 
   // Image actions
   addImage: (image: { uri: string; base64: string; mediaType: string }) => void;
@@ -75,11 +84,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   isStreaming: false,
   isSendingMessage: false,
-  currentStream: {
-    reasoning: '',
-    toolCalls: [],
-    assistantMessage: '',
-  },
+  currentStreamingMessage: null,
+  completedStreamingMessages: [],
 
   hasInputText: false,
   lastMessageNeedsSpace: false,
@@ -117,57 +123,108 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({ messages: [], earliestCursor: null, hasMoreBefore: false });
   },
 
-  // Streaming actions
+  // Streaming actions - DEAD SIMPLE
   startStreaming: () => {
+    console.log('▶️ START STREAMING');
     set({
       isStreaming: true,
-      currentStream: { reasoning: '', toolCalls: [], assistantMessage: '' },
+      currentStreamingMessage: null,
+      completedStreamingMessages: [],
       lastMessageNeedsSpace: true,
     });
   },
 
   stopStreaming: () => {
+    console.log('⏹️ STOP STREAMING');
     set({ isStreaming: false, lastMessageNeedsSpace: false });
   },
 
-  // Accumulate reasoning chunks (useMessageGroups will pair with assistant message)
-  updateStreamReasoning: (reasoning) => {
-    set((state) => ({
-      currentStream: {
-        ...state.currentStream,
-        reasoning: state.currentStream.reasoning + reasoning,
-      },
-    }));
-  },
-
-  // Accumulate assistant message chunks (useMessageGroups will pair with reasoning)
-  updateStreamAssistant: (content) => {
-    set((state) => ({
-      currentStream: {
-        ...state.currentStream,
-        assistantMessage: state.currentStream.assistantMessage + content,
-      },
-    }));
-  },
-
-  addStreamToolCall: (toolCall) => {
+  // Accumulate reasoning (delta)
+  accumulateReasoning: (messageId, reasoning) => {
     set((state) => {
-      // Check if tool call already exists
-      const exists = state.currentStream.toolCalls.some((tc) => tc.id === toolCall.id);
-      if (exists) return state;
+      // If no current message OR different ID, create new
+      if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
+        console.log('🆕 New message started:', messageId.substring(0, 20));
+        return {
+          currentStreamingMessage: {
+            id: messageId,
+            reasoning: reasoning,
+            content: '',
+            type: null,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
 
+      // Same message, accumulate reasoning
       return {
-        currentStream: {
-          ...state.currentStream,
-          toolCalls: [...state.currentStream.toolCalls, toolCall],
+        currentStreamingMessage: {
+          ...state.currentStreamingMessage,
+          reasoning: state.currentStreamingMessage.reasoning + reasoning,
         },
       };
     });
   },
 
-  clearStream: () => {
+  // Accumulate tool call (delta)
+  accumulateToolCall: (messageId, toolName, args) => {
+    set((state) => {
+      if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
+        console.error('❌ Tool call for unknown message:', messageId);
+        return {};
+      }
+
+      return {
+        currentStreamingMessage: {
+          ...state.currentStreamingMessage,
+          type: 'tool_call',
+          toolCallName: toolName,
+          content: state.currentStreamingMessage.content + args,
+        },
+      };
+    });
+  },
+
+  // Accumulate assistant (delta)
+  accumulateAssistant: (messageId, content) => {
+    set((state) => {
+      if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
+        console.error('❌ Assistant content for unknown message:', messageId);
+        return {};
+      }
+
+      return {
+        currentStreamingMessage: {
+          ...state.currentStreamingMessage,
+          type: 'assistant',
+          content: state.currentStreamingMessage.content + content,
+        },
+      };
+    });
+  },
+
+  // Move current to completed
+  finalizeCurrentMessage: () => {
+    set((state) => {
+      if (!state.currentStreamingMessage) {
+        console.log('⚠️ No current message to finalize');
+        return {};
+      }
+
+      console.log('✅ FINALIZE MESSAGE:', state.currentStreamingMessage.id.substring(0, 20));
+      return {
+        completedStreamingMessages: [...state.completedStreamingMessages, state.currentStreamingMessage],
+        currentStreamingMessage: null,
+      };
+    });
+  },
+
+  // Clear everything
+  clearAllStreamingState: () => {
+    console.log('🧹 CLEAR ALL STREAMING STATE');
     set({
-      currentStream: { reasoning: '', toolCalls: [], assistantMessage: '' },
+      currentStreamingMessage: null,
+      completedStreamingMessages: [],
     });
   },
 

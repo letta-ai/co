@@ -72,6 +72,16 @@ export function useMessageInteractions() {
     }
   }, []);
 
+  // Auto-expand reasoning for a message (doesn't toggle, just adds)
+  const expandReasoning = useCallback((messageId: string) => {
+    setExpandedReasoning((prev) => {
+      if (prev.has(messageId)) return prev; // Already expanded
+      const next = new Set(prev);
+      next.add(messageId);
+      return next;
+    });
+  }, []);
+
   return {
     // State
     expandedReasoning,
@@ -84,5 +94,6 @@ export function useMessageInteractions() {
     toggleCompaction,
     toggleToolReturn,
     copyToClipboard,
+    expandReasoning,
   };
 }

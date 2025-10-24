@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { useChatStore } from '../stores/chatStore';
 import { useAgentStore } from '../stores/agentStore';
 import lettaApi from '../api/lettaApi';
@@ -11,77 +11,70 @@ export function useMessageStream() {
   const chatStore = useChatStore();
   const coAgent = useAgentStore((state) => state.coAgent);
 
-  // Handle individual streaming chunks
+  // Track last message ID to detect when a new message starts
+  const lastMessageIdRef = useRef<string | null>(null);
+
+  // Handle individual streaming chunks - ULTRA SIMPLE
   const handleStreamingChunk = useCallback((chunk: StreamingChunk) => {
-    console.log('Streaming chunk:', chunk.message_type, 'content:', chunk.content);
+    const chunkType = chunk.message_type;
+    const chunkId = (chunk as any).id;
 
-    // Handle error chunks
+    // Skip non-content chunks
+    if (chunkType === 'stop_reason' || chunkType === 'usage_statistics') {
+      return;
+    }
+
+    // Handle errors
     if ((chunk as any).error) {
-      console.error('Error chunk received:', (chunk as any).error);
-      chatStore.stopStreaming();
-      chatStore.setSendingMessage(false);
-      chatStore.clearStream();
+      console.error('❌ Stream error:', (chunk as any).error);
       return;
     }
 
-    // Handle stop_reason chunks
-    if ((chunk as any).message_type === 'stop_reason') {
-      console.log('Stop reason received:', (chunk as any).stopReason || (chunk as any).stop_reason);
-      return;
-    }
+    console.log(`📦 [${chunkType}] ID: ${chunkId?.substring(0, 8)}...`);
 
-    // Process reasoning messages
-    if (chunk.message_type === 'reasoning_message' && chunk.reasoning) {
-      chatStore.updateStreamReasoning(chunk.reasoning);
-    }
-
-    // Process tool call messages
-    else if ((chunk.message_type === 'tool_call_message' || chunk.message_type === 'tool_call') && chunk.tool_call) {
-      // CRITICAL FIX: When we get the first tool call, clear reasoning from the previous assistant message
-      // The tool call will have its own reasoning chunks coming
-      const currentToolCallCount = chatStore.currentStream.toolCalls.length;
-      if (currentToolCallCount === 0) {
-        // This is the first tool call - clear accumulated reasoning from assistant phase
-        chatStore.clearStream();
+    // DETECT NEW MESSAGE: If we see a new reasoning with different ID, finalize current
+    if (chunkType === 'reasoning_message' && chunkId) {
+      if (lastMessageIdRef.current && chunkId !== lastMessageIdRef.current) {
+        console.log('🔄 NEW MESSAGE DETECTED - finalizing previous');
+        chatStore.finalizeCurrentMessage();
       }
-
-      const callObj = chunk.tool_call.function || chunk.tool_call;
-      const toolName = callObj?.name || callObj?.tool_name || 'tool';
-      const args = callObj?.arguments || callObj?.args || {};
-      const toolCallId = chunk.id || `tool_${toolName}_${Date.now()}`;
-
-      const formatArgsPython = (obj: any): string => {
-        if (!obj || typeof obj !== 'object') return '';
-        return Object.entries(obj)
-          .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
-          .join(', ');
-      };
-
-      const toolLine = `${toolName}(${formatArgsPython(args)})`;
-      chatStore.addStreamToolCall({ id: toolCallId, name: toolName, args: toolLine });
+      lastMessageIdRef.current = chunkId;
     }
 
-    // Process assistant messages
-    else if (chunk.message_type === 'assistant_message' && chunk.content) {
+    // ACCUMULATE BASED ON TYPE
+    if (chunkType === 'reasoning_message' && chunk.reasoning && chunkId) {
+      chatStore.accumulateReasoning(chunkId, chunk.reasoning);
+    }
+    else if (chunkType === 'tool_call_message' && chunkId) {
+      const toolCall = (chunk as any).toolCall || (chunk as any).tool_call;
+      if (toolCall) {
+        const toolName = toolCall.name || toolCall.tool_name || 'unknown';
+        const args = toolCall.arguments || '';
+        chatStore.accumulateToolCall(chunkId, toolName, args);
+      }
+    }
+    else if (chunkType === 'assistant_message' && chunkId) {
       let contentText = '';
       const content = chunk.content as any;
 
       if (typeof content === 'string') {
         contentText = content;
-      } else if (typeof content === 'object' && content !== null) {
-        if (Array.isArray(content)) {
-          contentText = content
-            .filter((item: any) => item.type === 'text')
-            .map((item: any) => item.text || '')
-            .join('');
-        } else if (content.text) {
-          contentText = content.text;
-        }
+      } else if (Array.isArray(content)) {
+        contentText = content
+          .filter((item: any) => item.type === 'text')
+          .map((item: any) => item.text || '')
+          .join('');
+      } else if (content?.text) {
+        contentText = content.text;
       }
 
       if (contentText) {
-        chatStore.updateStreamAssistant(contentText);
+        chatStore.accumulateAssistant(chunkId, contentText);
       }
+    }
+    // tool_return_message - just log, we'll handle pairing later
+    else if (chunkType === 'tool_return_message') {
+      console.log('📨 Tool return received');
     }
   }, [chatStore]);
 
@@ -138,6 +131,7 @@ export function useMessageStream() {
 
       try {
         chatStore.startStreaming();
+        lastMessageIdRef.current = null; // Reset for new stream
 
         // Build message content
         let messageContent: any;
@@ -180,45 +174,62 @@ export function useMessageStream() {
             handleStreamingChunk(chunk);
           },
           async (response) => {
-            console.log('Stream complete - refreshing messages from server');
+            console.log('🎬 STREAM COMPLETE');
 
-            // Wait for server to finalize, then refresh messages
-            setTimeout(async () => {
-              try {
-                const currentCount = chatStore.messages.filter((msg) => !msg.id.startsWith('temp-')).length;
-                const fetchLimit = Math.max(currentCount + 10, 100);
+            // Finalize the last message
+            chatStore.finalizeCurrentMessage();
 
-                const recentMessages = await lettaApi.listMessages(coAgent.id, {
-                  limit: fetchLimit,
-                  use_assistant_message: true,
-                });
+            // Get all completed messages
+            const { currentStreamingMessage, completedStreamingMessages } = useChatStore.getState();
 
-                console.log('Received', recentMessages.length, 'messages from server after stream');
+            const allStreamedMessages = [...completedStreamingMessages];
+            if (currentStreamingMessage) {
+              allStreamedMessages.push(currentStreamingMessage);
+            }
 
-                // Replace all messages with server version
-                chatStore.setMessages(recentMessages);
-              } catch (error) {
-                console.error('Failed to refresh messages after stream:', error);
-              } finally {
-                chatStore.stopStreaming();
-                chatStore.setSendingMessage(false);
-                chatStore.clearStream();
-                chatStore.clearImages();
-              }
-            }, 500);
+            console.log('📨 Converting', allStreamedMessages.length, 'streamed messages to permanent messages');
+
+            // Convert to LettaMessage format and add to messages
+            const permanentMessages: LettaMessage[] = allStreamedMessages.map((msg, idx) => ({
+              id: msg.id,
+              role: 'assistant',
+              message_type: msg.type === 'tool_call' ? 'tool_call_message' : 'assistant_message',
+              content: msg.content,
+              reasoning: msg.reasoning,
+              ...(msg.type === 'tool_call' && msg.toolCallName ? {
+                tool_call: {
+                  name: msg.toolCallName,
+                  arguments: msg.content,
+                }
+              } : {}),
+              created_at: msg.timestamp,
+            } as any));
+
+            // Add to messages array
+            if (permanentMessages.length > 0) {
+              chatStore.addMessages(permanentMessages);
+            }
+
+            // Clear streaming state
+            chatStore.clearAllStreamingState();
+            chatStore.stopStreaming();
+            chatStore.setSendingMessage(false);
+            chatStore.clearImages();
+
+            console.log('✅ Stream finished and converted to messages');
           },
           (error) => {
             console.error('Stream error:', error);
+            chatStore.clearAllStreamingState();
             chatStore.stopStreaming();
             chatStore.setSendingMessage(false);
-            chatStore.clearStream();
           }
         );
       } catch (error) {
         console.error('Failed to send message:', error);
+        chatStore.clearAllStreamingState();
         chatStore.stopStreaming();
         chatStore.setSendingMessage(false);
-        chatStore.clearStream();
         throw error;
       }
     },
@@ -228,7 +239,6 @@ export function useMessageStream() {
   return {
     isStreaming: chatStore.isStreaming,
     isSendingMessage: chatStore.isSendingMessage,
-    currentStream: chatStore.currentStream,
     sendMessage,
   };
 }
