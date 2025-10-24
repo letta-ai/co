@@ -43,8 +43,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import LogoLoader from './src/components/LogoLoader';
 import CoLoginScreen from './CoLoginScreen';
 import AppHeader from './src/components/AppHeader';
-import BottomNavigation, { ViewType } from './src/components/BottomNavigation';
-import AppSidebar from './src/components/AppSidebar';
+import AppSidebar, { ViewType } from './src/components/AppSidebar';
 import YouView from './src/views/YouView';
 import { ChatScreen } from './src/screens/ChatScreen';
 import KnowledgeView from './src/views/KnowledgeView';
@@ -332,8 +331,14 @@ function CoApp() {
         animationValue={sidebarAnimRef}
         developerMode={developerMode}
         agentId={coAgent.id}
+        currentView={currentView}
         onClose={() => setSidebarVisible(false)}
-        onMemoryPress={() => {
+        onYouPress={() => {
+          setCurrentView('you');
+          loadMemoryBlocks();
+        }}
+        onChatPress={() => setCurrentView('chat')}
+        onKnowledgePress={() => {
           setCurrentView('knowledge');
           loadMemoryBlocks();
         }}
@@ -353,22 +358,6 @@ function CoApp() {
           onMenuPress={() => setSidebarVisible(!sidebarVisible)}
           developerMode={developerMode}
           onDeveloperModeToggle={() => setDeveloperMode(!developerMode)}
-        />
-
-        {/* Bottom Navigation */}
-        <BottomNavigation
-          theme={theme}
-          currentView={currentView}
-          hasMessages={hasMessages}
-          onYouPress={() => {
-            setCurrentView('you');
-            loadMemoryBlocks();
-          }}
-          onChatPress={() => setCurrentView('chat')}
-          onKnowledgePress={() => {
-            setCurrentView('knowledge');
-            loadMemoryBlocks();
-          }}
         />
 
         {/* View Content */}

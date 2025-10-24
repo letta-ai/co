@@ -28,6 +28,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Theme } from '../theme';
 
+export type ViewType = 'you' | 'chat' | 'knowledge' | 'settings';
+
 interface AppSidebarProps {
   theme: Theme;
   colorScheme: 'light' | 'dark';
@@ -35,8 +37,11 @@ interface AppSidebarProps {
   animationValue: Animated.Value; // 0 = hidden, 1 = visible
   developerMode: boolean;
   agentId?: string;
+  currentView: ViewType;
   onClose: () => void;
-  onMemoryPress: () => void;
+  onYouPress: () => void;
+  onChatPress: () => void;
+  onKnowledgePress: () => void;
   onSettingsPress: () => void;
   onThemeToggle: () => void;
   onRefreshAgent: () => Promise<void>;
@@ -50,8 +55,11 @@ export function AppSidebar({
   animationValue,
   developerMode,
   agentId,
+  currentView,
   onClose,
-  onMemoryPress,
+  onYouPress,
+  onChatPress,
+  onKnowledgePress,
   onSettingsPress,
   onThemeToggle,
   onRefreshAgent,
@@ -122,15 +130,60 @@ export function AppSidebar({
         contentContainerStyle={{ flexGrow: 1 }}
         ListHeaderComponent={
           <View style={styles.menuItems}>
-            {/* Memory */}
+            {/* You */}
             <TouchableOpacity
               style={[
                 styles.menuItem,
                 { borderBottomColor: theme.colors.border.primary },
+                currentView === 'you' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
                 onClose();
-                onMemoryPress();
+                onYouPress();
+              }}
+            >
+              <Ionicons
+                name="person-outline"
+                size={24}
+                color={theme.colors.text.primary}
+              />
+              <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>
+                You
+              </Text>
+            </TouchableOpacity>
+
+            {/* Chat */}
+            <TouchableOpacity
+              style={[
+                styles.menuItem,
+                { borderBottomColor: theme.colors.border.primary },
+                currentView === 'chat' && { backgroundColor: theme.colors.background.tertiary },
+              ]}
+              onPress={() => {
+                onClose();
+                onChatPress();
+              }}
+            >
+              <Ionicons
+                name="chatbubble-outline"
+                size={24}
+                color={theme.colors.text.primary}
+              />
+              <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>
+                Chat
+              </Text>
+            </TouchableOpacity>
+
+            {/* Knowledge */}
+            <TouchableOpacity
+              style={[
+                styles.menuItem,
+                { borderBottomColor: theme.colors.border.primary },
+                currentView === 'knowledge' && { backgroundColor: theme.colors.background.tertiary },
+              ]}
+              onPress={() => {
+                onClose();
+                onKnowledgePress();
               }}
             >
               <Ionicons
@@ -139,7 +192,7 @@ export function AppSidebar({
                 color={theme.colors.text.primary}
               />
               <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>
-                Memory
+                Knowledge
               </Text>
             </TouchableOpacity>
 
@@ -148,6 +201,7 @@ export function AppSidebar({
               style={[
                 styles.menuItem,
                 { borderBottomColor: theme.colors.border.primary },
+                currentView === 'settings' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
                 onClose();
@@ -178,7 +232,7 @@ export function AppSidebar({
                 color={theme.colors.text.primary}
               />
               <Text style={[styles.menuItemText, { color: theme.colors.text.primary }]}>
-                {colorScheme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                Light Mode
               </Text>
             </TouchableOpacity>
 

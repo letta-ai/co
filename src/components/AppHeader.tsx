@@ -62,7 +62,7 @@ export function AppHeader({
       style={[
         styles.header,
         {
-          paddingTop: insets.top + 12,
+          paddingTop: insets.top + 6,
           backgroundColor: theme.colors.background.secondary,
           borderBottomColor: theme.colors.border.primary,
         },
@@ -75,7 +75,7 @@ export function AppHeader({
       <TouchableOpacity onPress={onMenuPress} style={styles.menuButton}>
         <Ionicons
           name="menu"
-          size={24}
+          size={22}
           color={colorScheme === 'dark' ? '#FFFFFF' : theme.colors.text.primary}
         />
       </TouchableOpacity>
@@ -102,22 +102,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 12,
+    paddingBottom: 6,
     borderBottomWidth: 1,
   },
   menuButton: {
-    padding: 8,
+    padding: 6,
   },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 36,
+    fontSize: 28,
     fontFamily: 'Lexend_700Bold',
   },
   headerSpacer: {
-    width: 40, // Balance the menu button width
+    width: 34, // Balance the menu button width
   },
 });
 
