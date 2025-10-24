@@ -202,21 +202,29 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
         </TouchableOpacity>
       )}
       {hideHeader && (
-        <TouchableOpacity
-          style={styles.embeddedHeader}
-          onPress={() => setExpanded((e) => !e)}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name={expanded ? 'chevron-down' : 'chevron-forward'}
-            size={14}
-            color={theme.colors.text.tertiary}
-            style={styles.embeddedChevron}
-          />
-          <Text style={[styles.callText, { color: theme.colors.text.primary }]} numberOfLines={expanded ? 0 : 1}>
-            {expanded ? prettyCallText : `${toolName}()`}
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.embeddedContainer}>
+          {/* Details button - bottom right */}
+          <TouchableOpacity
+            style={styles.detailsButton}
+            onPress={() => setExpanded((e) => !e)}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={16}
+              color={theme.colors.text.tertiary}
+            />
+          </TouchableOpacity>
+
+          {/* Expanded tool call details */}
+          {expanded && (
+            <View style={styles.expandedDetails}>
+              <Text style={[styles.callText, { color: theme.colors.text.primary }]}>
+                {prettyCallText}
+              </Text>
+            </View>
+          )}
+        </View>
       )}
       {showResult && !!resultText && (
         <TouchableOpacity
@@ -255,15 +263,20 @@ const styles = StyleSheet.create({
   chevron: {
     marginLeft: 4,
   },
-  embeddedHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingVertical: 2,
-    marginBottom: 4,
+  embeddedContainer: {
+    position: 'relative',
+    width: '100%',
   },
-  embeddedChevron: {
-    marginRight: 6,
-    marginTop: 2,
+  detailsButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    padding: 4,
+    zIndex: 10,
+  },
+  expandedDetails: {
+    paddingTop: 8,
+    paddingBottom: 4,
   },
   displayName: {
     fontSize: 16,
