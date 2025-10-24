@@ -15,12 +15,16 @@ interface SettingsViewProps {
   theme: Theme;
   showCompaction: boolean;
   onToggleCompaction: () => void;
+  showToolResults: boolean;
+  onToggleToolResults: () => void;
 }
 
 export function SettingsView({
   theme,
   showCompaction,
   onToggleCompaction,
+  showToolResults,
+  onToggleToolResults,
 }: SettingsViewProps) {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background.primary }]}>
@@ -78,6 +82,48 @@ export function SettingsView({
               style={[
                 styles.toggleThumb,
                 showCompaction && styles.toggleThumbActive,
+              ]}
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* Show Tool Results Toggle */}
+        <View
+          style={[
+            styles.settingItem,
+            { borderBottomColor: theme.colors.border.primary },
+          ]}
+        >
+          <View style={styles.settingInfo}>
+            <Text style={[styles.settingLabel, { color: theme.colors.text.primary }]}>
+              Show Tool Results
+            </Text>
+            <Text
+              style={[
+                styles.settingDescription,
+                { color: theme.colors.text.secondary },
+              ]}
+            >
+              Display the result output from tool calls (usually just confirmation messages)
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.toggle,
+              showToolResults && [
+                styles.toggleActive,
+                { backgroundColor: theme.colors.interactive.primary },
+              ],
+              !showToolResults && {
+                backgroundColor: theme.colors.background.tertiary,
+              },
+            ]}
+            onPress={onToggleToolResults}
+          >
+            <View
+              style={[
+                styles.toggleThumb,
+                showToolResults && styles.toggleThumbActive,
               ]}
             />
           </TouchableOpacity>

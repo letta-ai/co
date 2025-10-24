@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "updatedAt": "2025-10-06T23:23:06.862Z",
+  "byBaseUrl": {
+    "https://api.letta.com": {
+      "agents": [
+        {
+          "agentId": "agent-bd63b4d7-1a1b-40d4-8123-5cea0a2e9ce1",
+          "lastUsedAt": "2025-10-06T23:23:06.860Z"
+        }
+      ],
+      "mostRecent": "agent-bd63b4d7-1a1b-40d4-8123-5cea0a2e9ce1",
+      "pinned": true
+    }
+  }
+}

@@ -22,6 +22,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
+  Text,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -48,6 +49,7 @@ interface MessageInputEnhancedProps {
 
   // Empty state
   hasMessages: boolean;
+  isLoadingMessages?: boolean;
 
   // Rainbow animation triggers
   isStreaming: boolean;
@@ -72,6 +74,7 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
   theme,
   colorScheme,
   hasMessages,
+  isLoadingMessages = false,
   isStreaming,
   hasExpandedReasoning,
   selectedImages,
@@ -226,8 +229,18 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
       ]}
     >
       <View style={styles.inputCentered}>
-        {/* Empty state intro - shown above input when chat is empty */}
-        {!hasMessages && <EmptyStateIntro rainbowAnimValue={rainbowAnimValue} theme={theme} />}
+        {/* Loading state - shown while messages are loading */}
+        {isLoadingMessages && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={theme.colors.interactive.primary} />
+            <Text style={[styles.loadingText, { color: theme.colors.text.secondary }]}>
+              Loading messages...
+            </Text>
+          </View>
+        )}
+
+        {/* Empty state intro - shown above input when chat is empty (but not loading) */}
+        {!hasMessages && !isLoadingMessages && <EmptyStateIntro rainbowAnimValue={rainbowAnimValue} theme={theme} />}
 
         {/* Image preview section */}
         {selectedImages.length > 0 && (
@@ -310,7 +323,7 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
             onFocus={handleFocus}
             onBlur={handleBlur}
             multiline
-            maxLength={4000}
+            maxLength={15000}
             editable={!disabled && !isSendingMessage}
             onSubmitEditing={handleSend}
           />
@@ -336,7 +349,7 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
 const styles = StyleSheet.create({
   inputContainer: {
     width: '100%',
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     alignItems: 'center',
   },
   inputContainerCentered: {
@@ -346,6 +359,16 @@ const styles = StyleSheet.create({
     position: 'relative',
     maxWidth: 700,
     width: '100%',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    fontFamily: 'Lexend_400Regular',
   },
   imagePreviewContainer: {
     flexDirection: 'row',

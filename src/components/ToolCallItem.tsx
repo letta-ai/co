@@ -7,6 +7,7 @@ interface ToolCallItemProps {
   callText: string;
   resultText?: string;
   hasResult?: boolean;
+  showResult?: boolean; // When false, hide the result section entirely
   isDark?: boolean;
   hideHeader?: boolean; // When true, skip rendering the label header (shown by parent)
 }
@@ -62,7 +63,7 @@ const getToolDisplayName = (toolName: string, callText: string, hasResult: boole
   return displayNames[toolName] || { present: toolName, past: toolName };
 };
 
-const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, isDark = true, hideHeader = false }) => {
+const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasResult = false, showResult = true, isDark = true, hideHeader = false }) => {
   const theme = isDark ? darkTheme : lightTheme;
   const [expanded, setExpanded] = useState(false);
   const [resultExpanded, setResultExpanded] = useState(false);
@@ -217,7 +218,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
           </Text>
         </TouchableOpacity>
       )}
-      {!!resultText && (
+      {showResult && !!resultText && (
         <TouchableOpacity
           style={[styles.resultHeader, resultExpanded && styles.resultHeaderExpanded, { backgroundColor: theme.colors.background.secondary, borderColor: theme.colors.border.primary }]}
           onPress={() => setResultExpanded((e) => !e)}
@@ -232,7 +233,7 @@ const ToolCallItem: React.FC<ToolCallItemProps> = ({ callText, resultText, hasRe
           <Text style={[styles.resultLabel, { color: theme.colors.text.tertiary }]}>Result</Text>
         </TouchableOpacity>
       )}
-      {resultExpanded && !!resultText && (
+      {showResult && resultExpanded && !!resultText && (
         <View style={[styles.resultBox, { backgroundColor: theme.colors.background.tertiary, borderColor: theme.colors.border.primary }]}>
           <Text style={[styles.resultText, { color: theme.colors.text.primary }]}>{formattedResult}</Text>
         </View>
@@ -257,8 +258,8 @@ const styles = StyleSheet.create({
   embeddedHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    paddingVertical: 4,
-    marginBottom: 8,
+    paddingVertical: 2,
+    marginBottom: 4,
   },
   embeddedChevron: {
     marginRight: 6,
@@ -275,9 +276,10 @@ const styles = StyleSheet.create({
       android: 'monospace',
       default: 'monospace',
     }),
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 12,
+    lineHeight: 16,
     flexShrink: 1,
+    opacity: 0.7,
     // Preserve whitespace and newlines for pretty-printed JSON
     whiteSpace: 'pre-wrap' as any,
   },

@@ -22,7 +22,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
     body: {
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: theme.typography.body.fontSize,
-      lineHeight: theme.typography.body.fontSize * 1.5,
+      lineHeight: theme.typography.body.fontSize * 1.4,
       fontFamily: theme.typography.body.fontFamily,
       // Prevent long URLs/words from overflowing bubbles (RN Web)
       wordBreak: 'break-word' as any,
@@ -34,7 +34,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
       marginBottom: isUser ? 0 : theme.spacing[2],
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: theme.typography.body.fontSize,
-      lineHeight: theme.typography.body.fontSize * 1.5,
+      lineHeight: theme.typography.body.fontSize * 1.4,
       fontFamily: theme.typography.body.fontFamily,
       wordBreak: 'break-word' as any,
       overflowWrap: 'anywhere' as any,
@@ -137,7 +137,7 @@ export const createMarkdownStyles = ({ isUser, isDark = true }: MarkdownStyleOpt
       color: isUser ? userTextColor : assistantTextColor,
       fontSize: theme.typography.body.fontSize,
       fontFamily: theme.typography.body.fontFamily,
-      lineHeight: theme.typography.body.fontSize * 1.5,
+      lineHeight: theme.typography.body.fontSize * 1.4,
       flex: 1,
     },
 

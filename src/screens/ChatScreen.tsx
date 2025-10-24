@@ -23,9 +23,10 @@ interface ChatScreenProps {
   theme: any;
   colorScheme: 'light' | 'dark';
   showCompaction?: boolean;
+  showToolResults?: boolean;
 }
 
-export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatScreenProps) {
+export function ChatScreen({ theme, colorScheme, showCompaction = true, showToolResults = false }: ChatScreenProps) {
   const insets = useSafeAreaInsets();
 
   // Hooks
@@ -106,6 +107,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true }: ChatSc
         expandedToolReturns={expandedToolReturns}
         copiedMessageId={copiedMessageId}
         showCompaction={showCompaction}
+        showToolResults={showToolResults}
         toggleReasoning={toggleReasoning}
         toggleCompaction={toggleCompaction}
         toggleToolReturn={toggleToolReturn}

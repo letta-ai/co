@@ -43,6 +43,7 @@ interface MessageGroupBubbleProps {
   expandedToolReturns: Set<string>;
   copiedMessageId: string | null;
   showCompaction: boolean;
+  showToolResults?: boolean;
 
   // Interaction handlers
   toggleReasoning: (groupId: string) => void;
@@ -64,6 +65,7 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   expandedToolReturns,
   copiedMessageId,
   showCompaction,
+  showToolResults = false,
   toggleReasoning,
   toggleCompaction,
   toggleToolReturn,
@@ -117,57 +119,60 @@ export const MessageGroupBubble: React.FC<MessageGroupBubbleProps> = ({
   // TOOL CALL MESSAGE
   // ========================================
   // Unified label architecture:
-  // - ONE label at top: "(co updated memory)"
-  // - Optional reasoning section (expandable)
-  // - Tool call details with inline chevron (ToolCallItem with hideHeader={true})
-  // - Result section (expandable)
+  // - ONE label at top: "(co updated memory)" with chevron
+  // - Label chevron controls ALL content (reasoning + tool call + result)
+  // - Everything collapsed by default
   //
   // This prevents duplicate labels when both reasoning and tool call are present.
   if (group.type === 'tool_call') {
-    const isReasoningExpanded = expandedReasoning.has(group.id);
+    const isExpanded = expandedReasoning.has(group.id);
     const label = getMessageLabel(group);
 
     return (
       <View style={styles.messageContainer}>
-        {/* Unified header: label + optional reasoning button */}
+        {/* Unified header: label + chevron for everything */}
         <View style={styles.messageHeader}>
           <Text style={[styles.messageLabel, { color: theme.colors.text.primary }]}>
             {label}
           </Text>
-          {group.reasoning && (
-            <InlineReasoningButton
-              isExpanded={isReasoningExpanded}
-              onToggle={() => toggleReasoning(group.id)}
-              isDark={isDark}
-            />
-          )}
+          <InlineReasoningButton
+            isExpanded={isExpanded}
+            onToggle={() => toggleReasoning(group.id)}
+            isDark={isDark}
+          />
         </View>
 
-        {/* Expanded reasoning content */}
-        {group.reasoning && isReasoningExpanded && (
-          <View
-            style={[
-              styles.reasoningExpandedContainer,
-              {
-                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
-                borderLeftColor: theme.colors.border.primary,
-              },
-            ]}
-          >
-            <Text style={[styles.reasoningExpandedText, { color: theme.colors.text.primary }]}>
-              {group.reasoning}
-            </Text>
-          </View>
-        )}
+        {/* Expanded content - only show when chevron is clicked */}
+        {isExpanded && (
+          <>
+            {/* Reasoning content */}
+            {group.reasoning && (
+              <View
+                style={[
+                  styles.reasoningExpandedContainer,
+                  {
+                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+                    borderLeftColor: theme.colors.border.primary,
+                  },
+                ]}
+              >
+                <Text style={[styles.reasoningExpandedText, { color: theme.colors.text.primary }]}>
+                  {group.reasoning}
+                </Text>
+              </View>
+            )}
 
-        {/* Tool call + return */}
-        <ToolCallItem
-          callText={group.toolCall?.args || group.content}
-          resultText={group.toolReturn}
-          hasResult={!!group.toolReturn}
-          isDark={isDark}
-          hideHeader={true} // Label already shown in unified header above
-        />
+            {/* Tool call + return */}
+            <ToolCallItem
+              callText={group.toolCall?.args || group.content}
+              resultText={group.toolReturn}
+              hasResult={!!group.toolReturn}
+              showResult={showToolResults}
+              isDark={isDark}
+              hideHeader={true} // Label already shown in unified header above
+            />
+          </>
+        )}
       </View>
     );
   }
@@ -312,6 +317,9 @@ const styles = StyleSheet.create({
   messageContainer: {
     marginVertical: 8,
     paddingHorizontal: 18,
+    maxWidth: 700,
+    width: '100%',
+    alignSelf: 'center',
   },
   userMessageContainer: {
     alignItems: 'flex-end',
@@ -344,6 +352,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     width: '100%',
+    maxWidth: 700,
+    alignSelf: 'center',
   },
   // Unified message header (label + reasoning button)
   messageHeader: {
@@ -357,10 +367,10 @@ const styles = StyleSheet.create({
   },
   // Reasoning expanded content (from ReasoningToggle)
   reasoningExpandedContainer: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    paddingLeft: 20,
-    marginBottom: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingLeft: 16,
+    marginBottom: 8,
     borderRadius: 8,
     borderLeftWidth: 4,
     overflow: 'hidden',
@@ -368,7 +378,7 @@ const styles = StyleSheet.create({
   reasoningExpandedText: {
     fontSize: 14,
     fontFamily: 'Lexend_400Regular',
-    lineHeight: 22,
+    lineHeight: 20,
     fontStyle: 'normal',
   },
   copyButtonContainer: {

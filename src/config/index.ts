@@ -6,7 +6,7 @@
 export const config = {
   api: {
     baseURL: process.env.EXPO_PUBLIC_API_URL || 'https://api.letta.com',
-    timeout: 30000,
+    timeout: 120000, // 2 minutes - agent creation with sleeptime can take a while
     retries: 3,
     retryDelay: 1000,
   },

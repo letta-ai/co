@@ -56,6 +56,9 @@ import { useAuth } from './src/hooks/useAuth';
 import { useAgent } from './src/hooks/useAgent';
 import { useMessages } from './src/hooks/useMessages';
 
+// Stores
+import { useChatStore } from './src/stores/chatStore';
+
 // Theme
 import { darkTheme, lightTheme } from './src/theme';
 
@@ -85,8 +88,9 @@ function CoApp() {
 
   // Use hooks for state management
   const { isConnected, isLoadingToken, isConnecting, connectionError, connectWithToken, logout } = useAuth();
-  const { coAgent, isInitializingCo } = useAgent();
+  const { coAgent, isInitializingCo, clearAgent } = useAgent();
   const { messages } = useMessages();
+  const clearMessages = useChatStore((state) => state.clearMessages);
 
   // View state
   const [currentView, setCurrentView] = useState<ViewType>('chat');
@@ -94,10 +98,11 @@ function CoApp() {
   const sidebarAnimRef = useRef(new Animated.Value(0)).current;
 
   // Developer mode
-  const [developerMode, setDeveloperMode] = useState(false);
+  const [developerMode, setDeveloperMode] = useState(true);
 
   // Settings
   const [showCompaction, setShowCompaction] = useState(true);
+  const [showToolResults, setShowToolResults] = useState(false);
 
   // You view state
   const [hasCheckedYouBlock, setHasCheckedYouBlock] = useState(false);
@@ -247,8 +252,24 @@ function CoApp() {
   const handleRefreshAgent = async () => {
     if (!coAgent) return;
     try {
+      // Delete sleeptime agent if it exists
+      if (coAgent.sleeptime_agent_id) {
+        try {
+          await lettaApi.deleteAgent(coAgent.sleeptime_agent_id);
+          console.log('Deleted sleeptime agent:', coAgent.sleeptime_agent_id);
+        } catch (error) {
+          console.error('Failed to delete sleeptime agent:', error);
+        }
+      }
+
+      // Delete primary agent
       await lettaApi.deleteAgent(coAgent.id);
-      // Agent store will automatically reinitialize
+      console.log('Deleted primary agent:', coAgent.id);
+
+      // Clear agent and messages from store
+      clearAgent();
+      clearMessages();
+      // useAgent hook will automatically reinitialize when it detects no agent
     } catch (error: any) {
       if (Platform.OS === 'web') {
         window.alert('Failed to refresh agent: ' + error.message);
@@ -300,7 +321,7 @@ function CoApp() {
 
   // Main app
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.colors.background.primary }]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
       {/* Sidebar */}
@@ -369,6 +390,7 @@ function CoApp() {
               theme={theme}
               colorScheme={colorScheme}
               showCompaction={showCompaction}
+              showToolResults={showToolResults}
             />
           )}
 
@@ -410,6 +432,8 @@ function CoApp() {
               theme={theme}
               showCompaction={showCompaction}
               onToggleCompaction={() => setShowCompaction(!showCompaction)}
+              showToolResults={showToolResults}
+              onToggleToolResults={() => setShowToolResults(!showToolResults)}
             />
           )}
         </View>

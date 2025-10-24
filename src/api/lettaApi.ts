@@ -19,6 +19,7 @@ import type {
   SearchPassagesParams,
   SearchPassagesResponse
 } from '../types/letta';
+import { config } from '../config';
 
 class LettaApiService {
   private client: LettaClient | null = null;
@@ -80,12 +81,17 @@ class LettaApiService {
   setAuthToken(token: string): void {
     console.log('setAuthToken - Token length:', token ? token.length : 0);
     console.log('setAuthToken - Token preview:', token ? token.substring(0, 10) + '...' : 'null');
-    
-    // Initialize the official Letta client - no base URL needed, routes to Letta cloud by default
-    this.client = new LettaClient({ token });
+
+    // Initialize the official Letta client with extended timeout for agent creation
+    // Agent creation with sleeptime can take a while as it creates 2 agents
+    this.client = new LettaClient({
+      token,
+      timeout: config.api.timeout
+    });
     this.token = token;
-    
+
     console.log('setAuthToken - Client created successfully:', !!this.client);
+    console.log('setAuthToken - Client timeout:', config.api.timeout);
   }
 
   removeAuthToken(): void {
