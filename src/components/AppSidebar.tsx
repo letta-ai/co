@@ -38,6 +38,7 @@ interface AppSidebarProps {
   developerMode: boolean;
   agentId?: string;
   currentView: ViewType;
+  isOverlay: boolean; // Whether sidebar is overlay mode (narrow screens) or push mode (wide screens)
   onClose: () => void;
   onYouPress: () => void;
   onChatPress: () => void;
@@ -56,6 +57,7 @@ export function AppSidebar({
   developerMode,
   agentId,
   currentView,
+  isOverlay,
   onClose,
   onYouPress,
   onChatPress,
@@ -99,14 +101,33 @@ export function AppSidebar({
   return (
     <Animated.View
       style={[
-        styles.sidebarContainer,
+        isOverlay ? styles.sidebarOverlay : styles.sidebarContainer,
         {
           paddingTop: insets.top,
           backgroundColor: theme.colors.background.secondary,
           borderRightColor: theme.colors.border.primary,
-          width: animationValue.interpolate({
-            inputRange: [0, 1],
-            outputRange: [0, 280],
+          ...(isOverlay
+            ? {
+                // Overlay mode: slide in from left with fixed width
+                transform: [
+                  {
+                    translateX: animationValue.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-280, 0],
+                    }),
+                  },
+                ],
+              }
+            : {
+                // Push mode: animate width
+                width: animationValue.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 280],
+                }),
+              }),
+          opacity: animationValue.interpolate({
+            inputRange: [0, 0.3, 1],
+            outputRange: [0, 0.8, 1],
           }),
         },
       ]}
@@ -311,10 +332,16 @@ export function AppSidebar({
 
 const styles = StyleSheet.create({
   sidebarContainer: {
+    height: '100%',
+    borderRightWidth: 1,
+    overflow: 'hidden',
+  },
+  sidebarOverlay: {
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
+    width: 280,
     zIndex: 1000,
     borderRightWidth: 1,
     overflow: 'hidden',

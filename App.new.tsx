@@ -32,6 +32,7 @@ import {
   Animated,
   Alert,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SystemUI from 'expo-system-ui';
@@ -63,11 +64,15 @@ import { darkTheme, lightTheme } from './src/theme';
 
 // API and Utils
 import lettaApi from './src/api/lettaApi';
+import { Storage, STORAGE_KEYS } from './src/utils/storage';
+import { pickFile } from './src/utils/fileUpload';
 import type { MemoryBlock, Passage } from './src/types/letta';
 
 function CoApp() {
   const systemColorScheme = useSystemColorScheme();
   const [colorScheme, setColorScheme] = useState<'light' | 'dark'>(systemColorScheme || 'dark');
+  const { width: screenWidth } = useWindowDimensions();
+  const isNarrowScreen = screenWidth < 768; // iPad portrait width threshold
 
   // Load fonts
   const [fontsLoaded] = useFonts({
@@ -139,7 +144,7 @@ function CoApp() {
   useEffect(() => {
     Animated.timing(sidebarAnimRef, {
       toValue: sidebarVisible ? 1 : 0,
-      duration: 300,
+      duration: 200,
       useNativeDriver: false,
     }).start();
   }, [sidebarVisible]);
@@ -215,22 +220,149 @@ function CoApp() {
   };
 
   const loadFiles = async () => {
-    // TODO: Implement folder initialization and file loading
-    // This requires creating/finding a "co-app" folder first
-    // See App.tsx.monolithic lines 1105-1200 for full implementation
-    console.log('File loading not yet implemented in refactored version');
-    setIsLoadingFiles(false);
+    if (!coAgent) return;
+    
+    setIsLoadingFiles(true);
+    setFilesError(null);
+    
+    try {
+      // Get cached folder ID or find/create folder
+      let folderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
+      
+      if (!folderId) {
+        console.log('No folder ID found, searching for co-app folder...');
+        const folders = await lettaApi.listFolders({ name: 'co-app' });
+        
+        if (folders.length > 0) {
+          folderId = folders[0].id;
+          console.log('Found existing co-app folder:', folderId);
+        } else {
+          console.log('Creating new co-app folder...');
+          const folder = await lettaApi.createFolder('co-app', 'Files shared with co agent');
+          folderId = folder.id;
+          console.log('Created new folder:', folderId);
+        }
+        
+        await Storage.setItem(STORAGE_KEYS.CO_FOLDER_ID, folderId);
+      }
+      
+      // Attach folder to agent if not already attached
+      try {
+        await lettaApi.attachFolderToAgent(coAgent.id, folderId);
+        console.log('Folder attached to agent');
+      } catch (error: any) {
+        if (error.message?.includes('already attached') || error.status === 409) {
+          console.log('Folder already attached to agent');
+        } else {
+          throw error;
+        }
+      }
+      
+      // Load files from folder
+      console.log('Loading files from folder:', folderId);
+      const files = await lettaApi.listFolderFiles(folderId);
+      console.log('Loaded files:', files.length);
+      setFolderFiles(files);
+    } catch (error: any) {
+      console.error('Failed to load files:', error);
+      setFilesError(error.message || 'Failed to load files');
+    } finally {
+      setIsLoadingFiles(false);
+    }
   };
 
-  const handleFileUpload = () => {
-    // TODO: Implement file upload
-    console.log('File upload not yet implemented in refactored version');
+  const handleFileUpload = async () => {
+    if (!coAgent) return;
+    
+    try {
+      setIsUploadingFile(true);
+      setUploadProgress('Selecting file...');
+      
+      const result = await pickFile();
+      if (!result) {
+        setUploadProgress(null);
+        setIsUploadingFile(false);
+        return;
+      }
+      
+      setUploadProgress(`Uploading ${result.name}...`);
+      
+      // Get cached folder ID
+      let folderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
+      
+      if (!folderId) {
+        const folders = await lettaApi.listFolders({ name: 'co-app' });
+        if (folders.length > 0) {
+          folderId = folders[0].id;
+        } else {
+          const folder = await lettaApi.createFolder('co-app', 'Files shared with co agent');
+          folderId = folder.id;
+        }
+        await Storage.setItem(STORAGE_KEYS.CO_FOLDER_ID, folderId);
+      }
+      
+      await lettaApi.uploadFileToFolder(folderId, result.file, 'replace');
+      
+      // Attach folder to agent if not already attached
+      try {
+        await lettaApi.attachFolderToAgent(coAgent.id, folderId);
+      } catch (error: any) {
+        if (!error.message?.includes('already attached') && error.status !== 409) {
+          throw error;
+        }
+      }
+      
+      setUploadProgress('Processing...');
+      
+      // Wait a moment for processing then reload files
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await loadFiles();
+      
+      setUploadProgress(null);
+    } catch (error: any) {
+      console.error('File upload error:', error);
+      setFilesError(error.message || 'Failed to upload file');
+      setUploadProgress(null);
+    } finally {
+      setIsUploadingFile(false);
+    }
   };
 
   const handleFileDelete = async (id: string, name: string) => {
-    // TODO: Implement file deletion
-    // This requires folder ID (see App.tsx.monolithic line 1359)
-    console.log('File deletion not yet implemented:', name);
+    if (!coAgent) return;
+    
+    const confirmDelete = Platform.OS === 'web' 
+      ? window.confirm(`Delete file "${name}"?`)
+      : await new Promise(resolve => {
+          Alert.alert(
+            'Delete File',
+            `Delete "${name}"?`,
+            [
+              { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+            ]
+          );
+        });
+    
+    if (!confirmDelete) return;
+    
+    try {
+      const folderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
+      if (!folderId) {
+        throw new Error('Folder not found');
+      }
+      
+      await lettaApi.deleteFile(folderId, id);
+      await loadFiles();
+    } catch (error: any) {
+      console.error('Failed to delete file:', error);
+      const msg = error.message || 'Failed to delete file';
+      if (Platform.OS === 'web') {
+        window.alert(msg);
+      } else {
+        Alert.alert('Error', msg);
+      }
+    }
   };
 
   const handlePassageDelete = async (id: string) => {
@@ -323,33 +455,37 @@ function CoApp() {
     <View style={[styles.container, { backgroundColor: theme.colors.background.primary }]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
 
-      {/* Sidebar */}
-      <AppSidebar
-        theme={theme}
-        colorScheme={colorScheme}
-        visible={sidebarVisible}
-        animationValue={sidebarAnimRef}
-        developerMode={developerMode}
-        agentId={coAgent.id}
-        currentView={currentView}
-        onClose={() => setSidebarVisible(false)}
-        onYouPress={() => {
-          setCurrentView('you');
-          loadMemoryBlocks();
-        }}
-        onChatPress={() => setCurrentView('chat')}
-        onKnowledgePress={() => {
-          setCurrentView('knowledge');
-          loadMemoryBlocks();
-        }}
-        onSettingsPress={() => setCurrentView('settings')}
-        onThemeToggle={toggleColorScheme}
-        onRefreshAgent={handleRefreshAgent}
-        onLogout={logout}
-      />
+      <View style={[styles.appLayout, isNarrowScreen && styles.appLayoutNarrow]}>
+        {/* Sidebar - only show in desktop layout when not narrow */}
+        {!isNarrowScreen && (
+          <AppSidebar
+            theme={theme}
+            colorScheme={colorScheme}
+            visible={sidebarVisible}
+            animationValue={sidebarAnimRef}
+            developerMode={developerMode}
+            agentId={coAgent.id}
+            currentView={currentView}
+            isOverlay={false}
+            onClose={() => setSidebarVisible(false)}
+            onYouPress={() => {
+              setCurrentView('you');
+              loadMemoryBlocks();
+            }}
+            onChatPress={() => setCurrentView('chat')}
+            onKnowledgePress={() => {
+              setCurrentView('knowledge');
+              loadMemoryBlocks();
+            }}
+            onSettingsPress={() => setCurrentView('settings')}
+            onThemeToggle={toggleColorScheme}
+            onRefreshAgent={handleRefreshAgent}
+            onLogout={logout}
+          />
+        )}
 
-      {/* Main Content */}
-      <View style={styles.mainContent}>
+        {/* Main Content */}
+        <View style={styles.mainContent}>
         {/* Header */}
         <AppHeader
           theme={theme}
@@ -436,6 +572,60 @@ function CoApp() {
             isDesktop={isDesktop}
           />
         )}
+        </View>
+
+        {/* Overlay Sidebar for narrow screens */}
+        {isNarrowScreen && sidebarVisible && (
+          <>
+            {/* Backdrop */}
+            <Animated.View
+              style={[
+                styles.backdrop,
+                {
+                  opacity: sidebarAnimRef.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 0.5],
+                  }),
+                },
+              ]}
+              onTouchEnd={() => setSidebarVisible(false)}
+            />
+
+            {/* Overlay Sidebar */}
+            <AppSidebar
+              theme={theme}
+              colorScheme={colorScheme}
+              visible={sidebarVisible}
+              animationValue={sidebarAnimRef}
+              developerMode={developerMode}
+              agentId={coAgent.id}
+              currentView={currentView}
+              isOverlay={true}
+              onClose={() => setSidebarVisible(false)}
+              onYouPress={() => {
+                setCurrentView('you');
+                loadMemoryBlocks();
+                setSidebarVisible(false);
+              }}
+              onChatPress={() => {
+                setCurrentView('chat');
+                setSidebarVisible(false);
+              }}
+              onKnowledgePress={() => {
+                setCurrentView('knowledge');
+                loadMemoryBlocks();
+                setSidebarVisible(false);
+              }}
+              onSettingsPress={() => {
+                setCurrentView('settings');
+                setSidebarVisible(false);
+              }}
+              onThemeToggle={toggleColorScheme}
+              onRefreshAgent={handleRefreshAgent}
+              onLogout={logout}
+            />
+          </>
+        )}
       </View>
     </View>
   );
@@ -456,6 +646,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  appLayout: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  appLayoutNarrow: {
+    flexDirection: 'column',
+  },
   mainContent: {
     flex: 1,
   },
@@ -466,5 +663,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'black',
+    zIndex: 999,
   },
 });
