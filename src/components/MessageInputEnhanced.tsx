@@ -240,7 +240,7 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
         )}
 
         {/* Empty state intro - shown above input when chat is empty (but not loading) */}
-        {!hasMessages && !isLoadingMessages && <EmptyStateIntro rainbowAnimValue={rainbowAnimValue} theme={theme} />}
+        {!hasMessages && !isLoadingMessages && <EmptyStateIntro theme={theme} />}
 
         {/* Image preview section */}
         {selectedImages.length > 0 && (
@@ -442,6 +442,8 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         // @ts-ignore - web-only properties
+        outline: 'none',
+        outlineStyle: 'none',
         WebkitAppearance: 'none',
         MozAppearance: 'none',
         resize: 'none',

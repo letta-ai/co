@@ -413,19 +413,6 @@ class LettaApiService {
       console.log('=== STARTING STREAM ITERATION ===');
       try {
         for await (const chunk of stream) {
-          console.log('=== RAW CHUNK RECEIVED ===');
-          console.log('Raw chunk:', JSON.stringify(chunk, null, 2));
-          console.log('Chunk keys:', Object.keys(chunk));
-          console.log('message_type variants:', {
-            messageType: chunk.messageType,
-            message_type: chunk.message_type
-          });
-          console.log('Content variants:', {
-            content: chunk.content,
-            assistantMessage: chunk.assistantMessage, 
-            assistant_message: chunk.assistant_message
-          });
-          
           onChunk({
             message_type: (chunk as any).message_type || (chunk as any).messageType,
             content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
@@ -447,29 +434,6 @@ class LettaApiService {
       } catch (streamError) {
         console.error('=== STREAM ITERATION ERROR ===');
         console.error('Stream iteration error:', streamError);
-        console.error('Stream error details:', {
-          message: streamError.message,
-          statusCode: streamError.statusCode,
-          status: streamError.status,
-          body: streamError.body,
-          data: streamError.data,
-          response: streamError.response,
-          rawResponse: streamError.rawResponse,
-          error: streamError.error,
-          stack: streamError.stack
-        });
-
-        // Try to extract any additional error info
-        if (streamError.response) {
-          console.error('Response object:', JSON.stringify(streamError.response, null, 2));
-        }
-        if (streamError.body) {
-          console.error('Body object:', JSON.stringify(streamError.body, null, 2));
-        }
-        if (streamError.data) {
-          console.error('Data object:', JSON.stringify(streamError.data, null, 2));
-        }
-
         onError(this.handleError(streamError));
       }
     } catch (error) {

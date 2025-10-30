@@ -6,18 +6,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMessages } from '../hooks/useMessages';
 import { useMessageStream } from '../hooks/useMessageStream';
 import { useChatStore } from '../stores/chatStore';
+import { useAgentStore } from '../stores/agentStore';
 import { useMessageInteractions } from '../hooks/useMessageInteractions';
 import { useScrollToBottom } from '../hooks/useScrollToBottom';
 import { useMessageGroups } from '../hooks/useMessageGroups';
 
 import MessageGroupBubble from '../components/MessageGroupBubble';
 import MessageInputEnhanced from '../components/MessageInputEnhanced';
+import lettaApi from '../api/lettaApi';
+import { Storage, STORAGE_KEYS } from '../utils/storage';
 
 interface ChatScreenProps {
   theme: any;
@@ -32,6 +36,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
   // Hooks
   const { messages, isLoadingMessages, loadMoreMessages, hasMoreBefore, isLoadingMore } = useMessages();
   const { isStreaming, isSendingMessage, sendMessage } = useMessageStream();
+  const coAgent = useAgentStore((state) => state.coAgent);
   const {
     expandedReasoning,
     expandedCompaction,
@@ -90,6 +95,55 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
   // Handle send message - no auto-scroll
   const handleSend = async (text: string) => {
     await sendMessage(text, selectedImages);
+  };
+
+  // Handle file upload
+  const handleFileUpload = async (file: File) => {
+    if (!coAgent) {
+      throw new Error('Agent not initialized');
+    }
+
+    console.log('handleFileUpload - file:', file.name);
+
+    // Get or create the co-app folder
+    let folderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
+
+    if (!folderId) {
+      console.log('No folder ID found, searching for co-app folder...');
+      const folders = await lettaApi.listFolders({ name: 'co-app' });
+      
+      if (folders.length > 0) {
+        folderId = folders[0].id;
+        console.log('Found existing co-app folder:', folderId);
+      } else {
+        console.log('Creating new co-app folder...');
+        const folder = await lettaApi.createFolder('co-app', 'Files shared with co agent');
+        folderId = folder.id;
+        console.log('Created new folder:', folderId);
+      }
+
+      await Storage.setItem(STORAGE_KEYS.CO_FOLDER_ID, folderId);
+    }
+
+    console.log('Uploading file to folder:', folderId);
+    const result = await lettaApi.uploadFileToFolder(folderId, file, 'replace');
+    console.log('File uploaded successfully:', result);
+
+    // Attach folder to agent if not already attached
+    console.log('Ensuring folder is attached to agent...');
+    try {
+      await lettaApi.attachFolderToAgent(coAgent.id, folderId);
+      console.log('Folder attached to agent');
+    } catch (error: any) {
+      // If already attached, that's fine
+      if (error.message?.includes('already attached') || error.status === 409) {
+        console.log('Folder already attached to agent');
+      } else {
+        throw error;
+      }
+    }
+
+    console.log('File upload complete!');
   };
 
   // Render message group
@@ -169,6 +223,7 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
           selectedImages={selectedImages}
           onAddImage={addImage}
           onRemoveImage={removeImage}
+          onFileUpload={handleFileUpload}
           disabled={isSendingMessage || isLoadingMessages}
         />
       </View>

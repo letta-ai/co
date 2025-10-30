@@ -383,16 +383,6 @@ function CoApp() {
   const handleRefreshAgent = async () => {
     if (!coAgent) return;
     try {
-      // Delete sleeptime agent if it exists
-      if (coAgent.sleeptime_agent_id) {
-        try {
-          await lettaApi.deleteAgent(coAgent.sleeptime_agent_id);
-          console.log('Deleted sleeptime agent:', coAgent.sleeptime_agent_id);
-        } catch (error) {
-          console.error('Failed to delete sleeptime agent:', error);
-        }
-      }
-
       // Delete primary agent
       await lettaApi.deleteAgent(coAgent.id);
       console.log('Deleted primary agent:', coAgent.id);
@@ -605,20 +595,20 @@ function CoApp() {
               onYouPress={() => {
                 setCurrentView('you');
                 loadMemoryBlocks();
-                setSidebarVisible(false);
+                setSidebarVisible(false); // Close on mobile overlay
               }}
               onChatPress={() => {
                 setCurrentView('chat');
-                setSidebarVisible(false);
+                setSidebarVisible(false); // Close on mobile overlay
               }}
               onKnowledgePress={() => {
                 setCurrentView('knowledge');
                 loadMemoryBlocks();
-                setSidebarVisible(false);
+                setSidebarVisible(false); // Close on mobile overlay
               }}
               onSettingsPress={() => {
                 setCurrentView('settings');
-                setSidebarVisible(false);
+                setSidebarVisible(false); // Close on mobile overlay
               }}
               onThemeToggle={toggleColorScheme}
               onRefreshAgent={handleRefreshAgent}

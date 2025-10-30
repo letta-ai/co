@@ -4,8 +4,10 @@
 
 export const YOU_BLOCK = {
   label: 'you',
-  description: "Dynamic synthesis of what you are currently focused on, how you're thinking about it, and patterns emerging right now. The 'current state' understanding that gets updated proactively.",
-  value: `## Right Now
+  description: "Dynamic synthesis of what you are currently focused on, how you're thinking about it, and patterns emerging right now. The 'current state' understanding that gets updated proactively. Update frequency: After any interaction where your focus shifts or new patterns emerge. This should be the most frequently updated block.",
+  value: `This is what I understand about where you are right now.
+
+## Right Now
 [What you're currently focused on - updated as your focus shifts]
 
 ## How You're Approaching This
@@ -15,10 +17,7 @@ export const YOU_BLOCK = {
 [Patterns I'm noticing in this phase of interaction]
 
 ## Open Threads
-[Questions you're holding, problems you're working through, unresolved topics]
-
----
-**Update Frequency**: After any interaction where your focus shifts or new patterns emerge. This should be the most frequently updated block.`,
+[Questions you're holding, problems you're working through, unresolved topics]`,
   limit: 5000,
 } as const;
 

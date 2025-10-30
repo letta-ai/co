@@ -4,7 +4,7 @@
  * Displays the welcome message when the chat is empty (no messages yet).
  *
  * Features:
- * - Large "co" text with rainbow color animation
+ * - Large "co" text
  * - Welcome message: "I'm co, your thinking partner."
  * - Centered layout above the input box
  *
@@ -13,35 +13,27 @@
  */
 
 import React from 'react';
-import { View, Text, StyleSheet, Animated } from 'react-native';
-import { RAINBOW_COLORS } from '../hooks/useRainbowAnimation';
+import { View, Text, StyleSheet } from 'react-native';
 import type { Theme } from '../theme';
 
 interface EmptyStateIntroProps {
-  rainbowAnimValue: Animated.Value;
   theme: Theme;
 }
 
 export const EmptyStateIntro: React.FC<EmptyStateIntroProps> = ({
-  rainbowAnimValue,
   theme,
 }) => {
   return (
     <View style={styles.container}>
-      {/* Large rainbow "co" text */}
-      <Animated.Text
+      {/* Large "co" text */}
+      <Text
         style={[
           styles.coText,
-          {
-            color: rainbowAnimValue.interpolate({
-              inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1],
-              outputRange: RAINBOW_COLORS,
-            }),
-          },
+          { color: theme.colors.text.primary },
         ]}
       >
         co
-      </Animated.Text>
+      </Text>
 
       {/* Welcome message */}
       <Text style={[styles.welcomeText, { color: theme.colors.text.primary }]}>
