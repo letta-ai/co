@@ -285,11 +285,15 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
               style={styles.fileButton}
               disabled={disabled || isSendingMessage || isUploadingFile}
             >
-              <Ionicons
-                name="attach-outline"
-                size={20}
-                color={disabled || isUploadingFile ? '#333333' : '#666666'}
-              />
+              {isUploadingFile ? (
+                <ActivityIndicator size="small" color="#666666" />
+              ) : (
+                <Ionicons
+                  name="attach-outline"
+                  size={20}
+                  color={disabled ? '#333333' : '#666666'}
+                />
+              )}
             </TouchableOpacity>
           )}
 
@@ -438,8 +442,6 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         // @ts-ignore - web-only properties
-        outline: 'none',
-        outlineStyle: 'none',
         WebkitAppearance: 'none',
         MozAppearance: 'none',
         resize: 'none',

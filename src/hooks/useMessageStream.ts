@@ -95,7 +95,13 @@ export function useMessageStream() {
       if (imagesToSend.length > 0) {
         const contentParts = [];
 
-        // Add images
+        // Always add text part first (even if empty) when images present
+        contentParts.push({
+          type: 'text',
+          text: messageText || '',
+        });
+
+        // Add images after text
         for (const img of imagesToSend) {
           contentParts.push({
             type: 'image',
@@ -104,14 +110,6 @@ export function useMessageStream() {
               mediaType: img.mediaType,
               data: img.base64,
             },
-          });
-        }
-
-        // Add text if present
-        if (messageText && typeof messageText === 'string' && messageText.length > 0) {
-          contentParts.push({
-            type: 'text',
-            text: messageText,
           });
         }
 
@@ -139,6 +137,12 @@ export function useMessageStream() {
         if (imagesToSend.length > 0) {
           const contentParts = [];
 
+          // Always add text part first (even if empty) when images present
+          contentParts.push({
+            type: 'text',
+            text: messageText || '',
+          });
+
           for (const img of imagesToSend) {
             contentParts.push({
               type: 'image',
@@ -147,13 +151,6 @@ export function useMessageStream() {
                 mediaType: img.mediaType,
                 data: img.base64,
               },
-            });
-          }
-
-          if (messageText && typeof messageText === 'string' && messageText.length > 0) {
-            contentParts.push({
-              type: 'text',
-              text: messageText,
             });
           }
 

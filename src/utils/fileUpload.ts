@@ -2,19 +2,20 @@
  * File Upload Utility
  *
  * Handles document file picking and upload for file attachments.
- * Currently supports web platform only.
+ * Supports web, iOS, and Android platforms.
  *
  * This utility is used by MessageInputEnhanced to handle document uploads.
- * Mobile support can be added later using expo-document-picker.
  */
 
 import { Platform, Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 
 export interface FilePickerResult {
   name: string;
   size: number;
   type: string;
   file: File; // Web File object
+  uri?: string; // Mobile URI
 }
 
 /**
@@ -23,14 +24,21 @@ export interface FilePickerResult {
  * @returns Promise<FilePickerResult | null> - Selected file info or null if cancelled
  */
 export async function pickFile(): Promise<FilePickerResult | null> {
-  if (Platform.OS !== 'web') {
-    Alert.alert('Not Supported', 'File upload is currently only supported on web.');
-    return null;
+  // Web platform - use HTML file input
+  if (Platform.OS === 'web') {
+    return pickFileWeb();
   }
 
+  // Mobile platforms (iOS/Android) - use expo-document-picker
+  return pickFileMobile();
+}
+
+/**
+ * Web file picker implementation
+ */
+async function pickFileWeb(): Promise<FilePickerResult | null> {
   return new Promise((resolve) => {
     try {
-      // Create file input element
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.pdf,.txt,.md,.json,.csv,.doc,.docx';
@@ -68,7 +76,6 @@ export async function pickFile(): Promise<FilePickerResult | null> {
         resolve(null);
       };
 
-      // Trigger file picker
       input.click();
     } catch (error) {
       console.error('Error creating file picker:', error);
@@ -76,4 +83,58 @@ export async function pickFile(): Promise<FilePickerResult | null> {
       resolve(null);
     }
   });
+}
+
+/**
+ * Mobile file picker implementation (iOS/Android)
+ */
+async function pickFileMobile(): Promise<FilePickerResult | null> {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: ['application/pdf', 'text/plain', 'text/markdown', 'application/json', 
+             'text/csv', 'application/msword', 
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+      copyToCacheDirectory: true,
+    });
+
+    if (result.canceled) {
+      return null;
+    }
+
+    const asset = result.assets[0];
+    if (!asset) {
+      return null;
+    }
+
+    console.log('Selected file:', asset.name, 'size:', asset.size, 'type:', asset.mimeType);
+
+    // Check file size (10MB limit)
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (asset.size && asset.size > MAX_SIZE) {
+      const sizeMB = (asset.size / 1024 / 1024).toFixed(2);
+      Alert.alert(
+        'File Too Large',
+        `This file is ${sizeMB}MB. Maximum allowed is 10MB.`
+      );
+      return null;
+    }
+
+    // For mobile, we need to convert the URI to a File object for upload
+    // We'll fetch the file content and create a blob
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    const file = new File([blob], asset.name, { type: asset.mimeType || 'application/octet-stream' });
+
+    return {
+      name: asset.name,
+      size: asset.size || blob.size,
+      type: asset.mimeType || 'application/octet-stream',
+      file,
+      uri: asset.uri,
+    };
+  } catch (error) {
+    console.error('Error picking file:', error);
+    Alert.alert('Error', 'Failed to pick file');
+    return null;
+  }
 }
