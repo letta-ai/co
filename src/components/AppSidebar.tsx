@@ -103,7 +103,6 @@ export function AppSidebar({
       style={[
         isOverlay ? styles.sidebarOverlay : styles.sidebarContainer,
         {
-          paddingTop: insets.top,
           backgroundColor: theme.colors.background.secondary,
           borderRightColor: theme.colors.border.primary,
           ...(isOverlay
@@ -125,41 +124,58 @@ export function AppSidebar({
                   outputRange: [0, 280],
                 }),
               }),
-          opacity: animationValue.interpolate({
-            inputRange: [0, 0.3, 1],
-            outputRange: [0, 0.8, 1],
-          }),
+          opacity: isOverlay
+            ? animationValue.interpolate({
+                inputRange: [0, 0.3, 1],
+                outputRange: [0, 0.8, 1],
+              })
+            : 1, // Don't animate overall opacity in push mode
         },
       ]}
     >
-      <View
+      {/* Content wrapper with delayed fade-in for push mode */}
+      <Animated.View
         style={[
-          styles.sidebarHeader,
-          { borderBottomColor: theme.colors.border.primary },
+          styles.contentWrapper,
+          {
+            opacity: isOverlay
+              ? 1 // Overlay mode: content is always visible once sidebar slides in
+              : animationValue.interpolate({
+                  inputRange: [0, 0.6, 1],
+                  outputRange: [0, 0, 1], // Stay hidden until 60% then fade in
+                }),
+          },
         ]}
       >
-        <Text style={[styles.sidebarTitle, { color: theme.colors.text.primary }]}>
-          Menu
-        </Text>
-        <TouchableOpacity onPress={onClose} style={styles.closeSidebar}>
-          <Ionicons name="close" size={24} color={theme.colors.text.primary} />
-        </TouchableOpacity>
-      </View>
+        <View
+          style={[
+            styles.sidebarHeader,
+            {
+              paddingTop: insets.top + 16,
+              paddingBottom: 16,
+            },
+          ]}
+        >
+          <Text style={[styles.sidebarTitle, { color: theme.colors.text.primary }]}>
+            Menu
+          </Text>
+          <TouchableOpacity onPress={onClose} style={styles.closeSidebar}>
+            <Ionicons name="close" size={24} color={theme.colors.text.primary} />
+          </TouchableOpacity>
+        </View>
 
-      <FlatList
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1 }}
-        ListHeaderComponent={
+        <FlatList
+          style={{ flex: 1 }}
+          contentContainerStyle={{ flexGrow: 1 }}
+          ListHeaderComponent={
           <View style={styles.menuItems}>
             {/* You */}
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
                 currentView === 'you' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
-                onClose();
                 onYouPress();
               }}
             >
@@ -177,11 +193,9 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
                 currentView === 'chat' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
-                onClose();
                 onChatPress();
               }}
             >
@@ -199,11 +213,9 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
                 currentView === 'knowledge' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
-                onClose();
                 onKnowledgePress();
               }}
             >
@@ -221,11 +233,9 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
                 currentView === 'settings' && { backgroundColor: theme.colors.background.tertiary },
               ]}
               onPress={() => {
-                onClose();
                 onSettingsPress();
               }}
             >
@@ -243,7 +253,6 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
               ]}
               onPress={onThemeToggle}
             >
@@ -261,7 +270,6 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
               ]}
               onPress={handleOpenInBrowser}
               disabled={!agentId}
@@ -281,7 +289,6 @@ export function AppSidebar({
               <TouchableOpacity
                 style={[
                   styles.menuItem,
-                  { borderBottomColor: theme.colors.border.primary },
                 ]}
                 onPress={handleRefreshAgent}
               >
@@ -305,10 +312,8 @@ export function AppSidebar({
             <TouchableOpacity
               style={[
                 styles.menuItem,
-                { borderBottomColor: theme.colors.border.primary },
               ]}
               onPress={() => {
-                onClose();
                 onLogout();
               }}
             >
@@ -326,6 +331,7 @@ export function AppSidebar({
         data={[]}
         renderItem={() => null}
       />
+      </Animated.View>
     </Animated.View>
   );
 }
@@ -346,13 +352,14 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     overflow: 'hidden',
   },
+  contentWrapper: {
+    flex: 1,
+  },
   sidebarHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
   },
   closeSidebar: {
     padding: 8,
@@ -369,7 +376,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   menuItemText: {
     fontSize: 16,
