@@ -1,237 +1,234 @@
 # co
 
-A minimalist chat interface for Letta AI agents. Each user gets their own persistent co agent that learns and remembers across conversations.
+A thinking partner that learns how you think.
+
+co is a single AI agent that builds itself around you through conversation. Unlike traditional chatbots, co maintains a persistent, evolving understanding of who you are, what you're working on, and how you approach problems.
+
+## Core Concept
+
+Every user gets one co agent. That's it. No switching between assistants, no configuring multiple bots. Just one agent that:
+
+- **Learns your patterns**: Notices how you think, what excites you, what frustrates you
+- **Remembers everything**: Maintains both short-term context and long-term memory
+- **Evolves with you**: Updates its understanding as you grow and change
+- **Thinks alongside you**: Not just responding, but actively making connections and surfacing insights
+
+The entire agent definition lives in `src/utils/coAgent.ts`. When you log in for the first time, co creates itself and begins learning.
+
+## How It Works
+
+### Single Agent Architecture
+
+When you log in, the app:
+1. Looks for an agent tagged with `co-app`
+2. If found, connects to your existing co
+3. If not found, creates a new co agent
+
+This means your co persists across devices and sessions. The same agent, with all its accumulated knowledge about you, is available wherever you log in.
+
+### Memory System
+
+co maintains structured memory across multiple blocks:
+
+**You** - Dynamic snapshot of what you're focused on right now. Updated frequently as your attention shifts.
+
+**Human** - Stable facts about you. Professional context, communication style, interests. Changes slowly over time.
+
+**Tasks** - What co is helping you accomplish. Added as new work emerges, removed when complete.
+
+**Knowledge Structure** - How you think. Mental models you use, patterns in how you approach problems, connections between concepts.
+
+**Interaction Log** - Significant moments in your relationship. Decisions made, insights gained, understanding that shifted.
+
+**Persona** - co's core identity and directives. How it thinks about its role as your thinking partner.
+
+**Memory Management** - Guidelines for when to create new memory blocks dynamically based on your usage patterns.
+
+### Background Processing
+
+co includes a sleeptime agent that runs in the background:
+- Manages long-term archival memory
+- Surfaces relevant context from past conversations
+- Operates independently to maintain the primary agent's performance
+
+The sleeptime agent shares memory blocks with the primary agent, enabling seamless context passing.
 
 ## Features
 
-- 🤖 **Single Agent**: One co agent per user, automatically created on first login
-- 🧠 **Persistent Memory**: Advanced memory blocks that evolve over time
-- 💬 **Smooth Streaming**: Token-buffered streaming (50 FPS) for consistent text appearance
-- 🎨 **Polished UI**: Clean, minimal interface with animated message transitions
-- 🌓 **Theme Toggle**: Switch between light and dark modes
-- 🔧 **Tool Support**: Web search, archival memory, conversation search
-- 📱 **Cross-platform**: iOS, Android, and Web support via React Native + Expo
-- 🔒 **Secure**: API token storage with AsyncStorage/SecureStore
+### Persistent Memory
+Every conversation builds on what co already knows. The agent's understanding compounds over time.
 
-## Architecture
+### Real-time Streaming
+Messages stream token-by-token on web, creating natural conversation flow.
 
-co uses a simplified single-agent architecture:
+### Adaptive Interface
+- Light and dark themes
+- Cross-platform support (iOS, Android, Web)
+- Responsive layout for mobile and desktop
 
-1. **Login**: User enters Letta API key
-2. **Agent Discovery**: App searches for agent with `co-app` tag
-3. **Auto-creation**: If no co agent exists, creates one automatically
-4. **Chat**: User chats directly with their co agent
+### File Sharing
+Attach files to messages for context. Works across all platforms.
 
-### co Agent Configuration
+### Memory Inspection
+View co's memory blocks to see how its understanding has evolved. Available through the sidebar navigation.
 
-co is created with:
-- **Model**: `anthropic/claude-sonnet-4-5-20250929`
-- **Tools**: `send_message`, `archival_memory_insert`, `archival_memory_search`, `conversation_search`, `web_search`, `fetch_webpage`
-- **Memory Blocks**:
-  - `persona`: co's adaptive personality
-  - `human`: User profile that evolves
-  - `approach`: Conversation and memory approach
-  - `working_theories`: Active theories about the user
-  - `notes_to_self`: Reminders for future reference
-  - `active_questions`: Questions to explore
-  - `conversation_summary`: Ongoing conversation overview
+### Tool Access
+co can search the web, manage archival memory, and search conversation history to provide informed responses.
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or yarn
-- Expo CLI
+- Node.js 18 or higher
 - Letta API token from [letta.com](https://letta.com)
 
 ### Installation
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
 npm start
-
-# For production performance (recommended)
-npm run web:prod
 ```
 
-### Run Options
+Press `w` to open in browser, or scan the QR code with Expo Go on your mobile device.
 
-- **Web**: `npm run web` or press `w`
-- **iOS**: Press `i` (requires Xcode)
-- **Android**: Press `a` (requires Android Studio)
-- **Mobile Device**: Use Expo Go app and scan QR code
+### First Conversation
 
-### First Use
+1. Enter your Letta API key
+2. Wait for co to initialize (creates agent with memory blocks)
+3. Start talking
 
-1. Launch the app
-2. Enter your Letta API key
-3. Wait for co to initialize (creates agent if needed)
-4. Start chatting!
+co begins building its understanding immediately. The more you interact, the better it gets at thinking alongside you.
 
-## Project Structure
+## Configuration
 
-```
-co/
-├── App.tsx                   # Main application
-├── CoLoginScreen.tsx         # Login/authentication
-├── web-styles.css            # Web-specific CSS for focus states and themes
-├── src/
-│   ├── api/
-│   │   └── lettaApi.ts       # Letta API client
-│   ├── components/
-│   │   ├── MessageContent.tsx           # Markdown message rendering
-│   │   ├── ExpandableMessageContent.tsx # Collapsible long messages
-│   │   ├── ToolCallItem.tsx             # Tool execution display
-│   │   └── LogoLoader.tsx               # Loading animations
-│   ├── types/
-│   │   └── letta.ts          # TypeScript definitions
-│   ├── utils/
-│   │   ├── coAgent.ts        # co agent creation logic
-│   │   └── storage.ts        # AsyncStorage wrapper
-│   └── theme/
-│       ├── index.ts          # Theme system
-│       ├── colors.ts         # Color palette
-│       └── typography.ts     # Font definitions
-```
+### Agent Definition
 
-## Key Features
-
-### Smooth Token Streaming
-
-Messages stream at 50 FPS with a token buffer that releases 1-3 characters at a time for consistent, natural text appearance. A hollow circle indicator (○) appears at the end of streaming text.
-
-### Animated Message Layout
-
-When you send a message:
-1. Message appears at the bottom
-2. An animated spacer grows beneath it (400ms animation)
-3. Your message smoothly rises to the top of the viewport
-4. co's response fills the reserved space below
-
-This creates a clean reading experience where your message stays visible with room for the response.
-
-### Theme Support
-
-Toggle between light and dark modes with inverted text input styling:
-- **Dark mode**: White background input with black text
-- **Light mode**: Black background input with white text
-
-### Memory Viewer
-
-Access co's memory blocks through the sidebar to see what co has learned about you and how it's evolving its understanding over time.
-
-## Customizing co
-
-### Modify Personality
-
-Edit `src/utils/coAgent.ts` and update:
-- System prompt
-- Memory block initial values
-- Available tools
-- Model selection
-
-### Add Memory Blocks
-
-Add new blocks to the `memoryBlocks` array in `createCoAgent()`:
+The entire agent is defined in `src/utils/coAgent.ts`. Key configuration:
 
 ```typescript
-{
-  label: 'custom_block',
-  value: 'Custom content here...',
-}
+model: 'anthropic/claude-haiku-4-5-20251001'
+tools: ['conversation_search', 'web_search', 'fetch_webpage', 'memory']
+enableSleeptime: true
 ```
 
-### Change Model
+### Memory Blocks
 
-Update the `model` field in `findOrCreateCo()`:
+Default memory structure is defined in `src/constants/memoryBlocks.ts`. Each block includes:
+- Label (unique identifier)
+- Description (guides when/how co should update it)
+- Initial value (template structure)
+- Size limit
 
-```typescript
-model: 'openai/gpt-4.1',  // or other supported models
+co can dynamically create new blocks based on usage patterns (e.g., creating a "decision_log" if you frequently discuss choices, or "technical_notes" if you share code regularly).
+
+### System Prompt
+
+co's core behavior is defined in `src/constants/systemPrompt.ts`. This establishes:
+- How co thinks about its role
+- When to update memory
+- How to decompose and synthesize information
+- Relationship dynamics with the user
+
+## Architecture
+
+Built with React Native and Expo for true cross-platform support:
+
+- **State**: Zustand stores for agent, auth, and chat state
+- **API**: Letta SDK client with streaming support
+- **Storage**: AsyncStorage (mobile) and SecureStore (sensitive data)
+- **UI**: Native components with custom animations
+
+Key files:
+
+```
+src/
+  utils/coAgent.ts           - Agent creation and initialization
+  constants/memoryBlocks.ts  - Memory block templates
+  constants/systemPrompt.ts  - Agent behavior definition
+  hooks/useAgent.ts          - Agent lifecycle management
+  hooks/useMessageStream.ts  - Streaming message handler
+  stores/agentStore.ts       - Agent state management
 ```
 
 ## Development
 
-### Tech Stack
-
-- **React Native** + **Expo**: Cross-platform framework
-- **TypeScript**: Type safety
-- **Letta SDK** (`@letta-ai/letta-client`): AI agent framework
-- **AsyncStorage/SecureStore**: Persistent storage
-- **React Native Markdown Display**: Markdown rendering
-- **Lexend Font**: Custom typography
-
-### Available Scripts
-
-- `npm start` - Start Expo dev server
-- `npm run web` - Run in browser (dev mode)
-- `npm run android` - Run on Android
-- `npm run ios` - Run on iOS
-- `npx expo start -c` - Clear cache and restart
-
-### Production Build
-
-For better performance:
+### Running Locally
 
 ```bash
-# Development with production optimizations
-npx expo start --web --no-dev --minify
+# Web with production optimizations
+npm run web:prod
 
-# Static production build
-npx expo export:web
-npx serve web-build
+# iOS
+npm run ios
+
+# Android
+npm run android
+
+# Clear cache if needed
+npx expo start -c
 ```
 
-## API Integration
+### Platform Notes
 
-co connects to Letta's API:
+**Web**: Full feature support including token streaming
 
-- `GET /agents?tags=co-app` - Find co agent
-- `POST /agents` - Create co agent
-- `GET /agents/{id}/messages` - Load message history
-- `POST /agents/{id}/messages/streaming` - Stream messages
-- `GET /agents/{id}/blocks` - View memory blocks
+**iOS/Android**: No streaming (SDK limitation), but all other features work
 
-## Troubleshooting
+**Image uploads**: Currently disabled due to SDK validation issues
 
-### Agent Not Found
+## Deployment
 
-If co fails to initialize:
-1. Check API token validity at letta.com
-2. Verify network connection
-3. Check console logs for errors
-4. Try logging out and back in
+The app is deployed to Vercel:
 
-### Memory Blocks Not Loading
-
-- Ensure agent is fully initialized
-- Check that `listAgentBlocks()` has proper permissions
-- Verify agent ID is correct
-
-### Streaming Issues
-
-- Check network stability
-- Verify streaming endpoint support
-- Review console logs for chunk errors
-- Try clearing Expo cache: `npx expo start -c`
-
-### Slow Performance
-
-Run the app with production optimizations:
 ```bash
-npx expo start --web --no-dev --minify
+npx expo export --platform web
+npx vercel dist --prod --yes
 ```
 
-## License
+Production URL will be provided upon deployment.
 
-MIT License
+## Customization
+
+### Changing the Model
+
+Edit `src/utils/coAgent.ts`:
+
+```typescript
+model: 'anthropic/claude-sonnet-4-5-20250929'  // or any supported model
+```
+
+### Adding Memory Blocks
+
+Create new block definitions in `src/constants/memoryBlocks.ts` and add to `getDefaultMemoryBlocks()`.
+
+### Modifying Behavior
+
+Edit `src/constants/systemPrompt.ts` to change how co thinks about its role and responsibilities.
+
+## Known Limitations
+
+- Image uploads disabled (SDK bug with streaming endpoint)
+- Token streaming only works on web (React Native SDK limitation)
+- Agent initialization with sleeptime can take 30-60 seconds
+- "Refresh Co" button may timeout during recreation
+
+## Philosophy
+
+Most AI assistants are stateless or have shallow memory. They respond to prompts but don't build deep models of who you are.
+
+co is different. It's designed to become your thinking partner through sustained interaction. It notices patterns in how you work, remembers what matters to you, and proactively makes connections you might miss.
+
+The goal isn't to replace your thinking. It's to augment it. To be the cognitive extension that helps you see your own ideas more clearly.
+
+One agent. One relationship. Built over time through conversation.
 
 ## Resources
 
 - [Letta Documentation](https://docs.letta.com)
-- [Letta LLMs.txt](https://docs.letta.com/llms.txt)
+- [Letta Discord](https://discord.gg/letta)
 - [React Native Docs](https://reactnative.dev)
 - [Expo Docs](https://docs.expo.dev)
+
+## License
+
+MIT

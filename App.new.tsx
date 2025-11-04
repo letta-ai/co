@@ -386,18 +386,29 @@ function CoApp() {
       // Delete primary agent
       await lettaApi.deleteAgent(coAgent.id);
       console.log('Deleted primary agent:', coAgent.id);
-
-      // Clear agent and messages from store
-      clearAgent();
-      clearMessages();
-      // useAgent hook will automatically reinitialize when it detects no agent
     } catch (error: any) {
-      if (Platform.OS === 'web') {
-        window.alert('Failed to refresh agent: ' + error.message);
+      // If agent not found, it's already deleted - continue with refresh
+      const isNotFound = error.message?.toLowerCase().includes('not found') || 
+                         error.status === 404 || 
+                         error.statusCode === 404;
+      
+      if (isNotFound) {
+        console.log('Agent already deleted, continuing with refresh');
       } else {
-        Alert.alert('Error', 'Failed to refresh agent: ' + error.message);
+        // Real error - show to user and abort
+        if (Platform.OS === 'web') {
+          window.alert('Failed to refresh agent: ' + error.message);
+        } else {
+          Alert.alert('Error', 'Failed to refresh agent: ' + error.message);
+        }
+        return;
       }
     }
+
+    // Clear agent and messages from store (runs even if agent was already deleted)
+    clearAgent();
+    clearMessages();
+    // useAgent hook will automatically reinitialize when it detects no agent
   };
 
   // Load data when view changes

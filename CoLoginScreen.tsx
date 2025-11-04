@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   useColorScheme,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Lexend_400Regular, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
@@ -81,6 +82,19 @@ export default function CoLoginScreen({ onLogin, isLoading, error }: CoLoginScre
           <Text style={styles.helpText}>
             Don't have an API key? Visit letta.com to create one.
           </Text>
+
+          <View style={styles.githubLink}>
+            <Text style={styles.githubText}>
+              co is{' '}
+              <Text
+                style={styles.githubLinkText}
+                onPress={() => Linking.openURL('https://github.com/letta-ai/co')}
+              >
+                open source
+              </Text>
+              {' '}and welcomes contributions
+            </Text>
+          </View>
         </View>
       </View>
       <StatusBar style="auto" />
@@ -165,5 +179,19 @@ const styles = StyleSheet.create({
     color: darkTheme.colors.text.tertiary,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  githubLink: {
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  githubText: {
+    fontSize: 13,
+    fontFamily: 'Lexend_400Regular',
+    color: darkTheme.colors.text.tertiary,
+    textAlign: 'center',
+  },
+  githubLinkText: {
+    color: darkTheme.colors.interactive.primary,
+    textDecorationLine: 'underline',
   },
 });
