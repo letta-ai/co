@@ -13,6 +13,33 @@
 import type { MessageGroup } from '../hooks/useMessageGroups';
 
 /**
+ * Extract a specific argument from tool call arguments
+ * Handles multiple formats: Python string, JSON string, object
+ */
+function extractToolArgument(group: MessageGroup, argName: string): string | null {
+  const argsStr = group.toolCall?.args || group.content || '';
+  
+  // Try to parse as JSON first
+  if (argsStr.startsWith('{')) {
+    try {
+      const argsObj = JSON.parse(argsStr);
+      return argsObj[argName] || null;
+    } catch (e) {
+      // Not valid JSON, continue
+    }
+  }
+  
+  // Try to extract from Python-style string: tool(arg="value", ...)
+  const regex = new RegExp(`${argName}=["']([^"']+)["']`);
+  const match = argsStr.match(regex);
+  if (match) {
+    return match[1];
+  }
+  
+  return null;
+}
+
+/**
  * Tool name to human-readable action mapping
  */
 const TOOL_ACTIONS: Record<string, { past: string; present: string }> = {
@@ -50,6 +77,14 @@ export function getMessageLabel(group: MessageGroup): string {
       const args = group.toolCall?.args || group.content || '';
       if (args.includes('str_replace') || args.includes('command: str_replace')) {
         return isStreaming ? '(co is updating its memory)' : '(co updated its memory)';
+      }
+    }
+
+    // Special handling for web_search - include query
+    if (toolName === 'web_search') {
+      const query = extractToolArgument(group, 'query');
+      if (query) {
+        return isStreaming ? `(co is searching for ${query})` : `(co searched for ${query})`;
       }
     }
 
