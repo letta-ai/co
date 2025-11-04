@@ -14,15 +14,26 @@ import type { MessageGroup } from '../hooks/useMessageGroups';
 
 /**
  * Extract a specific argument from tool call arguments
- * Handles multiple formats: Python string, JSON string, object
+ * Handles multiple formats: Python string, JSON string, JSON-in-parens
  */
 function extractToolArgument(group: MessageGroup, argName: string): string | null {
   const argsStr = group.toolCall?.args || group.content || '';
   
-  // Try to parse as JSON first
+  // Try to parse as JSON first (pure JSON string)
   if (argsStr.startsWith('{')) {
     try {
       const argsObj = JSON.parse(argsStr);
+      return argsObj[argName] || null;
+    } catch (e) {
+      // Not valid JSON, continue
+    }
+  }
+  
+  // Try to extract JSON from inside parens: tool_name({"key": "value"})
+  const jsonMatch = argsStr.match(/\((\{.+\})\)/);
+  if (jsonMatch) {
+    try {
+      const argsObj = JSON.parse(jsonMatch[1]);
       return argsObj[argName] || null;
     } catch (e) {
       // Not valid JSON, continue
