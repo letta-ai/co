@@ -363,7 +363,7 @@ function createMessageGroup(
       groupKey,
       type: 'tool_call',
       content: toolCall.args, // The formatted args string
-      reasoning: reasoningMsg?.reasoning,
+      reasoning: reasoningMsg?.reasoning || toolCallMsg?.reasoning,
       toolCall: {
         name: toolCall.name,
         args: toolCall.args,
@@ -397,7 +397,7 @@ function createMessageGroup(
       groupKey: `${id}-assistant`,
       type: 'assistant',
       content: assistantMsg.content,
-      reasoning: reasoningMsg?.reasoning,
+      reasoning: reasoningMsg?.reasoning || assistantMsg?.reasoning,
       created_at: assistantMsg.created_at,
       role: assistantMsg.role,
     };
