@@ -533,7 +533,17 @@ function parseToolCall(msg: LettaMessage): {
     const toolCall = msg.tool_call || msg.tool_calls![0];
     const callObj: any = toolCall.function || toolCall;
     const name = callObj?.name || 'unknown_tool';
-    const args = callObj?.arguments || callObj?.args || {};
+    let args = callObj?.arguments || callObj?.args || {};
+
+    // If args is a JSON string, parse it first
+    if (typeof args === 'string') {
+      try {
+        args = JSON.parse(args);
+      } catch (e) {
+        // If parse fails, keep as string
+        console.warn('Failed to parse tool arguments:', args);
+      }
+    }
 
     // Format as Python call
     const formatArgsPython = (obj: any): string => {

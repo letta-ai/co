@@ -50,7 +50,15 @@ export function useMessageStream() {
       const toolCall = (chunk as any).toolCall || (chunk as any).tool_call;
       if (toolCall) {
         const toolName = toolCall.name || toolCall.tool_name || 'unknown';
-        const args = toolCall.arguments || '';
+        // Try multiple places for arguments
+        let args = toolCall.arguments || toolCall.args || '';
+        
+        // If args is an object, format it as a string
+        if (typeof args === 'object' && args !== null) {
+          args = JSON.stringify(args);
+        }
+        
+        console.log('🔧 Tool call:', toolName, 'args:', args);
         chatStore.accumulateToolCall(chunkId, toolName, args);
       }
     }
