@@ -196,20 +196,37 @@ export function useMessageStream() {
             console.log('📨 Converting', allStreamedMessages.length, 'streamed messages to permanent messages');
 
             // Convert to LettaMessage format and add to messages
-            const permanentMessages: LettaMessage[] = allStreamedMessages.map((msg, idx) => ({
-              id: msg.id,
-              role: 'assistant',
-              message_type: msg.type === 'tool_call' ? 'tool_call_message' : 'assistant_message',
-              content: msg.content,
-              reasoning: msg.reasoning,
-              ...(msg.type === 'tool_call' && msg.toolCallName ? {
-                tool_call: {
-                  name: msg.toolCallName,
-                  arguments: msg.content,
+            const permanentMessages: LettaMessage[] = allStreamedMessages.map((msg, idx) => {
+              // Format tool call content as Python-style string (like server does)
+              let content = msg.content;
+              if (msg.type === 'tool_call' && msg.toolCallName) {
+                try {
+                  const argsObj = JSON.parse(msg.content);
+                  const formattedArgs = Object.entries(argsObj)
+                    .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
+                    .join(', ');
+                  content = `${msg.toolCallName}(${formattedArgs})`;
+                } catch (e) {
+                  // If parse fails, keep original content
+                  content = msg.content;
                 }
-              } : {}),
-              created_at: msg.timestamp,
-            } as any));
+              }
+
+              return {
+                id: msg.id,
+                role: 'assistant',
+                message_type: msg.type === 'tool_call' ? 'tool_call_message' : 'assistant_message',
+                content: content,
+                reasoning: msg.reasoning,
+                ...(msg.type === 'tool_call' && msg.toolCallName ? {
+                  tool_call: {
+                    name: msg.toolCallName,
+                    arguments: msg.content, // Keep as JSON for parseToolCall fallback
+                  }
+                } : {}),
+                created_at: msg.timestamp,
+              } as any;
+            });
 
             // Add to messages array
             if (permanentMessages.length > 0) {
