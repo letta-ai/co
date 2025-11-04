@@ -200,16 +200,8 @@ export function useMessageStream() {
               // Format tool call content as Python-style string (like server does)
               let content = msg.content;
               if (msg.type === 'tool_call' && msg.toolCallName) {
-                try {
-                  const argsObj = JSON.parse(msg.content);
-                  const formattedArgs = Object.entries(argsObj)
-                    .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
-                    .join(', ');
-                  content = `${msg.toolCallName}(${formattedArgs})`;
-                } catch (e) {
-                  // If parse fails, keep original content
-                  content = msg.content;
-                }
+                const { formatToolCall } = require('../utils/formatToolCall');
+                content = formatToolCall(msg.toolCallName, msg.content);
               }
 
               return {

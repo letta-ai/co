@@ -617,9 +617,10 @@ class LettaApiService {
 
         // CONSTRUCT content for tool call messages (if content is empty)
         if ((type === 'tool_call_message' || type === 'tool_call') && !content && toolCall) {
+          const { formatToolCall } = require('../utils/formatToolCall');
           const name = toolCall.name || 'tool';
           const args = toolCall.arguments || '{}';
-          content = `${name}(${args})`;
+          content = formatToolCall(name, args);
         }
 
         // EXTRACT content for tool return messages (if content is empty)
