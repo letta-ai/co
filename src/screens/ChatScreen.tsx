@@ -259,5 +259,11 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 24 : 12,
     borderTopWidth: 1,
     borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    ...Platform.select({
+      web: {
+        // @ts-ignore - web-only property
+        position: 'fixed',
+      },
+    }),
   },
 });
