@@ -117,7 +117,7 @@ export function useMessageStream() {
             type: 'image',
             source: {
               type: 'base64',
-              mediaType: img.mediaType,
+              media_type: img.mediaType,
               data: img.base64,
             },
           });
@@ -158,7 +158,7 @@ export function useMessageStream() {
               type: 'image',
               source: {
                 type: 'base64',
-                mediaType: img.mediaType,
+                media_type: img.mediaType,
                 data: img.base64,
               },
             });
@@ -172,7 +172,7 @@ export function useMessageStream() {
         const payload = {
           messages: [{ role: 'user', content: messageContent }],
           use_assistant_message: true,
-          stream_tokens: imagesToSend.length === 0, // Disable streaming for images
+          stream_tokens: true,
         };
 
         await lettaApi.sendMessageStream(
