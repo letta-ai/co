@@ -1,0 +1,20 @@
+{
+  "localSharedBlockIds": {
+    "project": "block-51ffd472-f447-41a4-8822-af0e7863fa88"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(magick /Users/cameron/letta/co/assets/co-logo-dark.png -resize 1024x1024 -background none -gravity center -extent 1024x1024 /Users/cameron/letta/co/assets/adaptive-icon.png)",
+      "Edit(src/screens/**)",
+      "Edit(/**)",
+      "Bash(git branch:*)",
+      "Bash(find:*)",
+      "Bash(npx vercel dist --prod --yes)",
+      "Bash(cd /Users/cameron/letta/co && git log:*)",
+      "Bash(cd /Users/cameron/letta/co && git status:*)",
+      "Bash(cd /Users/cameron/letta/co && git show:*)",
+      "Bash(cd /Users/cameron/letta/co && git add:*)"
+    ]
+  }
+}
