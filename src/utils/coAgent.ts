@@ -16,7 +16,7 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
       description: 'Co - A comprehensive knowledge management assistant designed to learn, adapt, and think alongside the user',
       // agentType: Letta.AgentType.LettaV1Agent, // currently pending sleeptime fixes
       // agentType: Letta.AgentType.MemgptV2Agent,
-      model: 'anthropic/claude-sonnet-4-5-20250929',
+      model: 'anthropic/claude-haiku-4-5-20251001',
       system: CO_SYSTEM_PROMPT,
       tags: [CO_TAG],
       memoryBlocks: getDefaultMemoryBlocks(),
