@@ -47,8 +47,10 @@ export function useMessageStream() {
       chatStore.accumulateReasoning(chunkId, chunk.reasoning);
     }
     else if (chunkType === 'tool_call_message' && chunkId) {
-      const toolCall = (chunk as any).toolCall || (chunk as any).tool_call;
-      if (toolCall) {
+      // SDK v1.0: tool_calls is now an array
+      const toolCalls = (chunk as any).tool_calls || [(chunk as any).toolCall || (chunk as any).tool_call].filter(Boolean);
+      if (toolCalls.length > 0) {
+        const toolCall = toolCalls[0];
         const toolName = toolCall.name || toolCall.tool_name || 'unknown';
         // Try multiple places for arguments
         let args = toolCall.arguments || toolCall.args || '';
@@ -211,10 +213,10 @@ export function useMessageStream() {
                 content: content,
                 reasoning: msg.reasoning,
                 ...(msg.type === 'tool_call' && msg.toolCallName ? {
-                  tool_call: {
+                  tool_calls: [{
                     name: msg.toolCallName,
                     arguments: msg.content, // Keep as JSON for parseToolCall fallback
-                  }
+                  }]
                 } : {}),
                 created_at: msg.timestamp,
               } as any;
