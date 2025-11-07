@@ -172,7 +172,7 @@ export function useMessageStream() {
         const payload = {
           messages: [{ role: 'user', content: messageContent }],
           use_assistant_message: true,
-          stream_tokens: true,
+          stream_tokens: imagesToSend.length === 0, // Disable streaming for images
         };
 
         await lettaApi.sendMessageStream(
