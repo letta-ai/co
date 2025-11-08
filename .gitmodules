@@ -1,0 +1,3 @@
+[submodule "vercel-ai-sdk-provider"]
+	path = vercel-ai-sdk-provider
+	url = https://github.com/letta-ai/vercel-ai-sdk-provider
