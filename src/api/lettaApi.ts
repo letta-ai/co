@@ -368,7 +368,8 @@ class LettaApiService {
         // Background mode prevents client-side terminations and enables resumption
         background: true,
         // Ping events keep connection alive during long operations
-        include_pings: true,
+        // NOTE: Temporarily disabled to match letta-code example
+        // include_pings: true,
       };
 
       // Only add optional params if they're defined

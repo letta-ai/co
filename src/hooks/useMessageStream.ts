@@ -117,7 +117,7 @@ export function useMessageStream() {
             type: 'image',
             source: {
               type: 'base64',
-              media_type: img.mediaType,
+              mediaType: img.mediaType,
               data: img.base64,
             },
           });
@@ -158,7 +158,7 @@ export function useMessageStream() {
               type: 'image',
               source: {
                 type: 'base64',
-                media_type: img.mediaType,
+                mediaType: img.mediaType,
                 data: img.base64,
               },
             });
