@@ -876,7 +876,8 @@ class LettaApiService {
             reason: params.reason,
           },
         ],
-        stream_tokens: true,
+        // NOTE: Disabled on React Native (Android/iOS) - Web Streams API not supported
+        stream_tokens: Platform.OS === 'web',
         background: true,
         include_pings: true,
       };
