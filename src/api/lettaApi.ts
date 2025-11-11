@@ -1,4 +1,5 @@
 import Letta from '@letta-ai/letta-client';
+import { Platform } from 'react-native';
 import type {
   LettaAgent,
   LettaMessage,
@@ -365,7 +366,8 @@ class LettaApiService {
           };
         }),
         // Token streaming provides partial chunks for real-time UX
-        stream_tokens: messageData.stream_tokens !== false,
+        // NOTE: Disabled on React Native (Android/iOS) - Web Streams API not supported
+        stream_tokens: Platform.OS === 'web' && messageData.stream_tokens !== false,
         // Background mode prevents client-side terminations and enables resumption
         background: true,
         // Ping events keep connection alive during long operations

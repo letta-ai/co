@@ -14,7 +14,8 @@
       "Bash(cd /Users/cameron/letta/co && git log:*)",
       "Bash(cd /Users/cameron/letta/co && git status:*)",
       "Bash(cd /Users/cameron/letta/co && git show:*)",
-      "Bash(cd /Users/cameron/letta/co && git add:*)"
+      "Bash(cd /Users/cameron/letta/co && git add:*)",
+      "Bash(cd /Users/cameron/letta/co && grep -r \"expo/fetch\" . --include=\"*.ts\" --include=\"*.tsx\" --include=\"*.json\")"
     ]
   }
 }
