@@ -101,6 +101,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     console.log('[CHAT STORE] addMessage:', message.id);
     set((state) => ({
       messages: [...state.messages, message],
+      lastMessageNeedsSpace: message.role === 'user' ? false : state.lastMessageNeedsSpace,
     }));
   },
 
@@ -120,7 +121,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearMessages: () => {
     console.log('[CHAT STORE] clearMessages');
-    set({ messages: [], earliestCursor: null, hasMoreBefore: false });
+    set({ messages: [], earliestCursor: null, hasMoreBefore: false, lastMessageNeedsSpace: false });
   },
 
   // Streaming actions - DEAD SIMPLE
@@ -136,7 +137,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   stopStreaming: () => {
     console.log('⏹️ STOP STREAMING');
-    set({ isStreaming: false, lastMessageNeedsSpace: false });
+    set({ isStreaming: false });
   },
 
   // Accumulate reasoning (delta)
