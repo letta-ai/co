@@ -359,6 +359,7 @@ class LettaApiService {
           const content = Array.isArray(msg.content) ? msg.content : msg.content;
 
           return {
+            type: "message",  // Required by SDK v1.0
             role: msg.role,
             content: content
           };
