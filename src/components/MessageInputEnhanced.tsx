@@ -19,7 +19,7 @@
  * while maintaining clean, modular, testable code.
  */
 
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ import {
   Alert,
   Animated,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -91,6 +92,19 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
   const [inputText, setInputText] = useState('');
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+
+  // Android keyboard detection for proper padding
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+      const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+      return () => {
+        showSub.remove();
+        hideSub.remove();
+      };
+    }
+  }, []);
 
   // Rainbow animation
   const { rainbowAnimValue } = useRainbowAnimation({
@@ -223,7 +237,9 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
       style={[
         styles.inputContainer,
         {
-          paddingBottom: Math.max(insets.bottom, 16),
+          // On Android with keyboard open, use minimal padding since keyboard handles offset
+          // Otherwise use safe area insets with minimum of 16
+          paddingBottom: Platform.OS === 'android' && keyboardVisible ? 8 : Math.max(insets.bottom, 16),
         },
         !hasMessages && styles.inputContainerCentered,
       ]}
