@@ -228,7 +228,7 @@ export function useMessageGroups({
     completedStreamingMessages.forEach((msg, index) => {
       const group: MessageGroup = {
         id: msg.id,
-        groupKey: `streaming-completed-${msg.id}`,
+        groupKey: `streaming-completed-${msg.id}-${index}`,
         type: msg.type === 'tool_call' ? 'tool_call' : 'assistant',
         content: msg.content,
         reasoning: msg.reasoning || undefined,

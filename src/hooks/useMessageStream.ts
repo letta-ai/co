@@ -32,6 +32,26 @@ export function useMessageStream() {
 
     console.log(`📦 [${chunkType}] ID: ${chunkId?.substring(0, 8)}...`);
 
+    // DETECT TYPE TRANSITION: assistant -> tool_call
+    // Only finalize if current message is assistant type (not if already tool_call)
+    if (chunkType === 'tool_call_message' && chunkId) {
+      const current = useChatStore.getState().currentStreamingMessage;
+      if (current && current.type === 'assistant' && current.content) {
+        console.log('🔄 Type transition: assistant -> tool_call, finalizing');
+        chatStore.finalizeCurrentMessage();
+      }
+    }
+
+    // DETECT TYPE TRANSITION: tool_call -> assistant
+    // Finalize tool_call before starting assistant message
+    if (chunkType === 'assistant_message' && chunkId) {
+      const current = useChatStore.getState().currentStreamingMessage;
+      if (current && current.type === 'tool_call' && current.content) {
+        console.log('🔄 Type transition: tool_call -> assistant, finalizing');
+        chatStore.finalizeCurrentMessage();
+      }
+    }
+
     // DETECT NEW MESSAGE: If we see a different ID on reasoning OR tool_call, finalize current
     // This handles both: reasoning → tool_call transitions AND tool_call → reasoning transitions
     if ((chunkType === 'reasoning_message' || chunkType === 'tool_call_message') && chunkId) {
