@@ -6,10 +6,13 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  SafeAreaView,
   useColorScheme,
   Linking,
+  KeyboardAvoidingView,
+  ScrollView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts, Lexend_400Regular, Lexend_600SemiBold, Lexend_700Bold } from '@expo-google-fonts/lexend';
 import { darkTheme } from './src/theme';
@@ -23,6 +26,7 @@ interface CoLoginScreenProps {
 export default function CoLoginScreen({ onLogin, isLoading, error }: CoLoginScreenProps) {
   const colorScheme = useColorScheme();
   const [apiKey, setApiKey] = useState('');
+  const insets = useSafeAreaInsets();
 
   const [fontsLoaded] = useFonts({
     Lexend_400Regular,
@@ -40,65 +44,76 @@ export default function CoLoginScreen({ onLogin, isLoading, error }: CoLoginScre
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>co</Text>
-        </View>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: insets.top, paddingBottom: insets.bottom }
+        ]}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          <View style={styles.header}>
+            <Text style={styles.title}>co</Text>
+          </View>
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Letta API Key</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Enter your Letta API key"
-            placeholderTextColor={darkTheme.colors.text.tertiary}
-            value={apiKey}
-            onChangeText={setApiKey}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus
-            editable={!isLoading}
-            secureTextEntry
-          />
+          <View style={styles.form}>
+            <Text style={styles.label}>Letta API Key</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter your Letta API key"
+              placeholderTextColor={darkTheme.colors.text.tertiary}
+              value={apiKey}
+              onChangeText={setApiKey}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoFocus
+              editable={!isLoading}
+              secureTextEntry
+            />
 
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isLoading || !apiKey.trim()}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Connect</Text>
+            {error && (
+              <View style={styles.errorContainer}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
             )}
-          </TouchableOpacity>
 
-          <Text style={styles.helpText}>
-            Don't have an API key? Visit letta.com to create one.
-          </Text>
+            <TouchableOpacity
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              onPress={handleLogin}
+              disabled={isLoading || !apiKey.trim()}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Connect</Text>
+              )}
+            </TouchableOpacity>
 
-          <View style={styles.githubLink}>
-            <Text style={styles.githubText}>
-              co is{' '}
-              <Text
-                style={styles.githubLinkText}
-                onPress={() => Linking.openURL('https://github.com/letta-ai/co')}
-              >
-                open source
-              </Text>
-              {' '}and welcomes contributions
+            <Text style={styles.helpText}>
+              Don't have an API key? Visit letta.com to create one.
             </Text>
+
+            <View style={styles.githubLink}>
+              <Text style={styles.githubText}>
+                co is{' '}
+                <Text
+                  style={styles.githubLinkText}
+                  onPress={() => Linking.openURL('https://github.com/letta-ai/co')}
+                >
+                  open source
+                </Text>
+                {' '}and welcomes contributions
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
-      <StatusBar style="auto" />
-    </SafeAreaView>
+      </ScrollView>
+      <StatusBar style="light" />
+    </KeyboardAvoidingView>
   );
 }
 
@@ -107,14 +122,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: darkTheme.colors.background.primary,
   },
-  content: {
-    flex: 1,
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingVertical: 32,
+  },
+  content: {
     paddingHorizontal: 32,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 32,
   },
   title: {
     fontSize: 48,
