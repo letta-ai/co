@@ -23,7 +23,7 @@
  */
 
 import { useMemo } from 'react';
-import type { LettaMessage } from '../types/letta';
+import type { LettaMessage, ContentPart } from '../types/letta';
 
 /**
  * Unified message group for rendering
@@ -52,7 +52,7 @@ export interface MessageGroup {
     type: string;
     source: {
       type: string;
-      data: string;
+      data?: string;
       mediaType?: string;
       media_type?: string;
       url?: string;
@@ -422,7 +422,7 @@ function createMessageGroup(
 /**
  * Extract compaction info from user message content
  */
-function extractCompactionInfo(content: any): {
+function extractCompactionInfo(content: string | ContentPart[] | undefined): {
   isCompaction: boolean;
   message: string;
 } {
@@ -465,29 +465,38 @@ function extractCompactionInfo(content: any): {
 /**
  * Parse user message content (text + images)
  */
-function parseUserContent(content: any): {
-  textContent: string;
-  images: Array<{
+interface ImagePart {
+  type: string;
+  source: {
     type: string;
-    source: {
-      type: string;
-      data: string;
-      mediaType?: string;
-      media_type?: string;
-      url?: string;
-    };
-  }>;
+    data?: string;
+    mediaType?: string;
+    media_type?: string;
+    url?: string;
+  };
+}
+
+function parseUserContent(content: string | ContentPart[] | undefined): {
+  textContent: string;
+  images: ImagePart[];
 } {
   let textContent = '';
-  let images: any[] = [];
+  let images: ImagePart[] = [];
 
-  if (typeof content === 'object' && Array.isArray(content)) {
+  if (Array.isArray(content)) {
     // Multipart message
-    images = content.filter((item: any) => item.type === 'image');
-    const textParts = content.filter((item: any) => item.type === 'text');
+    images = content.filter((item): item is ContentPart & { type: 'image'; source: NonNullable<ContentPart['source']> } =>
+      item.type === 'image' && item.source !== undefined
+    ).map(item => ({
+      type: item.type,
+      source: item.source,
+    }));
+    const textParts = content.filter((item): item is ContentPart & { type: 'text' } =>
+      item.type === 'text'
+    );
     textContent = textParts
-      .map((item: any) => item.text || '')
-      .filter((t: string) => t)
+      .map((item) => item.text || '')
+      .filter((t) => t)
       .join('\n');
   } else if (typeof content === 'string') {
     textContent = content;
@@ -503,10 +512,8 @@ function parseUserContent(content: any): {
  */
 function extractStepId(msg: LettaMessage | undefined): string | null {
   if (!msg) return null;
-
-  const msgAny = msg as any;
   // Letta uses step_id to group tool call and tool return messages
-  return msgAny.step_id || null;
+  return msg.step_id || null;
 }
 
 /**
@@ -527,28 +534,27 @@ function parseToolCall(msg: LettaMessage): {
   // Fallback: extract from tool_call object
   if (msg.tool_call || msg.tool_calls?.[0]) {
     const toolCall = msg.tool_call || msg.tool_calls![0];
-    const callObj: any = toolCall.function || toolCall;
-    const name = callObj?.name || 'unknown_tool';
-    let args = callObj?.arguments || callObj?.args || {};
+    const name = toolCall.function?.name || 'unknown_tool';
+    let args: string | Record<string, unknown> = toolCall.function?.arguments || {};
 
     // If args is a JSON string, parse it first
     if (typeof args === 'string') {
       try {
-        args = JSON.parse(args);
-      } catch (e) {
+        args = JSON.parse(args) as Record<string, unknown>;
+      } catch {
         // If parse fails, keep as string
       }
     }
 
     // Format as Python call
-    const formatArgsPython = (obj: any): string => {
+    const formatArgsPython = (obj: Record<string, unknown>): string => {
       if (!obj || typeof obj !== 'object') return '';
       return Object.entries(obj)
         .map(([k, v]) => `${k}=${typeof v === 'string' ? `"${v}"` : JSON.stringify(v)}`)
         .join(', ');
     };
 
-    const argsStr = `${name}(${formatArgsPython(args)})`;
+    const argsStr = typeof args === 'string' ? args : `${name}(${formatArgsPython(args)})`;
 
     return { name, args: argsStr };
   }

@@ -152,7 +152,7 @@ export interface ToolCall {
 export interface SendMessageRequest {
   messages: Array<{
     role: 'user' | 'assistant' | 'system';
-    content: string;
+    content: string | ContentPart[];
   }>;
   max_steps?: number;
   use_assistant_message?: boolean;
@@ -259,15 +259,30 @@ export interface LettaEmbeddingModel {
 }
 
 export interface StreamingChunk {
-  message_type: 'ping' | 'assistant_message' | 'reasoning_message' | 'tool_call' | 'tool_call_message' | 'tool_response' | 'tool_return_message' | 'approval_request_message' | 'step_complete';
-  content?: string;
-  tool_call?: ToolCall | any; // Allow both formats
-  tool_response?: any;
+  message_type: 'ping' | 'assistant_message' | 'reasoning_message' | 'tool_call' | 'tool_call_message' | 'tool_response' | 'tool_return_message' | 'approval_request_message' | 'step_complete' | 'stop_reason' | 'usage_statistics';
+  content?: string | ContentPart[];
+  tool_call?: ToolCall;
+  tool_calls?: ToolCall[];
+  toolCall?: ToolCall;
+  tool_response?: unknown;
   reasoning?: string;
   step?: number;
   run_id?: string;
   seq_id?: number;
   id?: string;
+  error?: unknown;
+}
+
+export interface ContentPart {
+  type: 'text' | 'image';
+  text?: string;
+  source?: {
+    type: string;
+    data?: string;
+    mediaType?: string;
+    media_type?: string;
+    url?: string;
+  };
 }
 
 export interface Passage {

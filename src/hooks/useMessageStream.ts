@@ -3,7 +3,7 @@ import { useChatStore } from '../stores/chatStore';
 import { useAgentStore } from '../stores/agentStore';
 import lettaApi from '../api/lettaApi';
 import { logger } from '../utils/logger';
-import type { StreamingChunk, LettaMessage } from '../types/letta';
+import type { StreamingChunk, LettaMessage, ContentPart } from '../types/letta';
 
 /**
  * Hook to handle streaming message sending
@@ -18,7 +18,7 @@ export function useMessageStream() {
   // Handle individual streaming chunks - ULTRA SIMPLE
   const handleStreamingChunk = useCallback((chunk: StreamingChunk) => {
     const chunkType = chunk.message_type;
-    const chunkId = (chunk as any).id;
+    const chunkId = chunk.id;
 
     // Skip non-content chunks
     if (chunkType === 'stop_reason' || chunkType === 'usage_statistics') {
@@ -26,8 +26,8 @@ export function useMessageStream() {
     }
 
     // Handle errors
-    if ((chunk as any).error) {
-      logger.error('Stream error:', (chunk as any).error);
+    if (chunk.error) {
+      logger.error('Stream error:', chunk.error);
       return;
     }
 
@@ -64,34 +64,27 @@ export function useMessageStream() {
     }
     else if (chunkType === 'tool_call_message' && chunkId) {
       // SDK v1.0: tool_calls is now an array
-      const toolCalls = (chunk as any).tool_calls || [(chunk as any).toolCall || (chunk as any).tool_call].filter(Boolean);
+      const toolCalls = chunk.tool_calls || [chunk.toolCall || chunk.tool_call].filter(Boolean);
       if (toolCalls.length > 0) {
         const toolCall = toolCalls[0];
-        const toolName = toolCall.name || toolCall.tool_name || 'unknown';
-        // Try multiple places for arguments
-        let args = toolCall.arguments || toolCall.args || '';
-
-        // If args is an object, format it as a string
-        if (typeof args === 'object' && args !== null) {
-          args = JSON.stringify(args);
-        }
+        const toolName = toolCall?.function?.name || 'unknown';
+        // Get arguments from function.arguments
+        let args: string = toolCall?.function?.arguments || '';
 
         chatStore.accumulateToolCall(chunkId, toolName, args);
       }
     }
     else if (chunkType === 'assistant_message' && chunkId) {
       let contentText = '';
-      const content = chunk.content as any;
+      const content = chunk.content;
 
       if (typeof content === 'string') {
         contentText = content;
       } else if (Array.isArray(content)) {
         contentText = content
-          .filter((item: any) => item.type === 'text')
-          .map((item: any) => item.text || '')
+          .filter((item): item is ContentPart => item.type === 'text')
+          .map((item) => item.text || '')
           .join('');
-      } else if (content?.text) {
-        contentText = content.text;
       }
 
       if (contentText) {
@@ -110,9 +103,10 @@ export function useMessageStream() {
       chatStore.setSendingMessage(true);
 
       // Immediately add user message to UI
-      let tempMessageContent: any;
+      type MessageContent = string | ContentPart[];
+      let tempMessageContent: MessageContent;
       if (imagesToSend.length > 0) {
-        const contentParts = [];
+        const contentParts: ContentPart[] = [];
 
         // Always add text part first (even if empty) when images present
         contentParts.push({
@@ -152,9 +146,9 @@ export function useMessageStream() {
         lastMessageIdRef.current = null; // Reset for new stream
 
         // Build message content
-        let messageContent: any;
+        let messageContent: MessageContent;
         if (imagesToSend.length > 0) {
-          const contentParts = [];
+          const contentParts: ContentPart[] = [];
 
           // Always add text part first (even if empty) when images present
           contentParts.push({
@@ -179,7 +173,7 @@ export function useMessageStream() {
         }
 
         const payload = {
-          messages: [{ role: 'user', content: messageContent }],
+          messages: [{ role: 'user' as const, content: messageContent }],
           use_assistant_message: true,
           stream_tokens: true,
         };
