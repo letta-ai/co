@@ -1,12 +1,14 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   View,
+  Text,
   StyleSheet,
   FlatList,
   KeyboardAvoidingView,
   Platform,
   Animated,
   Alert,
+  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -62,6 +64,8 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
   const lastMessageNeedsSpace = useChatStore((state) => state.lastMessageNeedsSpace);
   const currentStreamingMessage = useChatStore((state) => state.currentStreamingMessage);
   const completedStreamingMessages = useChatStore((state) => state.completedStreamingMessages);
+  const streamError = useChatStore((state) => state.streamError);
+  const clearStreamError = useChatStore((state) => state.clearStreamError);
 
   /**
    * Transform raw Letta messages into unified MessageGroup objects.
@@ -167,6 +171,16 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       onLayout={(e) => setContainerHeight(e.nativeEvent.layout.height)}
     >
+      {/* Error Banner */}
+      {streamError && (
+        <View style={[styles.errorBanner, { backgroundColor: theme.colors.error || '#dc2626' }]}>
+          <Text style={styles.errorText}>{streamError}</Text>
+          <TouchableOpacity onPress={clearStreamError} style={styles.errorDismiss}>
+            <Text style={styles.errorDismissText}>Dismiss</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {!isEmpty && (
         <>
           {/* Messages List */}
@@ -251,5 +265,29 @@ const styles = StyleSheet.create({
         position: 'fixed',
       },
     }),
+  },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  errorText: {
+    color: '#ffffff',
+    fontSize: 14,
+    flex: 1,
+  },
+  errorDismiss: {
+    marginLeft: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 4,
+  },
+  errorDismissText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

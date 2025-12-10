@@ -32,6 +32,9 @@ interface ChatState {
   hasInputText: boolean;
   lastMessageNeedsSpace: boolean;
 
+  // Error state
+  streamError: string | null;
+
   // Image attachments
   selectedImages: Array<{ uri: string; base64: string; mediaType: string }>;
 
@@ -72,6 +75,10 @@ interface ChatState {
   // UI actions
   setHasInputText: (hasText: boolean) => void;
   setLastMessageNeedsSpace: (needs: boolean) => void;
+
+  // Error actions
+  setStreamError: (error: string | null) => void;
+  clearStreamError: () => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -89,6 +96,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   hasInputText: false,
   lastMessageNeedsSpace: false,
+  streamError: null,
   selectedImages: [],
 
   // Message actions
@@ -264,4 +272,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   // UI actions
   setHasInputText: (hasText) => set({ hasInputText: hasText }),
   setLastMessageNeedsSpace: (needs) => set({ lastMessageNeedsSpace: needs }),
+
+  // Error actions
+  setStreamError: (error) => set({ streamError: error }),
+  clearStreamError: () => set({ streamError: null }),
 }));

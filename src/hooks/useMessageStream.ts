@@ -243,13 +243,15 @@ export function useMessageStream() {
             chatStore.clearAllStreamingState();
             chatStore.stopStreaming();
             chatStore.setSendingMessage(false);
+            chatStore.setStreamError(error?.message || 'Failed to send message');
           }
         );
-      } catch (error) {
+      } catch (error: any) {
         logger.error('Failed to send message:', error);
         chatStore.clearAllStreamingState();
         chatStore.stopStreaming();
         chatStore.setSendingMessage(false);
+        chatStore.setStreamError(error?.message || 'Failed to send message');
         throw error;
       }
     },
