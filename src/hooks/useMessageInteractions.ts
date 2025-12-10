@@ -68,7 +68,7 @@ export function useMessageInteractions() {
         setTimeout(() => setCopiedMessageId(null), 2000);
       }
     } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
+      // Clipboard copy failed silently
     }
   }, []);
 

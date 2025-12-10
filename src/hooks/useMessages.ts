@@ -3,6 +3,7 @@ import { useChatStore } from '../stores/chatStore';
 import { useAgentStore } from '../stores/agentStore';
 import lettaApi from '../api/lettaApi';
 import { config } from '../config';
+import { logger } from '../utils/logger';
 import type { LettaMessage } from '../types/letta';
 
 /**
@@ -62,7 +63,7 @@ export function useMessages() {
           chatStore.setHasMoreBefore(false);
         }
       } catch (error: any) {
-        console.error('Failed to load messages:', error);
+        logger.error('Failed to load messages:', error);
         throw error;
       } finally {
         chatStore.setLoadingMessages(false);

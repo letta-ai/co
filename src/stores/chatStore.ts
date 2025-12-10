@@ -93,12 +93,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Message actions
   setMessages: (messages) => {
-    console.log('[CHAT STORE] setMessages:', messages.length);
     set({ messages });
   },
 
   addMessage: (message) => {
-    console.log('[CHAT STORE] addMessage:', message.id);
     set((state) => ({
       messages: [...state.messages, message],
       lastMessageNeedsSpace: message.role === 'user' ? false : state.lastMessageNeedsSpace,
@@ -106,27 +104,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   addMessages: (messages) => {
-    console.log('[CHAT STORE] addMessages:', messages.length);
     set((state) => ({
       messages: [...state.messages, ...messages],
     }));
   },
 
   prependMessages: (messages) => {
-    console.log('[CHAT STORE] prependMessages:', messages.length);
     set((state) => ({
       messages: [...messages, ...state.messages],
     }));
   },
 
   clearMessages: () => {
-    console.log('[CHAT STORE] clearMessages');
     set({ messages: [], earliestCursor: null, hasMoreBefore: false, lastMessageNeedsSpace: false });
   },
 
   // Streaming actions - DEAD SIMPLE
   startStreaming: () => {
-    console.log('▶️ START STREAMING');
     set({
       isStreaming: true,
       currentStreamingMessage: null,
@@ -136,7 +130,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   stopStreaming: () => {
-    console.log('⏹️ STOP STREAMING');
     set({ isStreaming: false });
   },
 
@@ -145,7 +138,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       // If no current message OR different ID, create new
       if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
-        console.log('🆕 New message started:', messageId.substring(0, 20));
         return {
           currentStreamingMessage: {
             id: messageId,
@@ -172,7 +164,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       // If no current message OR different ID, create new
       if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
-        console.log('🆕 New tool call message started:', messageId.substring(0, 20));
         return {
           currentStreamingMessage: {
             id: messageId,
@@ -202,7 +193,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) => {
       // If no current message OR different ID, create new
       if (!state.currentStreamingMessage || state.currentStreamingMessage.id !== messageId) {
-        console.log('🆕 New assistant message started:', messageId.substring(0, 20));
         return {
           currentStreamingMessage: {
             id: messageId,
@@ -229,11 +219,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   finalizeCurrentMessage: () => {
     set((state) => {
       if (!state.currentStreamingMessage) {
-        console.log('⚠️ No current message to finalize');
         return {};
       }
 
-      console.log('✅ FINALIZE MESSAGE:', state.currentStreamingMessage.id.substring(0, 20));
       return {
         completedStreamingMessages: [...state.completedStreamingMessages, state.currentStreamingMessage],
         currentStreamingMessage: null,
@@ -243,7 +231,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   // Clear everything
   clearAllStreamingState: () => {
-    console.log('🧹 CLEAR ALL STREAMING STATE');
     set({
       currentStreamingMessage: null,
       completedStreamingMessages: [],

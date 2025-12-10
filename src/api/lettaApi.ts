@@ -1,5 +1,6 @@
 import Letta from '@letta-ai/letta-client';
 import { Platform } from 'react-native';
+import { logger } from '../utils/logger';
 import type {
   LettaAgent,
   LettaMessage,
@@ -81,9 +82,6 @@ class LettaApiService {
   }
 
   setAuthToken(token: string): void {
-    console.log('setAuthToken - Token length:', token ? token.length : 0);
-    console.log('setAuthToken - Token preview:', token ? token.substring(0, 10) + '...' : 'null');
-
     // Initialize the official Letta client with extended timeout for agent creation
     // Agent creation with sleeptime can take a while as it creates 2 agents
     this.client = new Letta({
@@ -92,9 +90,7 @@ class LettaApiService {
       timeout: config.api.timeout
     });
     this.token = token;
-
-    console.log('setAuthToken - Client created successfully:', !!this.client);
-    console.log('setAuthToken - Client timeout:', config.api.timeout);
+    logger.debug('Auth token set, client initialized');
   }
 
   removeAuthToken(): void {
@@ -157,19 +153,15 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
       
-      console.log('listAgents - calling SDK with params:', params);
-      console.log('listAgents - JSON stringify params:', JSON.stringify(params));
-      
+      logger.debug('listAgents - params:', params);
+
       const responsePage = await this.client.agents.list(params);
       const response = responsePage.items || [];
-      console.log('listAgents - SDK response count:', response.length);
-      console.log('listAgents - first few agents project_ids:', 
-        response.slice(0, 3).map(a => ({ name: a.name, project_id: a.project_id }))
-      );
-      
+      logger.debug('listAgents - response count:', response.length);
+
       return response;
     } catch (error) {
-      console.error('listAgents - error:', error);
+      logger.error('listAgents - error:', error);
       throw this.handleError(error);
     }
   }
@@ -182,15 +174,14 @@ class LettaApiService {
         sortBy: params.sortBy || 'last_run_completion'
       };
 
-      console.log('listAgentsForProject - projectId:', projectId);
-      console.log('listAgentsForProject - enhancedParams:', enhancedParams);
+      logger.debug('listAgentsForProject - projectId:', projectId);
 
       const result = await this.listAgents(enhancedParams);
-      console.log('listAgentsForProject - result count:', result?.length || 0);
+      logger.debug('listAgentsForProject - result count:', result?.length || 0);
 
       return result;
     } catch (error) {
-      console.error('listAgentsForProject - error:', error);
+      logger.error('listAgentsForProject - error:', error);
       throw this.handleError(error);
     }
   }
@@ -201,7 +192,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('findAgentByTags - searching for tags:', tags);
+      logger.debug('findAgentByTags - searching for tags:', tags);
 
       const agents = await this.listAgents({
         tags,
@@ -209,11 +200,11 @@ class LettaApiService {
         limit: 1
       });
 
-      console.log('findAgentByTags - found agents:', agents.length);
+      logger.debug('findAgentByTags - found agents:', agents.length);
 
       return agents.length > 0 ? agents[0] : null;
     } catch (error) {
-      console.error('findAgentByTags - error:', error);
+      logger.error('findAgentByTags - error:', error);
       throw this.handleError(error);
     }
   }
@@ -263,8 +254,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('sendMessage - agentId:', agentId);
-      console.log('sendMessage - messageData:', messageData);
+      logger.debug('sendMessage - agentId:', agentId);
 
       const lettaRequest = {
         messages: messageData.messages.map(msg => {
@@ -281,8 +271,6 @@ class LettaApiService {
         useAssistantMessage: messageData.use_assistant_message,
         enableThinking: messageData.enable_thinking ? 'true' : undefined
       };
-
-      console.log('sendMessage - lettaRequest:', JSON.stringify(lettaRequest, null, 2).substring(0, 2000));
 
       const response = await this.client.agents.messages.create(agentId, lettaRequest);
       
@@ -331,7 +319,7 @@ class LettaApiService {
         usage: response.usage
       };
     } catch (error) {
-      console.error('sendMessage - error:', error);
+      logger.error('sendMessage - error:', error);
       throw this.handleError(error);
     }
   }
@@ -348,10 +336,8 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('sendMessageStream - agentId:', agentId);
-      console.log('sendMessageStream - messageData:', messageData);
-      console.log('Client initialized:', !!this.client);
-      
+      logger.debug('sendMessageStream - agentId:', agentId);
+
       // Build streaming request following docs format exactly
       const lettaStreamingRequest: any = {
         messages: messageData.messages.map(msg => {
@@ -379,42 +365,10 @@ class LettaApiService {
       if (messageData.max_steps !== undefined) {
         lettaStreamingRequest.max_steps = messageData.max_steps;
       }
-      
-      console.log('=== SIMPLIFIED REQUEST ===');
-      console.log('Request:', JSON.stringify(lettaStreamingRequest, null, 2));
-      console.log('Messages count:', lettaStreamingRequest.messages.length);
-
-      // Detailed logging of message structure
-      lettaStreamingRequest.messages.forEach((msg: any, idx: number) => {
-        console.log(`Message ${idx}:`, JSON.stringify(msg, null, 2));
-        if (Array.isArray(msg.content)) {
-          msg.content.forEach((item: any, itemIdx: number) => {
-            console.log(`  Content item ${itemIdx}:`, JSON.stringify(item, null, 2));
-            if (item.type === 'image' && item.source) {
-              console.log(`    Image source keys:`, Object.keys(item.source));
-              console.log(`    Image source type:`, item.source.type);
-              console.log(`    Image source has media_type:`, 'media_type' in item.source);
-              console.log(`    Image source has mediaType:`, 'mediaType' in item.source);
-              console.log(`    Image source has data:`, 'data' in item.source);
-              console.log(`    Image data length:`, item.source.data?.length);
-              console.log(`    Image mediaType value:`, item.source.mediaType || item.source.media_type);
-            }
-          });
-        }
-      });
-
-      console.log('=== CALLING SDK stream ===');
-      console.log('Agent ID:', agentId);
-      console.log('Client base URL:', (this.client as any)?.baseURL || 'unknown');
-      console.log('About to call: POST /agents/{agentId}/messages/stream');
 
       const stream = await this.client.agents.messages.stream(agentId, lettaStreamingRequest);
 
-      console.log('=== STREAM OBJECT CREATED ===');
-      console.log('Stream object type:', typeof stream);
-
       // Handle the stream response using async iteration
-      console.log('=== STARTING STREAM ITERATION ===');
       try {
         for await (const chunk of stream) {
           onChunk({
@@ -436,38 +390,11 @@ class LettaApiService {
           usage: undefined
         });
       } catch (streamError) {
-        console.error('=== STREAM ITERATION ERROR ===');
-        console.error('Stream iteration error:', streamError);
+        logger.error('Stream iteration error:', streamError);
         onError(this.handleError(streamError));
       }
     } catch (error) {
-      console.error('=== STREAM SETUP ERROR ===');
-      console.error('sendMessageStream setup error:', error);
-      console.error('Setup error details:', {
-        message: error.message,
-        statusCode: error.statusCode,
-        status: error.status,
-        body: error.body,
-        data: error.data,
-        response: error.response,
-        rawResponse: error.rawResponse,
-        error: error.error,
-        stack: error.stack,
-        name: error.name,
-        constructor: error.constructor.name
-      });
-
-      // Try to extract any additional error info
-      if (error.response) {
-        console.error('Response object:', JSON.stringify(error.response, null, 2));
-      }
-      if (error.body) {
-        console.error('Body object:', JSON.stringify(error.body, null, 2));
-      }
-      if (error.data) {
-        console.error('Data object:', JSON.stringify(error.data, null, 2));
-      }
-
+      logger.error('sendMessageStream setup error:', error);
       onError(this.handleError(error));
     }
   }
@@ -478,17 +405,17 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('getActiveRuns - agentIds:', agentIds);
+      logger.debug('getActiveRuns - agentIds:', agentIds);
 
       const activeRuns = await this.client.runs.active({
         agentIds,
         background: true
       });
 
-      console.log('getActiveRuns - found:', activeRuns?.length || 0);
+      logger.debug('getActiveRuns - found:', activeRuns?.length || 0);
       return activeRuns || [];
     } catch (error) {
-      console.error('getActiveRuns - error:', error);
+      logger.error('getActiveRuns - error:', error);
       throw this.handleError(error);
     }
   }
@@ -505,19 +432,15 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('resumeStream - runId:', runId, 'startingAfter:', startingAfter);
+      logger.debug('resumeStream - runId:', runId, 'startingAfter:', startingAfter);
 
       const stream = await this.client.runs.stream(runId, {
         startingAfter,
         batchSize: 1000  // Fetch historical chunks in larger batches
       });
 
-      console.log('=== RESUMING STREAM ===');
       try {
         for await (const chunk of stream) {
-          console.log('=== RESUMED CHUNK RECEIVED ===');
-          console.log('Raw chunk:', JSON.stringify(chunk, null, 2));
-
           onChunk({
             message_type: (chunk as any).message_type || (chunk as any).messageType,
             content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
@@ -537,13 +460,11 @@ class LettaApiService {
           usage: undefined
         });
       } catch (streamError) {
-        console.error('=== RESUME STREAM ITERATION ERROR ===');
-        console.error('Stream iteration error:', streamError);
+        logger.error('Resume stream iteration error:', streamError);
         onError(this.handleError(streamError));
       }
     } catch (error) {
-      console.error('=== RESUME STREAM SETUP ERROR ===');
-      console.error('resumeStream setup error:', error);
+      logger.error('resumeStream setup error:', error);
       onError(this.handleError(error));
     }
   }
@@ -554,12 +475,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('listMessages - agentId:', agentId);
-      console.log('listMessages - params:', params);
+      logger.debug('listMessages - agentId:', agentId);
 
       const responsePage = await this.client.agents.messages.list(agentId, params);
       const response = responsePage.items || [];
-      console.log('listMessages - response count:', response.length);
 
       /**
        * MESSAGE TRANSFORMATION ARCHITECTURE
@@ -650,11 +569,10 @@ class LettaApiService {
         };
       });
 
-      console.log('listMessages - transformed count:', transformedMessages.length);
-      console.log('listMessages - first 2:', transformedMessages.slice(0, 2));
+      logger.debug('listMessages - count:', transformedMessages.length);
       return transformedMessages;
     } catch (error) {
-      console.error('listMessages - error:', error);
+      logger.error('listMessages - error:', error);
       throw this.handleError(error);
     }
   }
@@ -752,8 +670,6 @@ class LettaApiService {
         });
       }
 
-      console.log('approveToolRequest - requestBody:', JSON.stringify(sanitized));
-
       try {
         const response = await this.client.agents.messages.create(agentId, sanitized);
         const transformedMessages = (response.messages || []).map((message: any) => {
@@ -849,7 +765,7 @@ class LettaApiService {
         throw sdkErr;
       }
     } catch (error) {
-      console.error('approveToolRequest - error:', error);
+      logger.error('approveToolRequest - error:', error);
       throw this.handleError(error);
     }
   }
@@ -946,19 +862,15 @@ class LettaApiService {
       if (!this.client || !this.token) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      console.log('listFolders - params:', params);
-
       // If searching by name, paginate through SDK to find it
       if (params?.name) {
-        console.log('listFolders - searching for folder with name via SDK pagination:', params.name);
+        logger.debug('listFolders - searching for folder:', params.name);
         let allFolders: any[] = [];
         let after: string | undefined = undefined;
         let pageCount = 0;
         const maxPages = 20; // Safety limit
 
         do {
-          console.log(`listFolders - requesting page ${pageCount + 1} with after cursor:`, after);
-
           const page = await this.client.folders.list({
             limit: 50,
             ...(after && { after })
@@ -966,17 +878,12 @@ class LettaApiService {
 
           // SDK v1.0 returns page object with .items
           const folders = page.items || [];
-
-          console.log(`listFolders - page ${pageCount + 1}: ${folders.length} folders`);
-          console.log(`listFolders - page ${pageCount + 1} first 3 names:`, folders.slice(0, 3).map(f => f.name));
-
           allFolders = allFolders.concat(folders);
           pageCount++;
 
           // Stop if we found the folder we're looking for
           const found = folders.find(f => f.name === params.name);
           if (found) {
-            console.log('listFolders - found folder:', found);
             return [found];
           }
 
@@ -989,15 +896,13 @@ class LettaApiService {
 
         } while (after && pageCount < maxPages);
 
-        console.log('listFolders - searched through', pageCount, 'pages,', allFolders.length, 'total folders');
-        console.log('listFolders - folder not found with name:', params.name);
+        logger.debug('listFolders - folder not found:', params.name);
         return [];
       }
 
       // No name filter, just return first page using SDK
       const foldersPage = await this.client.folders.list(params);
       const folders = foldersPage.items || [];
-      console.log('listFolders - returned count:', folders.length);
       return folders;
     } catch (error) {
       throw this.handleError(error);
@@ -1028,8 +933,6 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('uploadFileToFolder - folderId:', folderId, 'fileName:', file.name);
-
       // The SDK upload method signature might vary - try direct API call
       const formData = new FormData();
       formData.append('file', file);
@@ -1051,8 +954,6 @@ class LettaApiService {
       }
 
       const result = await response.json();
-      console.log('Upload response:', result);
-
       return result;
     } catch (error) {
       throw this.handleError(error);
@@ -1127,12 +1028,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('closeAllFiles - agentId:', agentId);
       const result = await this.client.agents.files.closeAll(agentId);
-      console.log('closeAllFiles - result:', result);
       return result;
     } catch (error) {
-      console.error('closeAllFiles - error:', error);
+      logger.error('closeAllFiles - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1144,13 +1043,11 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('listPassages - agentId:', agentId, 'params:', params);
       const passagesPage = await this.client.agents.passages.list(agentId, params);
       const passages = passagesPage.items || [];
-      console.log('listPassages - result count:', passages.length);
       return passages as Passage[];
     } catch (error) {
-      console.error('listPassages - error:', error);
+      logger.error('listPassages - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1161,12 +1058,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('createPassage - agentId:', agentId, 'data:', data);
       const result = await this.client.agents.passages.create(agentId, data);
-      console.log('createPassage - result:', result);
       return result as Passage[];
     } catch (error) {
-      console.error('createPassage - error:', error);
+      logger.error('createPassage - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1177,12 +1072,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('searchPassages - agentId:', agentId, 'params:', params);
       const result = await this.client.agents.passages.search(agentId, params);
-      console.log('searchPassages - result count:', result?.count || 0);
       return result as SearchPassagesResponse;
     } catch (error) {
-      console.error('searchPassages - error:', error);
+      logger.error('searchPassages - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1193,11 +1086,9 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('deletePassage - agentId:', agentId, 'passageId:', passageId);
       await this.client.agents.passages.delete(agentId, passageId);
-      console.log('deletePassage - success');
     } catch (error) {
-      console.error('deletePassage - error:', error);
+      logger.error('deletePassage - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1208,12 +1099,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('modifyPassage - agentId:', agentId, 'passageId:', passageId, 'data:', data);
       const result = await this.client.agents.passages.modify(agentId, passageId, data);
-      console.log('modifyPassage - result:', result);
       return result as Passage;
     } catch (error) {
-      console.error('modifyPassage - error:', error);
+      logger.error('modifyPassage - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1224,12 +1113,10 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('attachToolToAgent - agentId:', agentId, 'toolId:', toolId);
       const result = await this.client.agents.tools.attach(agentId, toolId);
-      console.log('attachToolToAgent - result:', result);
       return result;
     } catch (error) {
-      console.error('attachToolToAgent - error:', error);
+      logger.error('attachToolToAgent - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1239,8 +1126,6 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-
-      console.log('attachToolToAgentByName - agentId:', agentId, 'toolName:', toolName);
 
       // Find the tool by name using API filtering
       const tools = await this.listTools({ name: toolName });
@@ -1253,10 +1138,9 @@ class LettaApiService {
 
       // Attach the tool by ID
       const result = await this.client.agents.tools.attach(agentId, tool.id);
-      console.log('attachToolToAgentByName - result:', result);
       return result;
     } catch (error) {
-      console.error('attachToolToAgentByName - error:', error);
+      logger.error('attachToolToAgentByName - error:', error);
       throw this.handleError(error);
     }
   }
@@ -1267,24 +1151,16 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      console.log('listAgentsForBlock - blockId:', blockId);
       const agentsPage = await this.client.blocks.agents.list(blockId);
       const agents = agentsPage.items || [];
-      console.log('listAgentsForBlock - found agents:', agents.length);
       return agents;
     } catch (error) {
-      console.error('listAgentsForBlock - error:', error);
+      logger.error('listAgentsForBlock - error:', error);
       throw this.handleError(error);
     }
   }
 
   private handleError(error: any): ApiError {
-    console.error('=== HANDLE ERROR ===');
-    console.error('handleError - Full error object:', error);
-    console.error('handleError - Error type:', typeof error);
-    console.error('handleError - Error keys:', Object.keys(error));
-    console.error('handleError - Error constructor:', error?.constructor?.name);
-
     let message = 'An error occurred';
     let status = 0;
     let code: string | undefined;
@@ -1316,17 +1192,7 @@ class LettaApiService {
       responseData
     };
 
-    console.error('handleError - Returning API error:', JSON.stringify(apiError, null, 2));
-    console.error('handleError - Response data type:', typeof responseData);
-    console.error('handleError - Response type:', typeof response);
-
-    // Log any nested error details
-    if (responseData) {
-      console.error('handleError - Response data content:', JSON.stringify(responseData, null, 2));
-    }
-    if (response) {
-      console.error('handleError - Response content:', JSON.stringify(response, null, 2));
-    }
+    logger.error('API error:', message, status ? `(${status})` : '');
 
     return apiError;
   }

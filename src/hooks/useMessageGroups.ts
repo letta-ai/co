@@ -224,7 +224,6 @@ export function useMessageGroups({
     });
 
     // Step 6: Add completed streaming messages (finished but stream still active)
-    console.log('📊 Completed streaming messages:', completedStreamingMessages.length);
     completedStreamingMessages.forEach((msg, index) => {
       const group: MessageGroup = {
         id: msg.id,
@@ -245,7 +244,6 @@ export function useMessageGroups({
       }
 
       filteredGroups.push(group);
-      console.log(`  ✅ [${index}] ${msg.type}:`, msg.content.substring(0, 40));
     });
 
     // Step 7: Add current accumulating message (if any)
@@ -269,10 +267,8 @@ export function useMessageGroups({
       }
 
       filteredGroups.push(group);
-      console.log('  🔄 Current streaming:', currentStreamingMessage.type, currentStreamingMessage.content.substring(0, 40));
     }
 
-    console.log('📊 FINAL GROUP COUNT:', filteredGroups.length, 'groups');
     return filteredGroups;
   }, [messages, isStreaming, currentStreamingMessage, completedStreamingMessages]);
 }
@@ -541,7 +537,6 @@ function parseToolCall(msg: LettaMessage): {
         args = JSON.parse(args);
       } catch (e) {
         // If parse fails, keep as string
-        console.warn('Failed to parse tool arguments:', args);
       }
     }
 

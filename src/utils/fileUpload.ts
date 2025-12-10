@@ -50,8 +50,6 @@ async function pickFileWeb(): Promise<FilePickerResult | null> {
           return;
         }
 
-        console.log('Selected file:', file.name, 'size:', file.size, 'type:', file.type);
-
         // Check file size (10MB limit)
         const MAX_SIZE = 10 * 1024 * 1024;
         if (file.size > MAX_SIZE) {
@@ -78,7 +76,6 @@ async function pickFileWeb(): Promise<FilePickerResult | null> {
 
       input.click();
     } catch (error) {
-      console.error('Error creating file picker:', error);
       Alert.alert('Error', 'Failed to open file picker');
       resolve(null);
     }
@@ -106,8 +103,6 @@ async function pickFileMobile(): Promise<FilePickerResult | null> {
       return null;
     }
 
-    console.log('Selected file:', asset.name, 'size:', asset.size, 'type:', asset.mimeType);
-
     // Check file size (10MB limit)
     const MAX_SIZE = 10 * 1024 * 1024;
     if (asset.size && asset.size > MAX_SIZE) {
@@ -133,7 +128,6 @@ async function pickFileMobile(): Promise<FilePickerResult | null> {
       uri: asset.uri,
     };
   } catch (error) {
-    console.error('Error picking file:', error);
     Alert.alert('Error', 'Failed to pick file');
     return null;
   }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LettaAgent } from '../types/letta';
 import { findOrCreateCo } from '../utils/coAgent';
+import { logger } from '../utils/logger';
 
 interface AgentState {
   // State
@@ -27,16 +28,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   initializeCo: async (userName: string) => {
     set({ isInitializingCo: true, agentError: null });
     try {
-      console.log('Initializing Co agent...');
+      logger.debug('Initializing Co agent...');
       const agent = await findOrCreateCo(userName);
       set({ coAgent: agent });
-      console.log('=== CO AGENT INITIALIZED ===');
-      console.log('Co agent ID:', agent.id);
-      console.log('Co agent name:', agent.name);
-      console.log('LLM model:', agent.llm_config?.model);
-      console.log('LLM context window:', agent.llm_config?.context_window);
+      logger.debug('Co agent initialized:', agent.id);
     } catch (error: any) {
-      console.error('Failed to initialize Co:', error);
+      logger.error('Failed to initialize Co:', error);
       set({ agentError: error.message || 'Failed to initialize agent' });
       throw error;
     } finally {
@@ -53,7 +50,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       const agent = await findOrCreateCo('User');
       set({ coAgent: agent });
     } catch (error: any) {
-      console.error('Failed to refresh Co:', error);
+      logger.error('Failed to refresh Co:', error);
       set({ agentError: error.message || 'Failed to refresh agent' });
     } finally {
       set({ isRefreshingCo: false });

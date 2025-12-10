@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { logger } from './logger';
 
 // Platform-specific imports
 let SecureStore: any = null;
@@ -10,7 +11,7 @@ try {
     SecureStore = require('expo-secure-store');
   }
 } catch (error) {
-  console.warn('SecureStore not available:', error);
+  logger.warn('SecureStore not available');
 }
 
 /**
@@ -31,7 +32,7 @@ export class Storage {
         await AsyncStorage.setItem(key, value);
       }
     } catch (error) {
-      console.error('Storage setItem error:', error);
+      logger.error('Storage setItem error:', error);
       throw new Error(`Failed to store item with key: ${key}`);
     }
   }
@@ -44,7 +45,7 @@ export class Storage {
         return await AsyncStorage.getItem(key);
       }
     } catch (error) {
-      console.error('Storage getItem error:', error);
+      logger.error('Storage getItem error:', error);
       return null;
     }
   }
@@ -57,7 +58,7 @@ export class Storage {
         await AsyncStorage.removeItem(key);
       }
     } catch (error) {
-      console.error('Storage removeItem error:', error);
+      logger.error('Storage removeItem error:', error);
       throw new Error(`Failed to remove item with key: ${key}`);
     }
   }
@@ -66,12 +67,12 @@ export class Storage {
     try {
       if (this.isNative()) {
         // SecureStore doesn't have a clear method, so we can't clear everything
-        console.warn('SecureStore does not support clearing all items');
+        logger.warn('SecureStore does not support clearing all items');
       } else {
         await AsyncStorage.clear();
       }
     } catch (error) {
-      console.error('Storage clear error:', error);
+      logger.error('Storage clear error:', error);
       throw new Error('Failed to clear storage');
     }
   }

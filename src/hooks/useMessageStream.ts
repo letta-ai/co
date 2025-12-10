@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { useChatStore } from '../stores/chatStore';
 import { useAgentStore } from '../stores/agentStore';
 import lettaApi from '../api/lettaApi';
+import { logger } from '../utils/logger';
 import type { StreamingChunk, LettaMessage } from '../types/letta';
 
 /**
@@ -26,18 +27,15 @@ export function useMessageStream() {
 
     // Handle errors
     if ((chunk as any).error) {
-      console.error('❌ Stream error:', (chunk as any).error);
+      logger.error('Stream error:', (chunk as any).error);
       return;
     }
-
-    console.log(`📦 [${chunkType}] ID: ${chunkId?.substring(0, 8)}...`);
 
     // DETECT TYPE TRANSITION: assistant -> tool_call
     // Only finalize if current message is assistant type (not if already tool_call)
     if (chunkType === 'tool_call_message' && chunkId) {
       const current = useChatStore.getState().currentStreamingMessage;
       if (current && current.type === 'assistant' && current.content) {
-        console.log('🔄 Type transition: assistant -> tool_call, finalizing');
         chatStore.finalizeCurrentMessage();
       }
     }
@@ -47,16 +45,14 @@ export function useMessageStream() {
     if (chunkType === 'assistant_message' && chunkId) {
       const current = useChatStore.getState().currentStreamingMessage;
       if (current && current.type === 'tool_call' && current.content) {
-        console.log('🔄 Type transition: tool_call -> assistant, finalizing');
         chatStore.finalizeCurrentMessage();
       }
     }
 
     // DETECT NEW MESSAGE: If we see a different ID on reasoning OR tool_call, finalize current
-    // This handles both: reasoning → tool_call transitions AND tool_call → reasoning transitions
+    // This handles both: reasoning -> tool_call transitions AND tool_call -> reasoning transitions
     if ((chunkType === 'reasoning_message' || chunkType === 'tool_call_message') && chunkId) {
       if (lastMessageIdRef.current && chunkId !== lastMessageIdRef.current) {
-        console.log('🔄 NEW MESSAGE DETECTED - finalizing previous');
         chatStore.finalizeCurrentMessage();
       }
       lastMessageIdRef.current = chunkId;
@@ -74,13 +70,12 @@ export function useMessageStream() {
         const toolName = toolCall.name || toolCall.tool_name || 'unknown';
         // Try multiple places for arguments
         let args = toolCall.arguments || toolCall.args || '';
-        
+
         // If args is an object, format it as a string
         if (typeof args === 'object' && args !== null) {
           args = JSON.stringify(args);
         }
-        
-        console.log('🔧 Tool call:', toolName, 'args:', args);
+
         chatStore.accumulateToolCall(chunkId, toolName, args);
       }
     }
@@ -103,10 +98,6 @@ export function useMessageStream() {
         chatStore.accumulateAssistant(chunkId, contentText);
       }
     }
-    // tool_return_message - just log, we'll handle pairing later
-    else if (chunkType === 'tool_return_message') {
-      console.log('📨 Tool return received');
-    }
   }, [chatStore]);
 
   // Send a message with streaming
@@ -115,8 +106,6 @@ export function useMessageStream() {
       if ((!messageText.trim() && imagesToSend.length === 0) || !coAgent || chatStore.isSendingMessage) {
         return;
       }
-
-      console.log('sendMessage called - messageText:', messageText, 'imagesToSend length:', imagesToSend.length);
 
       chatStore.setSendingMessage(true);
 
@@ -202,8 +191,6 @@ export function useMessageStream() {
             handleStreamingChunk(chunk);
           },
           async (response) => {
-            console.log('🎬 STREAM COMPLETE');
-
             // Finalize the last message
             chatStore.finalizeCurrentMessage();
 
@@ -214,8 +201,6 @@ export function useMessageStream() {
             if (currentStreamingMessage) {
               allStreamedMessages.push(currentStreamingMessage);
             }
-
-            console.log('📨 Converting', allStreamedMessages.length, 'streamed messages to permanent messages');
 
             // Convert to LettaMessage format and add to messages
             const permanentMessages: LettaMessage[] = allStreamedMessages.map((msg, idx) => {
@@ -252,18 +237,16 @@ export function useMessageStream() {
             chatStore.stopStreaming();
             chatStore.setSendingMessage(false);
             chatStore.clearImages();
-
-            console.log('✅ Stream finished and converted to messages');
           },
           (error) => {
-            console.error('Stream error:', error);
+            logger.error('Stream error:', error);
             chatStore.clearAllStreamingState();
             chatStore.stopStreaming();
             chatStore.setSendingMessage(false);
           }
         );
       } catch (error) {
-        console.error('Failed to send message:', error);
+        logger.error('Failed to send message:', error);
         chatStore.clearAllStreamingState();
         chatStore.stopStreaming();
         chatStore.setSendingMessage(false);

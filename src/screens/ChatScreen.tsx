@@ -103,47 +103,33 @@ export function ChatScreen({ theme, colorScheme, showCompaction = true, showTool
       throw new Error('Agent not initialized');
     }
 
-    console.log('handleFileUpload - file:', file.name);
-
     // Get or create the co-app folder
     let folderId = await Storage.getItem(STORAGE_KEYS.CO_FOLDER_ID);
 
     if (!folderId) {
-      console.log('No folder ID found, searching for co-app folder...');
       const folders = await lettaApi.listFolders({ name: 'co-app' });
-      
+
       if (folders.length > 0) {
         folderId = folders[0].id;
-        console.log('Found existing co-app folder:', folderId);
       } else {
-        console.log('Creating new co-app folder...');
         const folder = await lettaApi.createFolder('co-app', 'Files shared with co agent');
         folderId = folder.id;
-        console.log('Created new folder:', folderId);
       }
 
       await Storage.setItem(STORAGE_KEYS.CO_FOLDER_ID, folderId);
     }
 
-    console.log('Uploading file to folder:', folderId);
-    const result = await lettaApi.uploadFileToFolder(folderId, file, 'replace');
-    console.log('File uploaded successfully:', result);
+    await lettaApi.uploadFileToFolder(folderId, file, 'replace');
 
     // Attach folder to agent if not already attached
-    console.log('Ensuring folder is attached to agent...');
     try {
       await lettaApi.attachFolderToAgent(coAgent.id, folderId);
-      console.log('Folder attached to agent');
     } catch (error: any) {
       // If already attached, that's fine
-      if (error.message?.includes('already attached') || error.status === 409) {
-        console.log('Folder already attached to agent');
-      } else {
+      if (!error.message?.includes('already attached') && error.status !== 409) {
         throw error;
       }
     }
-
-    console.log('File upload complete!');
   };
 
   // Render message group

@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Alert } from 'react-native';
+import { logger } from '../utils/logger';
 
 /**
  * Centralized error handling hook
@@ -7,7 +8,7 @@ import { Alert } from 'react-native';
 export function useErrorHandler() {
   const showError = useCallback((error: Error | string, title: string = 'Error') => {
     const message = typeof error === 'string' ? error : error.message;
-    console.error(`[Error Handler] ${title}:`, error);
+    logger.error(`${title}:`, error);
     Alert.alert(title, message);
   }, []);
 

@@ -164,7 +164,6 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
         }
       }
     } catch (error) {
-      console.error('Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image');
     }
   };
@@ -184,7 +183,6 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
         await onFileUpload(result.file);
       }
     } catch (error: any) {
-      console.error('File upload error:', error);
       Alert.alert('Upload Failed', error.message || 'Failed to upload file');
     } finally {
       setIsUploadingFile(false);

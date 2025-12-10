@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import lettaApi from '../api/lettaApi';
 import Storage, { STORAGE_KEYS } from '../utils/storage';
+import { logger } from '../utils/logger';
 
 interface AuthState {
   // State
@@ -37,7 +38,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         await get().connectWithToken(stored);
       }
     } catch (error) {
-      console.error('Failed to load stored token:', error);
+      logger.error('Failed to load stored token:', error);
     } finally {
       set({ isLoadingToken: false });
     }
@@ -56,7 +57,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         throw new Error('Invalid API token');
       }
     } catch (error: any) {
-      console.error('Connection failed:', error);
+      logger.error('Connection failed:', error);
       set({
         connectionError: error.message || 'Failed to connect',
         isConnected: false
