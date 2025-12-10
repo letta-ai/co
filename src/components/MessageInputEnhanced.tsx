@@ -343,7 +343,7 @@ export const MessageInputEnhanced: React.FC<MessageInputEnhancedProps> = ({
             onFocus={handleFocus}
             onBlur={handleBlur}
             multiline
-            maxLength={15000}
+            maxLength={100000}
             editable={!disabled && !isSendingMessage}
             onSubmitEditing={handleSend}
           />
