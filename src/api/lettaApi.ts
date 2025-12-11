@@ -952,6 +952,78 @@ class LettaApiService {
     }
   }
 
+  // Archives API
+  async createArchive(name: string, description?: string): Promise<any> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const archive = await this.client.archives.create({
+        name,
+        description: description || undefined,
+      });
+      return archive;
+    } catch (error) {
+      logger.error('createArchive - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async listArchives(): Promise<any[]> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const archivesPage = await this.client.archives.list();
+      return archivesPage.items || [];
+    } catch (error) {
+      logger.error('listArchives - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async getArchive(archiveId: string): Promise<any> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      const archive = await this.client.archives.retrieve(archiveId);
+      return archive;
+    } catch (error) {
+      logger.error('getArchive - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async attachArchiveToAgent(agentId: string, archiveId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      await this.client.agents.archives.attach(archiveId, { agent_id: agentId });
+    } catch (error) {
+      logger.error('attachArchiveToAgent - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
+  async detachArchiveFromAgent(agentId: string, archiveId: string): Promise<void> {
+    try {
+      if (!this.client) {
+        throw new Error('Client not initialized. Please set auth token first.');
+      }
+
+      await this.client.agents.archives.detach(archiveId, { agent_id: agentId });
+    } catch (error) {
+      logger.error('detachArchiveFromAgent - error:', error);
+      throw this.handleError(error);
+    }
+  }
+
   // Archival Memory (Passages) API
   async listPassages(agentId: string, params?: ListPassagesParams): Promise<Passage[]> {
     try {

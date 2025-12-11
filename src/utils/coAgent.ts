@@ -23,9 +23,9 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
         'web_search',
         'fetch_webpage',
         'memory',
+        'archival_memory_search',
       ],
-      toolRules: [],
-      enableSleeptime: true,
+      sleeptimeEnable: true,
     });
 
     logger.debug('Agent created, finding sleeptime agent via shared memory blocks...');
@@ -51,6 +51,9 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
       const fullAgent = await lettaApi.getAgent(agent.id);
       fullAgent.sleeptime_agent_id = sleeptimeAgent.id;
 
+      // Create and attach shared archive
+      await connectSharedArchive(fullAgent.id, sleeptimeAgent.id);
+
       // Attach archival memory tools to sleeptime agent
       await ensureSleeptimeTools(fullAgent);
 
@@ -61,6 +64,40 @@ export async function createCoAgent(userName: string): Promise<LettaAgent> {
     }
   } catch (error) {
     logger.error('Error creating Co agent:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create or find a shared archive and attach to both primary and sleeptime agents
+ */
+async function connectSharedArchive(primaryAgentId: string, sleeptimeAgentId: string): Promise<void> {
+  try {
+    logger.debug('Connecting shared archive for agents:', primaryAgentId, sleeptimeAgentId);
+
+    // Check if an archive already exists for this agent pair
+    const archives = await lettaApi.listArchives();
+    let sharedArchive = archives.find(a => a.name === `Co Memory - ${primaryAgentId}`);
+
+    if (!sharedArchive) {
+      // Create new shared archive
+      logger.debug('Creating new shared archive');
+      sharedArchive = await lettaApi.createArchive(
+        `Co Memory - ${primaryAgentId}`,
+        'Shared archival memory between Co primary and sleeptime agents'
+      );
+    }
+
+    // Attach archive to both agents
+    logger.debug('Attaching archive to primary agent:', primaryAgentId);
+    await lettaApi.attachArchiveToAgent(primaryAgentId, sharedArchive.id);
+
+    logger.debug('Attaching archive to sleeptime agent:', sleeptimeAgentId);
+    await lettaApi.attachArchiveToAgent(sleeptimeAgentId, sharedArchive.id);
+
+    logger.debug('Successfully connected shared archive:', sharedArchive.id);
+  } catch (error) {
+    logger.error('Error connecting shared archive:', error);
     throw error;
   }
 }
@@ -151,6 +188,9 @@ export async function findOrCreateCo(userName: string): Promise<LettaAgent> {
         if (sleeptimeAgent) {
           fullAgent.sleeptime_agent_id = sleeptimeAgent.id;
           logger.debug('Found sleeptime agent for existing Co:', sleeptimeAgent.id);
+
+          // Connect shared archive
+          await connectSharedArchive(fullAgent.id, sleeptimeAgent.id);
         }
       }
 
