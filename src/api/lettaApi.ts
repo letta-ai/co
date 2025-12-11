@@ -63,7 +63,7 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      await this.client.agents.blocks.attach(agentId, blockId);
+      await this.client.agents.blocks.attach(blockId, { agent_id: agentId });
     } catch (error) {
       throw this.handleError(error);
     }
@@ -74,7 +74,10 @@ class LettaApiService {
       if (!this.client) {
         throw new Error('Client not initialized. Please set auth token first.');
       }
-      const createdBlock = await this.client.agents.blocks.create(agentId, block);
+      // Create the block first
+      const createdBlock = await this.client.blocks.create(block);
+      // Then attach it to the agent
+      await this.client.agents.blocks.attach(createdBlock.id, { agent_id: agentId });
       return createdBlock as unknown as MemoryBlock;
     } catch (error) {
       throw this.handleError(error);
@@ -112,39 +115,14 @@ class LettaApiService {
     }
   }
 
-  async listProjects(params: ListProjectsParams = {}): Promise<ListProjectsResponse> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-      
-      const response = await this.client.projects.list(params);
-      return response;
-    } catch (error) {
-      throw this.handleError(error);
-    }
+  // Projects API is not exposed in the TypeScript SDK (REST only)
+  async listProjects(_params: ListProjectsParams = {}): Promise<ListProjectsResponse> {
+    throw new Error('Projects API is not available in the TypeScript SDK. Use REST API directly.');
   }
 
-  // Utility to find a project by ID by paginating listProjects
-  async getProjectById(projectId: string): Promise<Project | null> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-      let hasNext = true;
-      let offset = 0;
-      const limit = 50;
-      while (hasNext && offset < 2000) {
-        const res = await this.listProjects({ limit, offset });
-        const found = (res.projects || []).find(p => p.id === projectId) || null;
-        if (found) return found;
-        hasNext = !!res.hasNextPage;
-        offset += limit;
-      }
-      return null;
-    } catch (error) {
-      throw this.handleError(error);
-    }
+  // Projects API is not exposed in the TypeScript SDK (REST only)
+  async getProjectById(_projectId: string): Promise<Project | null> {
+    throw new Error('Projects API is not available in the TypeScript SDK. Use REST API directly.');
   }
 
   async listAgents(params?: ListAgentsParams): Promise<LettaAgent[]> {
@@ -159,7 +137,7 @@ class LettaApiService {
       const response = responsePage.items || [];
       logger.debug('listAgents - response count:', response.length);
 
-      return response;
+      return response as unknown as LettaAgent[];
     } catch (error) {
       logger.error('listAgents - error:', error);
       throw this.handleError(error);
@@ -217,7 +195,7 @@ class LettaApiService {
       
       // SDK uses `retrieve` for fetching a single agent
       const response = await this.client.agents.retrieve(agentId);
-      return response;
+      return response as unknown as LettaAgent;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -230,7 +208,7 @@ class LettaApiService {
       }
       
       const response = await this.client.agents.create(agentData);
-      return response;
+      return response as unknown as LettaAgent;
     } catch (error) {
       throw this.handleError(error);
     }
@@ -267,12 +245,12 @@ class LettaApiService {
             content: content
           };
         }),
-        maxSteps: messageData.max_steps,
-        useAssistantMessage: messageData.use_assistant_message,
-        enableThinking: messageData.enable_thinking ? 'true' : undefined
+        max_steps: messageData.max_steps,
+        use_assistant_message: messageData.use_assistant_message,
+        enable_thinking: messageData.enable_thinking ? 'true' : undefined
       };
 
-      const response = await this.client.agents.messages.create(agentId, lettaRequest);
+      const response = await this.client.agents.messages.create(agentId, lettaRequest as any);
       
       // Transform messages to match our interface, preserving tool step types
       const transformedMessages = (response.messages || []).map((message: any) => {
@@ -315,8 +293,8 @@ class LettaApiService {
       
       return {
         messages: transformedMessages,
-        stop_reason: response.stopReason,
-        usage: response.usage
+        stop_reason: response.stop_reason as unknown as SendMessageResponse['stop_reason'],
+        usage: response.usage as SendMessageResponse['usage']
       };
     } catch (error) {
       logger.error('sendMessage - error:', error);
@@ -399,74 +377,20 @@ class LettaApiService {
     }
   }
 
-  async getActiveRuns(agentIds: string[]): Promise<any[]> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-
-      logger.debug('getActiveRuns - agentIds:', agentIds);
-
-      const activeRuns = await this.client.runs.active({
-        agentIds,
-        background: true
-      });
-
-      logger.debug('getActiveRuns - found:', activeRuns?.length || 0);
-      return activeRuns || [];
-    } catch (error) {
-      logger.error('getActiveRuns - error:', error);
-      throw this.handleError(error);
-    }
+  // runs.active is not available in the current SDK version
+  async getActiveRuns(_agentIds: string[]): Promise<unknown[]> {
+    throw new Error('getActiveRuns is not available in the current SDK version.');
   }
 
+  // runs.stream is not available in the current SDK version
   async resumeStream(
-    runId: string,
-    startingAfter: number,
-    onChunk: (chunk: StreamingChunk) => void,
-    onComplete: (response: SendMessageResponse) => void,
-    onError: (error: any) => void
+    _runId: string,
+    _startingAfter: number,
+    _onChunk: (chunk: StreamingChunk) => void,
+    _onComplete: (response: SendMessageResponse) => void,
+    onError: (error: Error) => void
   ): Promise<void> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-
-      logger.debug('resumeStream - runId:', runId, 'startingAfter:', startingAfter);
-
-      const stream = await this.client.runs.stream(runId, {
-        startingAfter,
-        batchSize: 1000  // Fetch historical chunks in larger batches
-      });
-
-      try {
-        for await (const chunk of stream) {
-          onChunk({
-            message_type: (chunk as any).message_type || (chunk as any).messageType,
-            content: (chunk as any).assistant_message || (chunk as any).assistantMessage || (chunk as any).content,
-            reasoning: (chunk as any).reasoning || (chunk as any).hiddenReasoning,
-            tool_call: (chunk as any).tool_call || (chunk as any).toolCall,
-            tool_response: (chunk as any).tool_response || (chunk as any).toolResponse || (chunk as any).toolReturn,
-            step: (chunk as any).step || (chunk as any).stepId,
-            run_id: (chunk as any).run_id || (chunk as any).runId,
-            seq_id: (chunk as any).seq_id || (chunk as any).seqId,
-            id: (chunk as any).id || (chunk as any).message_id || (chunk as any).messageId
-          });
-        }
-
-        // Stream completed successfully
-        onComplete({
-          messages: [],
-          usage: undefined
-        });
-      } catch (streamError) {
-        logger.error('Resume stream iteration error:', streamError);
-        onError(this.handleError(streamError));
-      }
-    } catch (error) {
-      logger.error('resumeStream setup error:', error);
-      onError(this.handleError(error));
-    }
+    onError(new Error('resumeStream is not available in the current SDK version.'));
   }
 
   async listMessages(agentId: string, params?: ListMessagesParams): Promise<LettaMessage[]> {
@@ -836,7 +760,7 @@ class LettaApiService {
       }
 
       // Note: SDK shapes can vary; apply same normalization basics
-      const response = await this.client.models?.embedding?.list?.() || [];
+      const response = await this.client.models?.embeddings?.list?.() || [];
       const normalized = Array.isArray(response)
         ? response.map((raw: any) => {
             const modelName = raw?.embedding_model || raw?.model || raw?.name || raw?.id;
@@ -960,17 +884,9 @@ class LettaApiService {
     }
   }
 
-  async getJobStatus(jobId: string): Promise<any> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-
-      const job = await this.client.jobs.retrieve(jobId);
-      return job;
-    } catch (error) {
-      throw this.handleError(error);
-    }
+  // jobs API is not available in the current SDK version
+  async getJobStatus(_jobId: string): Promise<unknown> {
+    throw new Error('getJobStatus is not available in the current SDK version.');
   }
 
   async listFolderFiles(folderId: string): Promise<any[]> {
@@ -992,7 +908,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      await this.client.folders.files.delete(folderId, fileId);
+      await this.client.folders.files.delete(fileId, { folder_id: folderId });
     } catch (error) {
       throw this.handleError(error);
     }
@@ -1004,7 +920,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      await this.client.agents.folders.attach(agentId, folderId);
+      await this.client.agents.folders.attach(folderId, { agent_id: agentId });
     } catch (error) {
       throw this.handleError(error);
     }
@@ -1016,7 +932,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      await this.client.agents.folders.detach(agentId, folderId);
+      await this.client.agents.folders.detach(folderId, { agent_id: agentId });
     } catch (error) {
       throw this.handleError(error);
     }
@@ -1043,8 +959,7 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      const passagesPage = await this.client.agents.passages.list(agentId, params);
-      const passages = passagesPage.items || [];
+      const passages = await this.client.agents.passages.list(agentId, params);
       return passages as Passage[];
     } catch (error) {
       logger.error('listPassages - error:', error);
@@ -1086,25 +1001,16 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      await this.client.agents.passages.delete(agentId, passageId);
+      await this.client.agents.passages.delete(passageId, { agent_id: agentId });
     } catch (error) {
       logger.error('deletePassage - error:', error);
       throw this.handleError(error);
     }
   }
 
-  async modifyPassage(agentId: string, passageId: string, data: Partial<CreatePassageRequest>): Promise<Passage> {
-    try {
-      if (!this.client) {
-        throw new Error('Client not initialized. Please set auth token first.');
-      }
-
-      const result = await this.client.agents.passages.modify(agentId, passageId, data);
-      return result as Passage;
-    } catch (error) {
-      logger.error('modifyPassage - error:', error);
-      throw this.handleError(error);
-    }
+  // passages.modify is not available in the current SDK version
+  async modifyPassage(_agentId: string, _passageId: string, _data: Partial<CreatePassageRequest>): Promise<Passage> {
+    throw new Error('modifyPassage is not available in the current SDK version.');
   }
 
   async attachToolToAgent(agentId: string, toolId: string): Promise<LettaAgent> {
@@ -1113,8 +1019,8 @@ class LettaApiService {
         throw new Error('Client not initialized. Please set auth token first.');
       }
 
-      const result = await this.client.agents.tools.attach(agentId, toolId);
-      return result;
+      const result = await this.client.agents.tools.attach(toolId, { agent_id: agentId });
+      return result as unknown as LettaAgent;
     } catch (error) {
       logger.error('attachToolToAgent - error:', error);
       throw this.handleError(error);
@@ -1137,8 +1043,8 @@ class LettaApiService {
       const tool = tools[0];
 
       // Attach the tool by ID
-      const result = await this.client.agents.tools.attach(agentId, tool.id);
-      return result;
+      const result = await this.client.agents.tools.attach(tool.id, { agent_id: agentId });
+      return result as unknown as LettaAgent;
     } catch (error) {
       logger.error('attachToolToAgentByName - error:', error);
       throw this.handleError(error);
@@ -1153,7 +1059,7 @@ class LettaApiService {
 
       const agentsPage = await this.client.blocks.agents.list(blockId);
       const agents = agentsPage.items || [];
-      return agents;
+      return agents as unknown as LettaAgent[];
     } catch (error) {
       logger.error('listAgentsForBlock - error:', error);
       throw this.handleError(error);
