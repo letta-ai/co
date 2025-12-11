@@ -50,6 +50,7 @@ import { ChatScreen } from './src/screens/ChatScreen';
 import KnowledgeView from './src/views/KnowledgeView';
 import SettingsView from './src/views/SettingsView';
 import MemoryBlockViewer from './src/components/MemoryBlockViewer';
+import PassageEditor from './src/components/PassageEditor';
 
 // Hooks
 import { useAuth } from './src/hooks/useAuth';
@@ -127,6 +128,8 @@ function CoApp() {
   const [passagesError, setPassagesError] = useState<string | null>(null);
   const [passageSearchQuery, setPassageSearchQuery] = useState('');
   const [hasMorePassages, setHasMorePassages] = useState(false);
+  const [editingPassage, setEditingPassage] = useState<Passage | null>(null);
+  const [isPassageEditorVisible, setIsPassageEditorVisible] = useState(false);
 
   const [folderFiles, setFolderFiles] = useState<any[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
@@ -379,6 +382,35 @@ function CoApp() {
     }
   };
 
+  const handlePassageSave = async (text: string, tags: string[]) => {
+    if (!coAgent) throw new Error('No agent available');
+
+    if (editingPassage) {
+      // Edit existing - but SDK doesn't support modify, so delete and recreate
+      await lettaApi.deletePassage(coAgent.id, editingPassage.id);
+      await lettaApi.createPassage(coAgent.id, { text, tags });
+    } else {
+      // Create new
+      await lettaApi.createPassage(coAgent.id, { text, tags });
+    }
+    await loadPassages(true);
+  };
+
+  const handlePassageCreate = () => {
+    setEditingPassage(null);
+    setIsPassageEditorVisible(true);
+  };
+
+  const handlePassageEdit = (passage: Passage) => {
+    setEditingPassage(passage);
+    setIsPassageEditorVisible(true);
+  };
+
+  const handlePassageEditorClose = () => {
+    setIsPassageEditorVisible(false);
+    setEditingPassage(null);
+  };
+
   // Refresh agent
   const handleRefreshAgent = async () => {
     if (!coAgent) return;
@@ -539,8 +571,8 @@ function CoApp() {
               passagesError={passagesError}
               hasMorePassages={hasMorePassages}
               onLoadMorePassages={() => loadPassages(false)}
-              onPassageCreate={() => console.log('Create passage')}
-              onPassageEdit={(p) => console.log('Edit passage', p.id)}
+              onPassageCreate={handlePassageCreate}
+              onPassageEdit={handlePassageEdit}
               onPassageDelete={handlePassageDelete}
               folderFiles={folderFiles}
               isLoadingFiles={isLoadingFiles}
@@ -573,6 +605,16 @@ function CoApp() {
             isDesktop={isDesktop}
           />
         )}
+
+        {/* Passage Editor (overlay/modal) */}
+        <PassageEditor
+          passage={editingPassage}
+          isVisible={isPassageEditorVisible}
+          onClose={handlePassageEditorClose}
+          onSave={handlePassageSave}
+          isDark={colorScheme === 'dark'}
+          isDesktop={isDesktop}
+        />
         </View>
 
         {/* Overlay Sidebar for narrow screens */}
