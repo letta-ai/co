@@ -136,24 +136,33 @@ export async function ensureSleeptimeTools(agent: LettaAgent): Promise<void> {
       }
     }
 
-    // Ensure co_memory block exists
-    if (!sleeptimeBlockLabels.includes('co_memory')) {
-      logger.debug('Creating co_memory block for sleeptime agent');
-      try {
-        const { CO_MEMORY_BLOCK } = await import('../constants/memoryBlocks');
+    // Ensure sleeptime-only blocks exist
+    const sleeptimeOnlyBlocks = [
+      { name: 'co_memory', importName: 'CO_MEMORY_BLOCK' as const },
+      { name: 'sleeptime_identity', importName: 'SLEEPTIME_IDENTITY_BLOCK' as const },
+      { name: 'sleeptime_procedures', importName: 'SLEEPTIME_PROCEDURES_BLOCK' as const },
+    ];
 
-        // Two-step process: create block, then attach to agent
-        const createdBlock = await lettaApi.createBlock({
-          label: CO_MEMORY_BLOCK.label,
-          value: CO_MEMORY_BLOCK.value,
-          description: CO_MEMORY_BLOCK.description,
-          limit: CO_MEMORY_BLOCK.limit,
-        });
+    for (const blockInfo of sleeptimeOnlyBlocks) {
+      if (!sleeptimeBlockLabels.includes(blockInfo.name)) {
+        logger.debug(`Creating ${blockInfo.name} block for sleeptime agent`);
+        try {
+          const memoryBlocks = await import('../constants/memoryBlocks');
+          const blockDef = memoryBlocks[blockInfo.importName] as { label: string; value: string; description: string; limit: number };
 
-        await lettaApi.attachBlockToAgent(sleeptimeAgentId, createdBlock.id!);
-      } catch (error) {
-        logger.error('Failed to create/attach co_memory block:', error);
-        throw error;
+          // Two-step process: create block, then attach to agent
+          const createdBlock = await lettaApi.createBlock({
+            label: blockDef.label,
+            value: blockDef.value,
+            description: blockDef.description,
+            limit: blockDef.limit,
+          });
+
+          await lettaApi.attachBlockToAgent(sleeptimeAgentId, createdBlock.id!);
+        } catch (error) {
+          logger.error(`Failed to create/attach ${blockInfo.name} block:`, error);
+          throw error;
+        }
       }
     }
   } catch (error) {
